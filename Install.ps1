@@ -36,5 +36,12 @@ $shortcut.WorkingDirectory = $destination
 $shortcut.Description = 'Work / Codex quota dashboard'
 $shortcut.WindowStyle = 7
 $shortcut.Save()
+$desktop = [Environment]::GetFolderPath('Desktop')
+$desktopShortcut = $shell.CreateShortcut((Join-Path $desktop 'Quota Starter.lnk'))
+$desktopShortcut.TargetPath = Join-Path $destination 'Start.cmd'
+$desktopShortcut.WorkingDirectory = $destination
+$desktopShortcut.Description = 'Work / Codex quota dashboard'
+$desktopShortcut.WindowStyle = 7
+$desktopShortcut.Save()
 & (Join-Path $destination 'Start.ps1') -NoBrowser:$NoBrowser
 Write-Output "Installed: $destination"

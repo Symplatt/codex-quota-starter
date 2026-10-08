@@ -36,7 +36,7 @@
 
 ## 打开与日常使用
 
-安装后，在 Windows 开始菜单搜索 **Quota Starter**，或打开：
+安装后，双击桌面的 **Quota Starter** 快捷方式，或在 Windows 开始菜单搜索 **Quota Starter**，也可以打开：
 
 **[http://127.0.0.1:8769](http://127.0.0.1:8769)**
 
@@ -73,7 +73,7 @@
 3. 运行 `codex login`，在官方登录页面使用你的 ChatGPT Plus 账户登录。已经登录过就跳过。
 4. 下载 Release 的 ZIP 并完整解压，双击 `Install.cmd`。
 
-安装器复制程序到 `%LOCALAPPDATA%\Programs\QuotaStarter`，添加开始菜单入口，并注册 `QuotaStarter-WorkCodex` 计划任务。整个过程使用当前 Windows 用户；不要求账户密码。受企业策略限制而无法注册计划任务时，安装器会报错，不会假称自启已成功。
+安装器复制程序到 `%LOCALAPPDATA%\Programs\QuotaStarter`，添加桌面快捷方式和开始菜单入口，并注册 `QuotaStarter-WorkCodex` 计划任务。整个过程使用当前 Windows 用户；不要求账户密码。受企业策略限制而无法注册计划任务时，安装器会报错，不会假称自启已成功。
 
 **“自启”指开机后登录当前 Windows 用户时启动**，不是在无人登录的系统启动阶段运行。用户保持登录而锁屏时仍可运行；休眠、关机、断网时无法发送，恢复后重新读取服务器状态。
 
@@ -84,7 +84,7 @@
 - 暂时不发送：在页面点“暂停”。这是最方便的日常开关。
 - 完全停止本次后台运行：右键安装目录内的 `Stop.ps1`，用 PowerShell 运行。下次登录仍会自动启动。
 - 取消自启并停止后台：运行 `Uninstall-Autostart.ps1`。
-- 卸载运行集成：运行 `Uninstall.ps1`，移除自启和开始菜单入口；程序文件与记录保留，确认不再需要后自行删除安装目录。
+- 卸载运行集成：运行 `Uninstall.ps1`，移除自启、桌面快捷方式和开始菜单入口；程序文件与记录保留，确认不再需要后自行删除安装目录。
 - 升级：解压新版并运行新版 `Install.cmd`。安装器保留已有 `data` 目录和防重复记录，不覆盖你的状态数据库。
 
 PowerShell 直接执行脚本被系统执行策略拦住时，可在终端使用 `powershell -NoProfile -ExecutionPolicy Bypass -File .\脚本名.ps1`。这只影响本次进程，不修改系统全局策略。
