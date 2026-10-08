@@ -1,0 +1,2 @@
+# Python >= 3.11. No third-party Python dependencies.
+# Requires separately installed official Codex CLI and ChatGPT login.
