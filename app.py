@@ -76,9 +76,9 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                         if not 0 < length <= 1024:
                             raise ValueError('时间数据无效')
                         body = json.loads(self.rfile.read(length))
-                        if not isinstance(body, dict) or 'sendAt' not in body or body['sendAt'] is None:
+                        if not isinstance(body, dict) or 'refreshAt' not in body or body['refreshAt'] is None:
                             raise ValueError('请选择时间')
-                        engine.set_schedule(body['sendAt'])
+                        engine.set_schedule(refresh_at=body['refreshAt'])
                     return self.send(200, {'message': '已恢复自动时间' if self.path.endswith('/clear') else '已保存时间'})
                 except (json.JSONDecodeError, TypeError, UnicodeError):
                     return self.send(400, {'error': '时间格式无效'})
@@ -100,8 +100,8 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                     return self.send(409, {'error': '请先恢复运行'})
                 if engine.lock.locked():
                     return self.send(409, {'error': '检测或请求正在进行'})
-                threading.Thread(target=engine.tick, kwargs={'manual': True}, daemon=True).start()
-                return self.send(202, {'message': '手动触发已排队；仍遵守额度检查与周期去重'})
+                result = engine.tick(manual=True)
+                return self.send(200, {'message': result})
             if self.path == '/api/check':
                 engine.next_poll = 0
                 return self.send(202, {'message': '已安排检测'})

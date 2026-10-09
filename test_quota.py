@@ -244,6 +244,22 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.request('POST','/api/resume',headers)[0],200)
         self.assertFalse(self.engine.store.get('paused'))
 
+    def test_manual_trigger_returns_result_without_queue(self):
+        from unittest.mock import patch
+        _,page=self.request('GET','/')
+        token=re.search("const token='([^']+)'",page)[1]
+        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':token}
+        self.engine.store.set('paused',False)
+        with patch.object(self.engine,'tick',return_value='本周期已处理') as tick:
+            status,body=self.request('POST','/api/trigger',headers)
+            self.assertEqual(status,200)
+            self.assertEqual(json.loads(body)['message'],'本周期已处理')
+            tick.assert_called_once_with(manual=True)
+        with self.engine.lock:
+            with patch.object(self.engine,'tick') as tick:
+                self.assertEqual(self.request('POST','/api/trigger',headers)[0],409)
+                tick.assert_not_called()
+
     def test_autostart_toggle(self):
         _,page=self.request('GET','/')
         token=re.search("const token='([^']+)'",page)[1]

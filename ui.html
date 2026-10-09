@@ -40,32 +40,49 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 @media(max-width:370px){.time-connector{display:none}}
 .time-pair .clock{transform:translateY(-4px)}
 .startup-badge{font-size:13px;line-height:20px;padding:5px 11px;border-radius:6px;background:#dbeadd;color:#315c46;font-weight:400}#startup-error:empty{display:none}#startup-error:not(:empty){margin-top:8px}
+
+.time-panel #schedule-form{display:flex;align-items:center;justify-content:center;padding:0 0 0 28px}.schedule-buttons{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.schedule-buttons button{min-height:44px;padding:0 22px}#choose-time{background:#eaf1e6;border-color:#ccddc5}#refresh-dialog{width:min(560px,calc(100vw - 40px));box-sizing:border-box;border:1px solid #dce5d7;border-radius:18px;padding:24px;color:#19352e;box-shadow:0 24px 80px #19352e26}#refresh-dialog::backdrop{background:#182b2338}.refresh-header{display:flex;align-items:center;justify-content:space-between}.refresh-header h2{margin:0;font-size:18px}.refresh-header button{border:0;background:transparent;font-size:25px;padding:0 6px;color:#6e8274}.refresh-date{margin:22px 0;text-align:center;font-size:20px;font-variant-numeric:tabular-nums;letter-spacing:1px}.wheel-grid{display:grid;grid-template-columns:1.25fr 1fr 1fr 1.28fr 1fr;gap:10px}.wheel-column{min-width:0;position:relative}.wheel-column:nth-child(4){padding-left:20px}.wheel-column:nth-child(4):before{content:"";position:absolute;left:5px;top:28px;bottom:0;width:1px;background:#e0e3e0}.wheel-label{text-align:center;font-size:12px;color:#71816f;padding-bottom:12px}.wheel-list{height:220px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;position:relative;border:1px solid #e8ede4;border-radius:10px;background:#fafbf8;padding:88px 0;box-sizing:border-box;height:220px}.wheel-list::-webkit-scrollbar{display:none}.wheel-option{display:block;width:100%;height:44px;border:0;border-radius:6px;background:transparent;color:#5f7666;font-size:20px;font-variant-numeric:tabular-nums;padding:0}.wheel-option.selected{background:#e5eedf;color:#244c35;font-weight:600}.wheel-option:disabled{color:#c3cbbf;background:transparent;cursor:not-allowed;opacity:1}.wheel-option:focus-visible,.wheel-list:focus-visible{outline:2px solid #73926f;outline-offset:-2px}.refresh-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}.refresh-footer button{min-width:80px}#refresh-error:empty{display:none}#refresh-error{margin-top:14px;color:#915142}@media(max-width:860px){.time-panel #schedule-form{padding:22px 0 0;justify-content:flex-start}}@media(max-width:420px){#refresh-dialog{padding:18px}.wheel-grid{gap:6px;grid-template-columns:1.35fr 1fr 1fr 1.2fr 1fr}.wheel-column:nth-child(4){padding-left:12px}.wheel-column:nth-child(4):before{left:2px}.wheel-option{font-size:17px}#wheel-year .wheel-option{font-size:15px}.refresh-date{font-size:18px}}
+
+.time-panel{display:grid;grid-template-columns:1fr auto;gap:24px;padding:24px 26px}.time-panel>.section-head{grid-column:1;grid-row:1;align-self:center}.time-panel #schedule-form{grid-column:2;grid-row:1;border:0;padding:0;margin:0;display:block}.schedule-buttons{gap:10px}.schedule-buttons button{min-height:38px;padding:0 16px;font-size:13px}.time-panel .time-pair{grid-column:1/-1;grid-row:2;max-width:none;width:100%;margin:0;gap:0;grid-template-columns:1fr 1fr}.time-panel .time-block{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;gap:8px;padding:0 28px 0 0}.time-panel .time-block+.time-block{padding:0 0 0 28px;border-left:1px solid #e7ebe3}.time-panel .time-label{min-height:24px;justify-content:flex-start;gap:14px}.time-panel .clock{font-size:38px;line-height:48px;transform:none}.time-panel .time-footer{min-height:24px;line-height:24px;padding-top:14px;border-top:1px solid #e7ebe3}.time-panel .time-block:after{display:none}.time-panel>.feedback{grid-column:1/-1;margin-top:0}@media(max-width:620px){.time-panel{padding:20px;gap:20px 10px;grid-template-columns:1fr}.time-panel>.section-head{grid-column:1;grid-row:1}.time-panel #schedule-form{grid-column:1;grid-row:3}.time-panel .time-block{padding-right:16px}.time-panel .time-block+.time-block{padding-left:16px}.time-panel .clock{font-size:30px}.time-panel .time-label{flex-wrap:wrap;gap:0 8px;min-height:44px;align-content:flex-start}.time-panel .time-footer{font-size:12px}.schedule-buttons button{flex:1}.time-panel>.feedback{grid-row:4}}
+
+#badge{height:33px;display:inline-flex;align-items:center;line-height:17px}#open-help{width:33px;height:33px;flex:0 0 33px;border-radius:50%;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid #b9c8b7;background:transparent;color:#47674f}#open-help svg{width:21px;height:21px;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}#open-help:hover{background:#e8eee3}#open-help:focus-visible{outline:2px solid #73926f;outline-offset:3px}
+#status-detail{margin-top:14px}
+
+.schedule-row{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;margin-top:20px;align-items:stretch}.schedule-row>.panel{margin-top:0;min-width:0;padding:22px}.schedule-row .time-panel{gap:20px 12px;align-content:start}.schedule-row .time-block{padding-right:20px}.schedule-row .time-block+.time-block{padding-left:20px}.schedule-row .clock{font-size:34px;line-height:44px}.schedule-row .time-label{gap:6px;flex-wrap:wrap;align-content:flex-start}.schedule-row .schedule-buttons{gap:8px}.schedule-row .schedule-buttons button{padding:0 12px;font-size:12px}.run-panel .section-head{min-height:38px}.run-panel .run-row{display:flex;flex-direction:column;align-items:stretch;gap:20px;margin-top:20px}.run-panel .actions{gap:8px}.run-panel .actions button{padding:10px 14px;font-size:13px}.run-panel .checks{grid-template-columns:1fr 1fr;gap:10px;padding-top:14px;border-top:1px solid #e7ebe3}.run-panel #status-detail{margin-top:14px}@media(max-width:900px){.schedule-row{grid-template-columns:minmax(0,1fr)}.run-panel .checks{display:flex;gap:24px}.schedule-row .time-label{min-height:24px}}@media(max-width:620px){.schedule-row>.panel{padding:20px}.schedule-row .clock{font-size:30px}.schedule-row .time-label{min-height:44px}.schedule-row .time-block{padding-right:14px}.schedule-row .time-block+.time-block{padding-left:14px}.run-panel .checks{flex-wrap:wrap;gap:8px 20px}}
+
+.schedule-row .time-panel{align-content:stretch;grid-template-rows:38px minmax(0,1fr)}.schedule-row .time-block{grid-template-rows:auto minmax(44px,1fr) auto}.run-panel{display:flex;flex-direction:column}.run-panel .run-row{flex:1;gap:0;justify-content:flex-start}.run-panel .status-line{margin:8px 0 14px;line-height:24px;overflow-wrap:anywhere}.run-panel #status-detail{margin:0}.run-panel .checks{display:flex;flex-wrap:wrap;justify-content:flex-start;gap:4px 20px;line-height:24px;margin-top:auto;padding-top:14px}.run-panel .checks time{margin-left:5px}.run-panel .checks>span{white-space:nowrap}@media(max-width:620px){.schedule-row .time-panel{grid-template-rows:auto auto auto}}
+
+.schedule-row .time-panel #schedule-form{align-self:center}.schedule-row .schedule-buttons button{height:30px;min-height:30px;padding:0 12px}
+
+#schedule-feedback{position:fixed;z-index:1000;right:24px;bottom:24px;max-width:min(420px,calc(100vw - 48px));margin:0;padding:10px 16px;border:1px solid #ceddcc;border-radius:10px;background:#f7faf4;box-shadow:0 6px 24px #19352e18;color:#315c3b;overflow-wrap:anywhere;pointer-events:none}
+.manual-date{display:flex;align-items:center;gap:14px;margin:0 0 20px}.manual-date label{font-size:13px;color:#71816f;white-space:nowrap}.manual-date input{width:100%;min-width:0;border:1px solid #dce5d7;border-radius:8px;padding:10px 12px;font:inherit;font-size:15px;color:#19352e;background:#fafbf8;font-variant-numeric:tabular-nums}.manual-date input:focus{outline:2px solid #75947b;outline-offset:2px}.manual-date input[aria-invalid=true]{border-color:#b35b51}
 </style></head><body><main>
-<header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button class="link" type="button" id="open-help" aria-haspopup="dialog">帮助</button></div></header>
+<header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button type="button" id="open-help" aria-label="帮助" title="帮助" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M8.5 8.2a3.5 3.5 0 0 1 7 .3c0 2.5-3.5 2.7-3.5 5.2"/><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"/></svg></button></div></header>
 <div class="grid">
 <section class="card"><div class="label">五小时剩余额度</div><div class="value" id="remaining">—</div><div class="small" id="weekly">每周额度：等待检测</div></section>
 <section class="card"><div class="label">服务器刷新时间</div><div class="value time-value" id="reset">—</div><div class="small">北京时间</div></section>
 <section class="card"><div class="label">上次发送请求</div><div class="value time-value" id="last">尚未发送</div><div class="small" id="result"></div></section>
 </div>
-<section class="panel time-panel"><div class="section-head"><div><h2>时间安排</h2></div></div>
-<div class="time-pair"><svg class="time-connector" viewBox="0 0 28 28" fill="none" aria-hidden="true" focusable="false"><circle cx="14" cy="14" r="12.5"/><path d="M9 14h10m-4-4 4 4-4 4"/></svg>
+<div class="schedule-row"><section class="panel time-panel"><div class="section-head"><div><h2>时间安排</h2></div></div>
+<div class="time-pair">
 <div class="time-block send-block"><div class="time-label"><span class="time-heading"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25"/><path d="M10 5.5V10l3 1.8"/></svg>请求发送</span><span class="count-chip" id="countdown"></span></div><div class="clock" id="send-at">—</div><div class="time-footer"><span id="send-date">—</span></div></div>
 <div class="time-block estimate-block"><div class="time-label"><span class="time-heading"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M16.4 8A6.7 6.7 0 1 0 16 13M16.5 3.5V8H12"/></svg>预计刷新</span></div><div class="clock" id="estimated-reset">—</div><div class="time-footer"><span id="reset-date">—</span></div></div>
 </div>
-<form id="schedule-form"><label for="schedule-day" class="editor-label">手动安排</label><div class="actions time-input"><div class="picker"><input id="schedule-time" type="hidden"><input id="schedule-day" type="date" required disabled aria-label="手动日期（北京时间）"><select id="schedule-hour" aria-label="小时" disabled></select><span>:</span><select id="schedule-minute" aria-label="分钟" disabled></select><span>:</span><select id="schedule-second" aria-label="秒" disabled></select></div><div class="schedule-buttons"><button class="primary" id="save-time" type="submit" disabled>保存</button><button id="auto-time" type="button" onclick="window.action('schedule/clear','schedule-feedback')">恢复自动</button></div></div></form>
-<div class="feedback" id="schedule-feedback" role="status"></div></section>
-<section class="panel"><div class="section-head"><h2>运行状态</h2><span class="state-chip" id="status">连接中</span></div><div class="run-row"><div class="actions"><button class="primary" id="trigger" onclick="action('trigger')">手动触发一次</button><button id="pause" onclick="action(paused?'resume':'pause')">暂停</button><button onclick="action('check')">立即检测</button></div><div class="checks small"><span>上次检测 <time id="checked">—</time></span><span>下次检测 <time id="next-check">—</time></span></div></div><details class="status-details"><summary>状态详情</summary><div class="small status" id="status-detail"></div></details><div class="feedback" id="toast" role="status"></div></section>
-<section class="panel"><h2>触发记录</h2><div class="tablewrap"><table><thead><tr><th>时间（北京时间）</th><th>结果</th><th>周期验证</th></tr></thead><tbody id="history"></tbody></table></div><details><summary>查看检测日志</summary><pre id="logs"></pre></details></section>
-<section class="panel"><h2>设置</h2><label style="display:flex;align-items:center;gap:12px"><input type="checkbox" id="autostart" disabled onchange="setAutostart(this.checked)"><span>开机自启动</span><span class="startup-badge" id="startup-status" aria-live="polite" hidden></span></label><div class="small" id="startup-error" role="status"></div></section>
+<div id="schedule-form"><div class="schedule-buttons"><button id="choose-time" type="button" disabled>选择刷新时间</button><button id="auto-time" type="button" onclick="window.action('schedule/clear','schedule-feedback')">恢复自动</button></div></div>
+<dialog id="refresh-dialog" aria-labelledby="refresh-title"><header class="refresh-header"><h2 id="refresh-title">选择刷新时间</h2><button type="button" id="close-refresh" aria-label="关闭">×</button></header><div class="refresh-date" id="refresh-date"></div><div class="manual-date"><label for="manual-date">手动输入日期</label><input id="manual-date" type="text" placeholder="YYYY-MM-DD" autocomplete="off" spellcheck="false" aria-describedby="refresh-error"></div><div class="wheel-grid" id="wheel-grid"></div><div id="refresh-error" class="feedback" role="status"></div><footer class="refresh-footer"><button type="button" id="cancel-refresh">取消</button><button type="button" class="primary" id="save-time">确定</button></footer></dialog>
+</section>
+<section class="panel run-panel"><div class="section-head"><h2>运行状态</h2><span class="state-chip" id="status">连接中</span></div><div class="run-row"><div class="actions"><button class="primary" id="trigger" onclick="action('trigger')">手动触发一次</button><button id="pause" onclick="action(paused?'resume':'pause')">暂停</button><button onclick="action('check')">立即检测</button></div><div class="small status-line" aria-live="polite"><span>状态：</span><span id="status-detail"></span></div><div class="checks small"><span>上次检测 <time id="checked">—</time></span><span>下次检测 <time id="next-check">—</time></span></div></div><div class="feedback" id="toast" role="status"></div></section>
+</div><section class="panel"><h2>触发记录</h2><div class="tablewrap"><table><thead><tr><th>时间（北京时间）</th><th>结果</th><th>周期验证</th></tr></thead><tbody id="history"></tbody></table></div><details><summary>查看检测日志</summary><pre id="logs"></pre></details></section>
+<section class="panel"><h2>设置</h2><label style="display:flex;align-items:center;gap:12px"><input type="checkbox" id="autostart" disabled onchange="setAutostart(this.checked)"><span>开机自启动</span></label><div class="small" id="startup-error" role="status"></div></section>
 <section class="panel"><h2>软件信息</h2><div class="info"><span>名称：额度启程</span><span>版本：<strong id="version">—</strong></span></div></section>
-</main><dialog id="help-dialog" aria-labelledby="help-title"><div class="help-header"><div><h2 id="help-title">使用帮助</h2><p>额度启程 · 常用操作说明</p></div><button id="close-help" type="button" aria-label="关闭帮助">×</button></div><div class="help-content">__HELP_CONTENT__</div></dialog><script>
+</main><div class="feedback" id="schedule-feedback" role="status"></div><dialog id="help-dialog" aria-labelledby="help-title"><div class="help-header"><div><h2 id="help-title">使用帮助</h2><p>额度启程 · 常用操作说明</p></div><button id="close-help" type="button" aria-label="关闭帮助">×</button></div><div class="help-content">__HELP_CONTENT__</div></dialog><script>
 const helpDialog=document.getElementById('help-dialog');
 document.getElementById('open-help').addEventListener('click',()=>helpDialog.showModal());
 document.getElementById('close-help').addEventListener('click',()=>helpDialog.close());
 let backdropDown=false;
 helpDialog.addEventListener('pointerdown',e=>{const r=helpDialog.getBoundingClientRect();backdropDown=e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom;});
 helpDialog.addEventListener('click',e=>{const r=helpDialog.getBoundingClientRect();if(backdropDown&&(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom))helpDialog.close();backdropDown=false;});
-const token='__CSRF__';let paused=false,snapshot=null,startupBusy=false,timeDirty=false,lastScheduleId,refreshPromise=null;
+const token='__CSRF__';let paused=false,snapshot=null,startupBusy=false,refreshPromise=null;
 const cacheKey='quota-starter:last-status:v1';
 const $=id=>document.getElementById(id);
 const time=s=>s?new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(s*1000)):'—';
@@ -74,50 +91,67 @@ const labels={completed:'已完成',failed:'失败',interrupted:'已中断',unkn
 const clockTime=s=>s?time(s).split(' ')[1]:'—';
 function timeBlock(id,dateId,value){$(id).textContent=clockTime(value);$(dateId).textContent=value?time(value).split(' ')[0]:'—';}
 function shortStatus(s){if(s.paused)return '已暂停';if(s.busy)return '处理中';const v=s.status;if(v.startsWith('连接/检测失败'))return '检测失败';if(v.includes('额度受限'))return '额度受限';if(v.includes('手动设定'))return '等待计划';if(v.includes('本周期')||v.includes('已处理'))return '本轮已处理';if(v.includes('重置时间')||v.includes('窗口已变化'))return '等待刷新';if(v.includes('请求完成')||v.includes('观察到'))return '已完成';if(v.includes('未确认'))return '待核实';return '检测中';}
-function renderTiming(t){if(!t)return;timeBlock('send-at','send-date',t.sendAt);timeBlock('estimated-reset','reset-date',t.estimatedResetAt);const plan=t.schedule;const id=plan?.id||null;if(id!==lastScheduleId&&!timeDirty){$('schedule-time').value=plan?.status==='pending'?inputTime(plan.sendAt):'';lastScheduleId=id;}syncPicker();$('save-time').disabled=!t.minSendAt||snapshot.busy;countdown();}
-const pickerParts=['hour','minute','second'];
-for(const [index,part] of pickerParts.entries()){
-  for(let n=0;n<(index===0?24:60);n++){
-    const option=document.createElement('option');
-    option.value=String(n).padStart(2,'0');option.textContent=option.value;
-    $('schedule-'+part).append(option);
-  }
+function renderTiming(t){if(!t)return;timeBlock('send-at','send-date',t.sendAt);timeBlock('estimated-reset','reset-date',t.estimatedResetAt);$('choose-time').disabled=!t.minRefreshAt||snapshot.busy;$('save-time').disabled=!t.minRefreshAt||snapshot.busy;if(refreshDialog.open)renderWheels();countdown();}
+const refreshDialog=$('refresh-dialog');
+let draftRefresh=null,wheelSignature="",manualDirty=false;
+function syncManualDate(){manualDirty=false;$("manual-date").value=inputTime(draftRefresh).slice(0,10);$("manual-date").setAttribute("aria-invalid","false");$("refresh-error").textContent="";}
+function applyManualDate(){
+ if(!manualDirty)return true;
+ const match=$("manual-date").value.trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+ let message="请输入有效日期，格式为 YYYY-MM-DD";
+ if(match){const p=parts(draftRefresh);p[0]=Number(match[1]);p[1]=Number(match[2])-1;p[2]=Number(match[3]);const next=stamp(p),actual=parts(next);
+  if(actual.slice(0,3).every((v,i)=>v===p[i])){const {min,max}=bounds();if(min&&next>=min&&next<=max){draftRefresh=next;syncManualDate();wheelSignature="";renderWheels();return true;}message="该日期与当前时分不在可选范围内，请调整日期或时分";}
+ }
+ $("refresh-error").textContent=message;$("manual-date").setAttribute("aria-invalid","true");$("save-time").disabled=true;return false;
 }
-function pickerMinimum(){
-  const reset=snapshot?.timing?.serverResetAt;
-  return reset?Math.floor(Math.max(reset,Date.now()/1000))+1:null;
+$("manual-date").addEventListener("input",()=>{manualDirty=true;$("save-time").disabled=true;});
+$("manual-date").addEventListener("change",applyManualDate);
+$("manual-date").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();if(applyManualDate())$("save-time").focus();}});
+const fields=[['year','年'],['month','月'],['day','日'],['hour','时'],['minute','分']];
+const pad=n=>String(n).padStart(2,'0');
+function bounds(){const t=snapshot?.timing;return {min:t?.minRefreshAt?Math.max(t.minRefreshAt,(Math.floor(Date.now()/60000)+1)*60+18000):null,max:t?.maxRefreshAt};}
+function parts(ts){const d=new Date(ts*1000+28800000);return [d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),d.getUTCHours(),d.getUTCMinutes()];}
+function stamp(p){return Date.UTC(p[0],p[1],p[2],p[3],p[4])/1000-28800;}
+function candidates(index){
+ const p=parts(draftRefresh),{min,max}=bounds(),lo=parts(min),hi=parts(max),items=[];
+ const count=index===0?hi[0]-lo[0]+3:index===1?12:index===2?new Date(Date.UTC(p[0],p[1]+1,0)).getUTCDate():index===3?24:60;
+ for(let i=0;i<count;i++){
+  const value=index===0?lo[0]-1+i:index===2?i+1:i;
+  const q=p.slice();q[index]=value;for(let j=index+1;j<5;j++)q[j]=j===2?1:0;
+  const start=stamp(q);let end;
+  if(index===0)end=stamp([value+1,0,1,0,0])-60;
+  else if(index===1)end=stamp([p[0],value+1,1,0,0])-60;
+  else end=start+(index===2?86400:index===3?3600:60)-60;
+  items.push({value,label:index===0?String(value):pad(index===1?value+1:value),start,end,disabled:end<min||start>max});
+ }
+ return items;
 }
-function syncPicker(fromInput=false){
-  const min=pickerMinimum(),day=$('schedule-day');
-  day.disabled=!min;
-  for(const part of pickerParts)$('schedule-'+part).disabled=!min;
-  if(!min)return;
-  const lower=inputTime(min),minDay=lower.slice(0,10),minParts=lower.slice(11).split(':');
-  day.min=minDay;day.title='最早可选 '+time(min);
-  if(!fromInput){
-    const value=$('schedule-time').value||lower;
-    day.value=value.slice(0,10);
-    value.slice(11).split(':').forEach((v,i)=>{$('schedule-'+pickerParts[i]).value=v;});
-  }
-  // Each disabled option represents an entire interval before the lower bound.
-  // Date changes clamp the draft to the first selectable instant; no request is sent.
-  if(day.value&&day.value<minDay)day.value=minDay;
-  let constrained=day.value===minDay;
-  for(let i=0;i<pickerParts.length;i++){
-    const select=$('schedule-'+pickerParts[i]),floor=constrained?minParts[i]:'00';
-    for(const option of select.options)option.disabled=option.value<floor;
-    if(select.value<floor)select.value=floor;
-    constrained=constrained&&select.value===minParts[i];
-  }
-  $('schedule-time').value=day.value?day.value+'T'+pickerParts.map(p=>$('schedule-'+p).value).join(':'):'';
+function selected(index){return parts(draftRefresh)[index];}
+function selectPart(index,item){
+ if(item.disabled)return;
+ const p=parts(draftRefresh);p[index]=item.value;
+ if(index<2)p[2]=Math.min(p[2],new Date(Date.UTC(p[0],p[1]+1,0)).getUTCDate());
+ const {min,max}=bounds();draftRefresh=Math.max(min,Math.min(max,stamp(p)));syncManualDate();renderWheels();
 }
-for(const id of ['schedule-day',...pickerParts.map(p=>'schedule-'+p)]){
-  $(id).addEventListener('change',()=>{timeDirty=true;syncPicker(true);});
+function stepWheel(index,direction){const items=candidates(index).filter(x=>!x.disabled),current=items.findIndex(x=>x.value===selected(index));const next=items[current+direction];if(next)selectPart(index,next);}
+function renderWheels(){
+ const {min,max}=bounds();if(!min||!max)return;
+ $('save-time').disabled=snapshot.busy||manualDirty||draftRefresh<min||draftRefresh>max;
+ const signature=[min,max,draftRefresh,snapshot.busy].join(':');if(signature===wheelSignature)return;wheelSignature=signature;
+ $('refresh-date').textContent=inputTime(draftRefresh).slice(0,10).replaceAll('-',' / ')+'  '+inputTime(draftRefresh).slice(11,16);
+ fields.forEach(([key],index)=>{const list=$('wheel-'+key);list.replaceChildren();for(const item of candidates(index)){const button=document.createElement('button');button.type='button';button.textContent=item.label;button.disabled=item.disabled;button.className='wheel-option'+(item.value===selected(index)?' selected':'');button.setAttribute('aria-pressed',String(item.value===selected(index)));button.setAttribute('aria-label',item.label+fields[index][1]);button.addEventListener('click',()=>selectPart(index,item));list.append(button);}const active=list.querySelector('.selected');if(active)list.scrollTop=active.offsetTop-(list.clientHeight-active.offsetHeight)/2;});
+ $('save-time').disabled=snapshot.busy||manualDirty||draftRefresh<min||draftRefresh>max;
 }
+fields.forEach(([key,label],index)=>{const column=document.createElement('div');column.className='wheel-column';const title=document.createElement('div');title.className='wheel-label';title.textContent=label;const list=document.createElement('div');list.id='wheel-'+key;list.className='wheel-list';list.tabIndex=0;list.setAttribute('role','group');list.setAttribute('aria-label',label);column.append(title,list);$('wheel-grid').append(column);let last=0;column.addEventListener('wheel',e=>{e.preventDefault();if(!e.deltaY)return;const now=Date.now();if(now-last<90)return;last=now;stepWheel(index,e.deltaY>0?1:-1);},{passive:false});list.addEventListener('keydown',e=>{if(['ArrowDown','ArrowUp','PageDown','PageUp'].includes(e.key)){e.preventDefault();stepWheel(index,['ArrowDown','PageDown'].includes(e.key)?1:-1);list.focus();}});});
+$('choose-time').addEventListener('click',()=>{const {min,max}=bounds();if(!min||!max)return;draftRefresh=Math.max(min,Math.min(max,Math.ceil((snapshot.timing.estimatedResetAt||min)/60)*60));syncManualDate();wheelSignature='';refreshDialog.showModal();renderWheels();});
+for(const id of ['close-refresh','cancel-refresh'])$(id).addEventListener('click',()=>refreshDialog.close());
+let refreshBackdrop=false;
+refreshDialog.addEventListener('pointerdown',e=>{refreshBackdrop=e.target===refreshDialog;});
+refreshDialog.addEventListener('click',e=>{if(refreshBackdrop&&e.target===refreshDialog){const r=refreshDialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)refreshDialog.close();}refreshBackdrop=false;});
 function countdown(){const t=snapshot?.timing;if(!t)return;const left=t.sendAt-Date.now()/1000;const pad=n=>String(n).padStart(2,'0');$('countdown').textContent=paused?'已暂停':!t.sendAt?'待检测':left>0?'倒计时 '+pad(Math.floor(left/3600))+':'+pad(Math.floor(left%3600/60))+':'+pad(Math.floor(left%60)):'已到点';}
 // Render synchronously: the browser paints only after the complete snapshot is applied.
 function renderStatus(s){snapshot=s;paused=s.paused;$('version').textContent='v'+s.version;$('badge').textContent=paused?'已暂停':s.busy?'正在检测 / 发送':'后台运行';$('pause').textContent=paused?'恢复运行':'暂停';$('trigger').disabled=paused||s.busy;$('save-time').disabled=s.busy;$('auto-time').disabled=s.busy;$('status').textContent=shortStatus(s);$('status-detail').textContent=s.status;const c=s.current;if(c){$('remaining').textContent=(100-c.primary.usedPercent)+'%';$('weekly').textContent=c.secondary?'长周期（'+Math.round(c.secondary.windowDurationMins/1440)+' 天）剩余 '+(100-c.secondary.usedPercent)+'%':'长周期：未返回';$('reset').textContent=time(c.primary.resetsAt);$('checked').textContent=clockTime(c.checkedAt);$('checked').title=time(c.checkedAt);$('next-check').textContent=clockTime(s.nextPoll);$('next-check').title=time(s.nextPoll);}renderTiming(s.timing);renderAutostart(s.autostart);const a=s.attempts[0];if(a){$('last').textContent=time(a.started);$('result').textContent=labels[a.status]||a.status;}else{$('last').textContent='尚未发送';$('result').textContent='';}const body=$('history');body.replaceChildren();for(const a of s.attempts){const tr=document.createElement('tr');for(const text of [time(a.started),labels[a.status]||a.status,a.detail.evidence||'请求已预留，本周期不重复提交']){const td=document.createElement('td');td.textContent=text;tr.append(td);}body.append(tr);}if(!s.attempts.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='暂无记录';tr.append(td);body.append(tr);}$('logs').textContent=s.events.map(e=>time(e.time)+' '+e.kind+' '+JSON.stringify(e.detail)).join('\n');}
-function showOffline(){ $('badge').textContent='连接中断';$('status').textContent='等待重连';$('status-detail').textContent=snapshot?'连接暂时中断，保留上次数据，正在自动重试。':'请通过桌面快捷方式启动。';$('schedule-time').disabled=true;for(const id of ['trigger','save-time','auto-time','autostart','schedule-day','schedule-hour','schedule-minute','schedule-second'])$(id).disabled=true;}
+function showOffline(){ $('badge').textContent='连接中断';$('status').textContent='等待重连';$('status-detail').textContent=snapshot?'连接暂时中断，保留上次数据，正在自动重试。':'请通过桌面快捷方式启动。';for(const id of ['trigger','save-time','auto-time','autostart','choose-time'])$(id).disabled=true;}
 function completeStatus(s){
   return s?.service==='quota-starter'&&typeof s.status==='string'&&typeof s.paused==='boolean'
     &&s.current?.primary&&s.timing&&Array.isArray(s.attempts)&&Array.isArray(s.events);
@@ -126,7 +160,7 @@ function restoreStatus(){
   try{const s=JSON.parse(sessionStorage.getItem(cacheKey));if(completeStatus(s)){
     renderStatus(s);
     // Cached values are for display only until the live service answers.
-    for(const id of ['trigger','save-time','auto-time','autostart','schedule-day','schedule-hour','schedule-minute','schedule-second'])$(id).disabled=true;
+    for(const id of ['trigger','save-time','auto-time','autostart','choose-time'])$(id).disabled=true;
   }}catch(e){/* Storage may be disabled or contain an obsolete snapshot. */}
 }
 async function refresh(){
@@ -143,7 +177,7 @@ async function refresh(){
       if(snapshot&&(s.busy||!completeStatus(s))){
         paused=s.paused;
         $('pause').textContent=paused?'恢复运行':'暂停';
-        $('trigger').disabled=true;$('save-time').disabled=true;$('auto-time').disabled=true;
+        $('trigger').disabled=true;$('save-time').disabled=true;$('choose-time').disabled=true;$('auto-time').disabled=true;
         countdown();return;
       }
       if(!completeStatus(s)){if(!snapshot){$('badge').textContent=s.busy?'正在检测':'等待检测';$('status-detail').textContent=s.status||'等待首次检测结果';}return;}
@@ -154,12 +188,18 @@ async function refresh(){
   })();
   try{await refreshPromise;}finally{refreshPromise=null;}
 }
-async function action(name,feedback='toast',body){try{const r=await fetch('/api/'+name,{method:'POST',headers:{'X-Quota-Token':token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const d=await r.json();$(feedback).textContent=d.message||d.error;if(r.ok&&name.startsWith('schedule')){timeDirty=false;lastScheduleId=undefined;}if(refreshPromise)await refreshPromise;await refresh();return r.ok;}catch(e){$(feedback).textContent='操作失败：本地服务不可达';return false;}}
-function saveTime(){const v=$('schedule-time').value;const sendAt=Date.parse(v.length===16?v+':00+08:00':v+'+08:00')/1000;const reset=snapshot?.timing?.serverResetAt;if(!reset){$('schedule-feedback').textContent='请先检测 GPT 刷新时间';return;}if(!v||!Number.isFinite(sendAt)||sendAt<=Date.now()/1000){$('schedule-feedback').textContent='请选择未来时间';return;}if(sendAt<=reset){$('schedule-feedback').textContent='仅可选 GPT 正常刷新时刻之后';return;}action('schedule','schedule-feedback',{sendAt});}
-$('schedule-form').addEventListener('submit',e=>{e.preventDefault();saveTime();});
-$('schedule-day').addEventListener('invalid',()=>{$('schedule-feedback').textContent='请选择可选起点之后的时间（含起点）';});
-
-function renderAutostart(a){if(startupBusy||!a)return;$('autostart').disabled=!a.available;$('autostart').checked=a.enabled===true;$('startup-status').hidden=typeof a.enabled!=='boolean';$('startup-status').textContent=a.enabled?'已启动':'未启动';$('startup-error').textContent=a.error||'';}
+let scheduleFeedbackTimer;
+function showFeedback(id,message,success=false){
+ $(id).textContent=message;
+ if(id==='schedule-feedback'){
+  clearTimeout(scheduleFeedbackTimer);
+  if(success)scheduleFeedbackTimer=setTimeout(()=>{$(id).textContent='';},3500);
+ }
+}
+async function action(name,feedback='toast',body){try{const r=await fetch('/api/'+name,{method:'POST',headers:{'X-Quota-Token':token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const d=await r.json();showFeedback(feedback,d.message||d.error,r.ok);if(refreshPromise)await refreshPromise;await refresh();return r.ok;}catch(e){showFeedback(feedback,'操作失败：本地服务不可达');return false;}}
+async function saveTime(){if(!applyManualDate())return;const {min,max}=bounds();if(!min||draftRefresh<min||draftRefresh>max){$('refresh-error').textContent='请选择可选范围内的刷新时间';renderWheels();return;}$('save-time').disabled=true;if(await action('schedule','refresh-error',{refreshAt:draftRefresh})){refreshDialog.close();showFeedback('schedule-feedback','已保存刷新时间',true);}else renderWheels();}
+$('save-time').addEventListener('click',saveTime);
+function renderAutostart(a){if(startupBusy||!a)return;$('autostart').disabled=!a.available;$('autostart').checked=a.enabled===true;$('startup-error').textContent=a.error||'';}
 async function setAutostart(enabled){startupBusy=true;$('autostart').disabled=true;await action('autostart/'+(enabled?'enable':'disable'));startupBusy=false;await refresh();}
 restoreStatus();setInterval(countdown,1000);setInterval(refresh,3000);refresh();
 </script></body></html>

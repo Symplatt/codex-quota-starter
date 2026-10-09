@@ -104,6 +104,30 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(fake.sent,1)
         self.assertEqual(self.store.get('schedule')['status'],'submitted')
 
+    def test_refresh_target_converts_to_send_time_and_persists(self):
+        e=self.engine(FakeRPC([raw()]),100)
+        e.set_schedule(refresh_at=18180)
+        self.assertEqual(e.timing()['sendAt'],180)
+        self.assertEqual(e.timing()['estimatedResetAt'],18180)
+        self.assertEqual(self.engine(FakeRPC([raw()]),110).timing()['sendAt'],180)
+        self.assertEqual(e.timing()['minRefreshAt'],18180)
+
+    def test_refresh_target_rejects_seconds_and_invalid_types(self):
+        e=self.engine(FakeRPC([raw()]),100)
+        for value in [True, '18180', float('nan'), float('inf'), 18181, 18060]:
+            with self.subTest(value=value),self.assertRaises(ValueError):
+                e.set_schedule(refresh_at=value)
+
+    def test_refresh_target_respects_guard_and_upper_bound(self):
+        e=self.engine(FakeRPC([raw()]),100)
+        self.store.claim('prior','cycle:20000',100,{})
+        lower=e.timing()['minRefreshAt']
+        with self.assertRaises(ValueError): e.set_schedule(refresh_at=lower-60)
+        e.set_schedule(refresh_at=lower)
+        upper=e.timing()['maxRefreshAt']
+        e.set_schedule(refresh_at=upper)
+        with self.assertRaises(ValueError): e.set_schedule(refresh_at=upper+60)
+
 
 class ScheduleHTTPTests(unittest.TestCase):
     setUpClass = classmethod(fixtures.HTTPTests.setUpClass.__func__)
@@ -114,12 +138,12 @@ class ScheduleHTTPTests(unittest.TestCase):
     def test_schedule_save_clear_and_status(self):
         _,page=self.request('GET','/')
         headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':re.search("const token='([^']+)'",page)[1]}
-        target=int(time.time())+86400
-        self.assertEqual(self.request('POST','/api/schedule',headers,json.dumps({'sendAt':target}))[0],200)
+        target=(int(time.time())//60+1440)*60
+        self.assertEqual(self.request('POST','/api/schedule',headers,json.dumps({'refreshAt':target}))[0],200)
         status=json.loads(self.request('GET','/api/status')[1])
-        self.assertEqual(status['version'],'1.3.0')
-        self.assertEqual(status['timing']['sendAt'],target)
-        self.assertEqual(status['timing']['estimatedResetAt'],target+18000)
+        self.assertEqual(status['version'],'1.4.4')
+        self.assertEqual(status['timing']['sendAt'],target-18000)
+        self.assertEqual(status['timing']['estimatedResetAt'],target)
         self.assertEqual(self.request('POST','/api/schedule/clear',headers)[0],200)
         self.assertIsNone(self.engine.store.get('schedule'))
 
@@ -134,16 +158,16 @@ class ScheduleHTTPTests(unittest.TestCase):
         _,page=self.request('GET','/')
         headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':re.search("const token='([^']+)'",page)[1]}
         reset=self.engine.store.get('current')['primary']['resetsAt']
-        for value in [reset-1,reset]:
-            code,body=self.request('POST','/api/schedule',headers,json.dumps({'sendAt':value}))
+        for value in [(reset+18000)//60*60-60,(reset+18000)//60*60]:
+            code,body=self.request('POST','/api/schedule',headers,json.dumps({'refreshAt':value}))
             self.assertEqual(code,400)
             self.assertIn('正常刷新',body)
-        self.assertEqual(self.request('POST','/api/schedule',headers,json.dumps({'sendAt':reset+1}))[0],200)
+        self.assertEqual(self.request('POST','/api/schedule',headers,json.dumps({'refreshAt':((reset+18000)//60+1)*60}))[0],200)
 
     def test_help_page_and_undecorated_home(self):
         code,help_page=self.request('GET','/help')
         self.assertEqual(code,200)
-        for text in ['手动触发一次','暂停 / 恢复运行','立即检测','保存','恢复自动','v1.3.0']:
+        for text in ['手动触发一次','暂停 / 恢复运行','立即检测','选择刷新时间','恢复自动','v1.4.4']:
             self.assertIn(text,help_page)
         page=self.request('GET','/')[1]
         self.assertNotIn('LOCAL AUTOMATION',page)

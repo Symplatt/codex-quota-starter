@@ -12,7 +12,7 @@ $preserveDisabled = $oldTask -and (-not $oldTask.Settings.Enabled)
 if (Test-Path -LiteralPath (Join-Path $destination 'Stop.ps1')) { & (Join-Path $destination 'Stop.ps1') }
 New-Item -ItemType Directory -Force -Path $destination | Out-Null
 $files = @('windows_settings.py','Autostart-Control.ps1','app.py','core.py','rpc.py','supervisor.py','diagnose.py','ui.html','Start.ps1','Start.cmd','Stop.ps1','Install-Autostart.ps1','Install-Autostart.cmd','Uninstall-Autostart.ps1','Uninstall.ps1','README.md','MECHANISM.md','VALIDATION.md','CHANGELOG.md','requirements.txt','LICENSE')
-$files = @('help.html','version.py') + $files
+$files = @('AGENTS.md','help.html','version.py') + $files
 foreach ($file in $files) {
     $from = Join-Path $source $file
     if (-not (Test-Path -LiteralPath $from)) { throw "Missing release file: $file" }

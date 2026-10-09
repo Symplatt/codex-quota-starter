@@ -187,7 +187,12 @@ class Engine:
             self.rpc.close()
             self.rpc = None
 
-    def set_schedule(self, send_at=None):
+    def set_schedule(self, send_at=None, *, refresh_at=None):
+        if refresh_at is not None:
+            if (isinstance(refresh_at, bool) or not isinstance(refresh_at, (int, float))
+                    or not math.isfinite(refresh_at) or refresh_at % 60):
+                raise ValueError('请选择整分钟的刷新时间')
+            send_at = refresh_at - WINDOW
         if send_at is not None:
             if (isinstance(send_at, bool) or not isinstance(send_at, (int, float))
                     or not math.isfinite(send_at) or send_at <= self.clock()
@@ -202,6 +207,8 @@ class Engine:
                     raise ValueError('请先检测 GPT 刷新时间')
                 if send_at <= current['primary']['resetsAt']:
                     raise ValueError('只能选择 GPT 正常刷新时刻之后的时间')
+            if refresh_at is not None and send_at < self.store.guard_until():
+                raise ValueError('所选刷新时间早于防重复保护结束后的可选时间')
             schedule = None if send_at is None else {
                 'id': uuid.uuid4().hex, 'sendAt': send_at,
                 'createdAt': self.clock(), 'status': 'pending'}
@@ -227,7 +234,10 @@ class Engine:
         return {'mode': mode, 'schedule': schedule, 'sendAt': send_at,
                 'estimatedResetAt': send_at + WINDOW if send_at else None,
                 'serverResetAt': server,
-                'minSendAt': math.floor(max(server, self.clock())) + 1 if server else None}
+                'minSendAt': math.floor(max(server, self.clock())) + 1 if server else None,
+                'minRefreshAt': math.ceil((max(math.floor(max(server, self.clock())) + 1,
+                                               self.store.guard_until()) + WINDOW) / 60) * 60 if server else None,
+                'maxRefreshAt': math.floor((self.clock() + 366 * 86400 + WINDOW) / 60) * 60}
 
     def select_candidate(self, snapshot, previous, now, manual):
         schedule = self.store.get('schedule')
