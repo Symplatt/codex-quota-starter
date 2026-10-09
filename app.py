@@ -78,8 +78,10 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                             raise ValueError('请选择时间')
                         engine.set_schedule(body['sendAt'])
                     return self.send(200, {'message': '已恢复自动时间' if self.path.endswith('/clear') else '已保存时间'})
-                except (ValueError, TypeError, UnicodeError):
-                    return self.send(400, {'error': '请选择未来一年内的有效时间'})
+                except (json.JSONDecodeError, TypeError, UnicodeError):
+                    return self.send(400, {'error': '时间格式无效'})
+                except ValueError as exc:
+                    return self.send(400, {'error': str(exc)})
                 except RuntimeError as exc:
                     return self.send(409, {'error': str(exc)})
             if self.path == '/api/pause':

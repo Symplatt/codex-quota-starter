@@ -8,7 +8,9 @@ FakeRPC, raw = fixtures.FakeRPC, fixtures.raw
 
 
 class ScheduleTests(unittest.TestCase):
-    setUp = fixtures.QuotaTests.setUp
+    def setUp(self):
+        fixtures.QuotaTests.setUp(self)
+        self.store.set('current', {'primary': {'resetsAt': 149}})
     tearDown = fixtures.QuotaTests.tearDown
     engine = fixtures.QuotaTests.engine
     def test_schedule_waits_even_with_empty_quota(self):
@@ -58,6 +60,30 @@ class ScheduleTests(unittest.TestCase):
         for value in [True,float('nan'),float('inf'),'150',99,100,40000000]:
             with self.subTest(value=value),self.assertRaises(ValueError): e.set_schedule(value)
 
+    def test_schedule_strictly_after_gpt_reset(self):
+        e=self.engine(FakeRPC([raw()]),100)
+        for value in [148,149]:
+            with self.assertRaisesRegex(ValueError,'正常刷新'): e.set_schedule(value)
+        e.set_schedule(150)
+        self.assertEqual(e.timing()['minSendAt'],150)
+
+    def test_schedule_requires_known_reset_but_can_clear(self):
+        e=self.engine(FakeRPC([raw()]),100); self.store.set('current',None)
+        with self.assertRaisesRegex(ValueError,'先检测'): e.set_schedule(150)
+        self.assertIsNone(e.timing()['minSendAt'])
+        e.set_schedule()
+
+    def test_schedule_rechecks_changed_reset(self):
+        e=self.engine(FakeRPC([raw()]),100)
+        self.store.set('current',{'primary':{'resetsAt':200}})
+        with self.assertRaises(ValueError): e.set_schedule(150)
+        self.assertEqual(e.timing()['minSendAt'],201)
+
+    def test_expired_reset_requires_future_time(self):
+        e=self.engine(FakeRPC([raw()]),200)
+        self.assertEqual(e.timing()['minSendAt'],201)
+        e.set_schedule(201)
+
     def test_schedule_edit_while_busy_is_rejected(self):
         e=self.engine(FakeRPC([raw()]),100)
         with e.lock:
@@ -83,13 +109,15 @@ class ScheduleHTTPTests(unittest.TestCase):
     setUpClass = classmethod(fixtures.HTTPTests.setUpClass.__func__)
     tearDownClass = classmethod(fixtures.HTTPTests.tearDownClass.__func__)
     request = fixtures.HTTPTests.request
+    def setUp(self):
+        self.engine.store.set('current',{'primary':{'resetsAt':int(time.time())+3600}})
     def test_schedule_save_clear_and_status(self):
         _,page=self.request('GET','/')
         headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':re.search("const token='([^']+)'",page)[1]}
         target=int(time.time())+86400
         self.assertEqual(self.request('POST','/api/schedule',headers,json.dumps({'sendAt':target}))[0],200)
         status=json.loads(self.request('GET','/api/status')[1])
-        self.assertEqual(status['version'],'1.1.0')
+        self.assertEqual(status['version'],'1.1.1')
         self.assertEqual(status['timing']['sendAt'],target)
         self.assertEqual(status['timing']['estimatedResetAt'],target+18000)
         self.assertEqual(self.request('POST','/api/schedule/clear',headers)[0],200)
@@ -102,10 +130,20 @@ class ScheduleHTTPTests(unittest.TestCase):
             self.assertEqual(self.request('POST','/api/schedule',headers,body)[0],400)
         self.assertEqual(self.request('POST','/api/schedule',body='{}')[0],403)
 
+    def test_http_rejects_before_and_equal_reset(self):
+        _,page=self.request('GET','/')
+        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':re.search("const token='([^']+)'",page)[1]}
+        reset=self.engine.store.get('current')['primary']['resetsAt']
+        for value in [reset-1,reset]:
+            code,body=self.request('POST','/api/schedule',headers,json.dumps({'sendAt':value}))
+            self.assertEqual(code,400)
+            self.assertIn('正常刷新',body)
+        self.assertEqual(self.request('POST','/api/schedule',headers,json.dumps({'sendAt':reset+1}))[0],200)
+
     def test_help_page_and_undecorated_home(self):
         code,help_page=self.request('GET','/help')
         self.assertEqual(code,200)
-        for text in ['手动触发一次','暂停 / 恢复运行','立即检测','保存时间','恢复自动时间','v1.1.0']:
+        for text in ['手动触发一次','暂停 / 恢复运行','立即检测','保存','恢复自动','v1.1.1']:
             self.assertIn(text,help_page)
         page=self.request('GET','/')[1]
         self.assertNotIn('LOCAL AUTOMATION',page)

@@ -196,6 +196,12 @@ class Engine:
         if not self.lock.acquire(blocking=False):
             raise RuntimeError('正在检测或发送，请稍后再修改时间')
         try:
+            if send_at is not None:
+                current = self.store.get('current')
+                if not current:
+                    raise ValueError('请先检测 GPT 刷新时间')
+                if send_at <= current['primary']['resetsAt']:
+                    raise ValueError('只能选择 GPT 正常刷新时刻之后的时间')
             schedule = None if send_at is None else {
                 'id': uuid.uuid4().hex, 'sendAt': send_at,
                 'createdAt': self.clock(), 'status': 'pending'}
@@ -220,7 +226,8 @@ class Engine:
             mode = 'auto'
         return {'mode': mode, 'schedule': schedule, 'sendAt': send_at,
                 'estimatedResetAt': send_at + WINDOW if send_at else None,
-                'serverResetAt': server}
+                'serverResetAt': server,
+                'minSendAt': math.floor(max(server, self.clock())) + 1 if server else None}
 
     def select_candidate(self, snapshot, previous, now, manual):
         schedule = self.store.get('schedule')
