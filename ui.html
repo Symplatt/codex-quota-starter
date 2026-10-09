@@ -33,7 +33,8 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 @media(max-width:620px){.time-panel{padding:20px}.time-pair{gap:18px}.time-pair .clock{font-size:29px}.time-label{font-size:13px;flex-wrap:nowrap}.estimate-tag{font-size:10px}.time-block,.time-block+.time-block{padding:0}.time-input .picker input[type=date]{min-width:120px;padding:5px 2px}.picker select{min-width:40px;padding:6px 2px}.time-footer{font-size:12px}.estimate-note{font-size:11px}.timezone{font-size:10px}}
 @media(max-width:370px){.time-pair{grid-template-columns:1fr}.time-input .picker input[type=date]{min-width:110px}.picker select{min-width:36px}}
 .time-footer{display:grid;grid-template-rows:20px 20px;gap:4px;justify-content:start;align-content:end}.time-input .picker input[type=date]{flex:0 0 150px;width:150px}.time-input .picker{justify-content:space-between}@media(max-width:620px){.time-input .picker input[type=date]{flex:1 1 120px;width:120px}}
-#save-time{background:rgba(166,199,157,.24);color:#315c3b;border-color:rgba(139,172,128,.3)}#save-time:hover:not(:disabled){background:rgba(166,199,157,.34)}</style></head><body><main>
+#save-time{background:rgba(166,199,157,.24);color:#315c3b;border-color:rgba(139,172,128,.3)}#save-time:hover:not(:disabled){background:rgba(166,199,157,.34)}.time-footer{display:flex;flex-direction:row;align-items:flex-end;justify-content:flex-start;gap:0;font-size:13px;line-height:22px}.count-chip{border:0;background:transparent;padding:0;color:#718072;font-size:12px;line-height:24px;white-space:nowrap}@media(max-width:620px){.time-label{font-size:13px;flex-wrap:wrap}.count-chip{font-size:11px}.time-block,.time-block+.time-block{grid-template-rows:44px 52px 28px}.time-footer{min-height:28px}}
+</style></head><body><main>
 <header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button class="link" type="button" id="open-help" aria-haspopup="dialog">帮助</button></div></header>
 <div class="grid">
 <section class="card"><div class="label">五小时剩余额度</div><div class="value" id="remaining">—</div><div class="small" id="weekly">每周额度：等待检测</div></section>
@@ -42,8 +43,8 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 </div>
 <section class="panel time-panel"><div class="section-head"><div><h2>时间安排</h2></div></div>
 <div class="time-pair">
-<div class="time-block send-block"><div class="time-label">请求发送<span class="live-dot"></span></div><div class="clock" id="send-at">—</div><div class="time-footer"><span id="send-date">—</span><span class="count-chip" id="countdown"></span></div></div>
-<div class="time-block estimate-block"><div class="time-label">预计刷新<span class="estimate-tag">发送后 +5 小时</span></div><div class="clock" id="estimated-reset">—</div><div class="time-footer"><span id="reset-date">—</span><span class="estimate-note">以服务器实际刷新为准</span></div></div>
+<div class="time-block send-block"><div class="time-label">请求发送<span class="count-chip" id="countdown"></span></div><div class="clock" id="send-at">—</div><div class="time-footer"><span id="send-date">—</span></div></div>
+<div class="time-block estimate-block"><div class="time-label">预计刷新</div><div class="clock" id="estimated-reset">—</div><div class="time-footer"><span id="reset-date">—</span></div></div>
 </div>
 <form id="schedule-form"><label for="schedule-day" class="editor-label">手动安排</label><div class="actions time-input"><div class="picker"><input id="schedule-time" type="hidden"><input id="schedule-day" type="date" required disabled aria-label="手动日期（北京时间）"><select id="schedule-hour" aria-label="小时" disabled></select><span>:</span><select id="schedule-minute" aria-label="分钟" disabled></select><span>:</span><select id="schedule-second" aria-label="秒" disabled></select></div><div class="schedule-buttons"><button class="primary" id="save-time" type="submit" disabled>保存</button><button id="auto-time" type="button" onclick="window.action('schedule/clear','schedule-feedback')">恢复自动</button></div></div></form>
 <div class="feedback" id="schedule-feedback" role="status"></div></section>
