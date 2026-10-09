@@ -11,4 +11,8 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -X utf8 -m unittest discover -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test test_ui.cjs
       - run: python -X utf8 build_release.py

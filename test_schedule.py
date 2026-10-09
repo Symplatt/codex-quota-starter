@@ -117,7 +117,7 @@ class ScheduleHTTPTests(unittest.TestCase):
         target=int(time.time())+86400
         self.assertEqual(self.request('POST','/api/schedule',headers,json.dumps({'sendAt':target}))[0],200)
         status=json.loads(self.request('GET','/api/status')[1])
-        self.assertEqual(status['version'],'1.1.1')
+        self.assertEqual(status['version'],'1.3.0')
         self.assertEqual(status['timing']['sendAt'],target)
         self.assertEqual(status['timing']['estimatedResetAt'],target+18000)
         self.assertEqual(self.request('POST','/api/schedule/clear',headers)[0],200)
@@ -143,7 +143,7 @@ class ScheduleHTTPTests(unittest.TestCase):
     def test_help_page_and_undecorated_home(self):
         code,help_page=self.request('GET','/help')
         self.assertEqual(code,200)
-        for text in ['手动触发一次','暂停 / 恢复运行','立即检测','保存','恢复自动','v1.1.1']:
+        for text in ['手动触发一次','暂停 / 恢复运行','立即检测','保存','恢复自动','v1.3.0']:
             self.assertIn(text,help_page)
         page=self.request('GET','/')[1]
         self.assertNotIn('LOCAL AUTOMATION',page)

@@ -1,28 +1,56 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>额度启程</title>
 <style>
-:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:#19352e;background:#f4f5ef}*{box-sizing:border-box}body{margin:0}main{max-width:1080px;margin:36px auto;padding:0 24px}header{display:flex;justify-content:space-between;align-items:center;gap:16px}h1{font-size:30px;margin:0}h2{font-size:17px;margin:0 0 18px}.badge{padding:8px 14px;background:#dbeadd;border-radius:24px;font-size:13px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px}.card,.panel{background:#fff;border:1px solid #dfe5da;border-radius:14px;padding:22px}.panel{margin-top:20px}.label,.small{color:#68796c;font-size:13px;line-height:1.8}.value{font-size:25px;font-weight:600;margin:12px 0 6px;font-variant-numeric:tabular-nums}.time-value{font-size:22px}.status{line-height:1.8;overflow-wrap:anywhere}.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}button,.link{font:inherit;font-size:14px;border:1px solid #ced8ca;background:white;border-radius:9px;padding:10px 18px;color:#234d3a;cursor:pointer;text-decoration:none}button.primary{background:#244f3d;color:white;border-color:#244f3d}button:disabled{opacity:.5;cursor:default}input[type=datetime-local]{font:inherit;border:1px solid #c6d1c4;padding:9px 12px;border-radius:8px;color:#19352e;max-width:100%;background:#fff}input[type=checkbox]{width:18px;height:18px;accent-color:#244f3d}label{display:block}table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:12px 8px;border-bottom:1px solid #edf0e9;vertical-align:top}th{font-weight:500;color:#718074}td:last-child{line-height:1.7;overflow-wrap:anywhere}summary{cursor:pointer;font-size:13px;margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:280px;overflow:auto}.feedback{font-size:13px;line-height:1.8;color:#3d7358}.feedback:empty{display:none}.feedback:not(:empty){margin-top:12px}.timing{margin:0 0 22px}.timing .card{padding:0;border:0}.info{display:flex;gap:24px;flex-wrap:wrap;font-size:14px}@media(max-width:760px){main{margin:24px auto;padding:0 16px}.grid{grid-template-columns:1fr}.value{font-size:23px}h1{font-size:25px}header{flex-wrap:wrap}.tablewrap{overflow:auto}.timing{gap:18px}}
-.section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.section-head h2{margin:0}.time-pair{display:grid;grid-template-columns:1fr 1fr;margin:22px 0;gap:24px}.time-block+ .time-block{border-left:1px solid #e3e8df;padding-left:24px}.clock{font-size:32px;line-height:1.3;font-weight:600;letter-spacing:.5px;margin:10px 0 3px;font-variant-numeric:tabular-nums}.count-chip,.estimate-tag{display:inline-block;margin-left:8px;font-size:12px;font-weight:400}.count-chip{color:#315e46}.estimate-tag{color:#748174}.time-input{margin-top:8px}.time-hint{display:flex;gap:6px 18px;flex-wrap:wrap;margin-top:10px;font-size:12px;line-height:1.7;color:#526c5b}#time-range{font-variant-numeric:tabular-nums}.state-chip{font-size:13px;color:#315e46;background:#edf3eb;border-radius:6px;padding:6px 10px}.run-row{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:18px}.run-row .actions{margin:0}.checks{display:grid;gap:2px;font-size:12px;white-space:nowrap}.checks time{display:inline-block;margin-left:8px;font-variant-numeric:tabular-nums}.status-details summary{font-size:12px;color:#68796c;margin-top:14px}.status-details .status{margin-top:8px}@media(max-width:620px){.time-pair{gap:14px}.time-block+ .time-block{padding-left:14px}.clock{font-size:25px}.count-chip,.estimate-tag{display:block;margin:2px 0 0}.run-row{align-items:flex-start;flex-direction:column}.time-input input{width:100%}}
+:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:#19352e;background:#f4f5ef}*{box-sizing:border-box}body{margin:0}main{max-width:1080px;margin:36px auto;padding:0 24px}header{display:flex;justify-content:space-between;align-items:center;gap:16px}h1{font-size:30px;margin:0}h2{font-size:17px;margin:0 0 18px}.badge{padding:8px 14px;background:#dbeadd;border-radius:24px;font-size:13px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px}.card,.panel{background:#fff;border:1px solid #dfe5da;border-radius:14px;padding:22px}.panel{margin-top:20px}.label,.small{color:#68796c;font-size:13px;line-height:1.8}.value{font-size:25px;font-weight:600;margin:12px 0 6px;font-variant-numeric:tabular-nums}.time-value{font-size:22px}.status{line-height:1.8;overflow-wrap:anywhere}.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}button,.link{font:inherit;font-size:14px;border:1px solid #ced8ca;background:white;border-radius:9px;padding:10px 18px;color:#234d3a;cursor:pointer;text-decoration:none}button.primary{background:#244f3d;color:white;border-color:#244f3d}button:disabled{opacity:.5;cursor:default}input[type=date],select{font:inherit;border:1px solid #c6d1c4;padding:9px 12px;border-radius:8px;color:#19352e;max-width:100%;background:#fff}input[type=checkbox]{width:18px;height:18px;accent-color:#244f3d}label{display:block}table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:12px 8px;border-bottom:1px solid #edf0e9;vertical-align:top}th{font-weight:500;color:#718074}td:last-child{line-height:1.7;overflow-wrap:anywhere}summary{cursor:pointer;font-size:13px;margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:280px;overflow:auto}.feedback{font-size:13px;line-height:1.8;color:#3d7358}.feedback:empty{display:none}.feedback:not(:empty){margin-top:12px}.timing{margin:0 0 22px}.timing .card{padding:0;border:0}.info{display:flex;gap:24px;flex-wrap:wrap;font-size:14px}@media(max-width:760px){main{margin:24px auto;padding:0 16px}.grid{grid-template-columns:1fr}.value{font-size:23px}h1{font-size:25px}header{flex-wrap:wrap}.tablewrap{overflow:auto}.timing{gap:18px}}
+.section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.section-head h2{margin:0}.time-pair{display:grid;grid-template-columns:1fr 1fr;margin:22px 0;gap:24px}.time-block+ .time-block{border-left:1px solid #e3e8df;padding-left:24px}.clock{font-size:32px;line-height:1.3;font-weight:600;letter-spacing:.5px;margin:10px 0 3px;font-variant-numeric:tabular-nums}.count-chip,.estimate-tag{display:inline-block;margin-left:8px;font-size:12px;font-weight:400}.count-chip{color:#315e46}.estimate-tag{color:#748174}.time-input{margin-top:8px}.time-hint{display:flex;gap:6px 18px;flex-wrap:wrap;margin-top:10px;font-size:12px;line-height:1.7;color:#526c5b}#time-range{font-variant-numeric:tabular-nums}.state-chip{font-size:13px;color:#315e46;background:#edf3eb;border-radius:6px;padding:6px 10px}.run-row{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:18px}.run-row .actions{margin:0}.checks{display:grid;gap:2px;font-size:12px;white-space:nowrap}.checks time{display:inline-block;margin-left:8px;font-variant-numeric:tabular-nums}.status-details summary{font-size:12px;color:#68796c;margin-top:14px}.status-details .status{margin-top:8px}@media(max-width:620px){.time-pair{gap:14px}.time-block+ .time-block{padding-left:14px}.clock{font-size:25px}.count-chip,.estimate-tag{display:block;margin:2px 0 0}.run-row{align-items:flex-start;flex-direction:column}.time-input input[type=date]{width:100%}}
+select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.picker select{padding:9px 8px}select:disabled,input:disabled{color:#929c95;background:#f1f2ef}
+/* Timing panel: two clear time cards and one compact editing surface. */
+:root{font-family:"Segoe UI Variable","Segoe UI","Microsoft YaHei",sans-serif;color:#203b34;background:#f5f6f2}
+.panel,.card{border-color:#e2e7df;box-shadow:0 2px 5px #203b3403}.panel{border-radius:18px;padding:24px}
+.time-panel{padding:26px}.section-note{font-size:12px;color:#819087;margin:7px 0 0;line-height:1.6}.timezone{font-size:11px;color:#78877f;white-space:nowrap;border:1px solid #e7ebe4;border-radius:20px;padding:6px 10px}
+.time-pair{gap:14px;margin:23px 0 20px}.time-block{padding:20px 22px;border-radius:13px;min-width:0}.time-block+.time-block{padding:20px 22px;border:1px solid #e4e9e0}.send-block{background:#234c3d;color:#fff}.estimate-block{background:#f7f8f4}.time-label{font-size:12px;font-weight:500;display:flex;align-items:center;justify-content:space-between;gap:8px;letter-spacing:.3px}.send-block .time-label{color:#d4e4d8}.live-dot{width:6px;height:6px;border-radius:50%;background:#a9cda7}.clock{font-size:38px;letter-spacing:1px;line-height:1.2;margin:16px 0 13px;font-weight:500;font-variant-numeric:tabular-nums}.time-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:11px;color:#7d8b81;min-height:23px}.send-block .time-footer{color:#c1d4c7}.count-chip{color:#e5f0df;background:#ffffff10;border:1px solid #ffffff16;border-radius:6px;padding:3px 7px;font-size:11px;margin:0;font-variant-numeric:tabular-nums}.estimate-tag{font-size:10px;letter-spacing:0;color:#7c8b7c;background:#eaf0e5;border-radius:5px;padding:3px 7px;margin:0}.estimate-note{font-size:10px;color:#94a094}
+#schedule-form{border-top:1px solid #edf0e9;padding-top:19px}.editor-label{font-size:12px;font-weight:600;color:#586d60}.time-input{gap:8px;margin-top:10px}.picker{background:#fafbf8;border:1px solid #dce3d7;border-radius:9px;padding:0 8px;gap:0;min-height:42px}.picker input[type=date],.picker select{border:0;background:transparent;border-radius:5px;min-height:38px;outline:none;font-size:13px;padding:7px 5px;color:#2c493b}.picker input[type=date]{margin-right:7px;padding-right:12px;border-right:1px solid #e1e7dc;border-radius:0}.picker select{min-width:46px}.picker span{color:#98a295;font-size:12px}.picker:focus-within{border-color:#75947b;box-shadow:0 0 0 3px #345b3c0a}.picker select:focus-visible{outline:2px solid #75947b}.time-input button{height:42px;font-size:12px;padding:0 18px;font-weight:500}.time-input .primary{background:#234c3d;border-color:#234c3d}.time-hint{margin-top:11px;gap:5px 14px;font-size:11px;color:#859180}#time-range{color:#617758}.feedback{font-size:12px}
+@media(max-width:620px){.time-panel{padding:20px}.time-panel .section-head{align-items:flex-start}.timezone{font-size:10px;padding:5px 7px}.time-pair{gap:10px}.time-block,.time-block+.time-block{padding:16px 14px}.clock{font-size:28px;letter-spacing:0}.time-label{align-items:flex-start;flex-wrap:wrap}.estimate-tag{display:inline-block}.time-footer{gap:6px}.count-chip{display:inline-block}.picker{width:100%;justify-content:flex-start}.time-input .picker input[type=date]{width:auto;flex:1;min-width:125px}.time-input button{flex:1}.estimate-note{line-height:1.5}}
+@media(max-width:370px){.time-pair{grid-template-columns:1fr}.clock{font-size:34px}.timezone{display:none}}
+
+.time-pair{grid-template-columns:repeat(2,minmax(0,270px));max-width:554px;gap:12px}.time-block,.time-block+.time-block{padding:18px}.time-footer{align-items:flex-start;flex-direction:column;gap:8px}.time-pair .clock{font-size:34px}.estimate-block{position:relative}.estimate-block:before{content:'→';position:absolute;left:-17px;top:67px;width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:white;border:1px solid #e4e9e0;color:#7e917b;font-size:12px;z-index:1}
+#help-dialog{padding:0;border:1px solid #dfe5da;border-radius:20px;width:min(600px,calc(100vw - 32px));max-height:min(720px,85dvh);color:#203b34;background:#fff;box-shadow:0 24px 100px #172d3440;overflow:hidden}#help-dialog[open]{display:flex;flex-direction:column}#help-dialog::backdrop{background:#15251f65;backdrop-filter:blur(4px)}.help-header{display:flex;align-items:center;justify-content:space-between;padding:24px 26px 18px;border-bottom:1px solid #edf0e9;flex-shrink:0}.help-header h2{margin:0;font-size:20px}.help-header p{font-size:12px;color:#829085;margin:7px 0 0}#close-help{font-size:28px;line-height:1;width:38px;height:38px;padding:0;border:0;border-radius:50%;background:#f1f4ee;color:#526d5c}#close-help:hover{background:#e5ebdf}.help-content{overflow:auto;padding:4px 26px 24px;overscroll-behavior:contain}.help-content section+section{border-top:1px solid #edf0e9;margin-top:20px}.help-content h2{font-size:13px;margin:20px 0 6px}.help-content p{font-size:13px;line-height:1.85;color:#718072;margin:0}.help-content footer{font-size:11px;color:#98a191;margin-top:24px}body:has(#help-dialog[open]){overflow:hidden}
+@media(max-width:620px){.time-pair{grid-template-columns:1fr 1fr}.time-block,.time-block+.time-block{padding:16px 12px}.time-pair .clock{font-size:27px}.help-header{padding:20px}.help-content{padding:0 20px 20px}}
+@media(max-width:370px){.time-pair{grid-template-columns:1fr}.estimate-block:before{display:none}}
+
+@media(min-width:861px){.time-panel{display:grid;grid-template-columns:1.08fr 1fr;column-gap:24px;row-gap:20px;align-items:stretch}.time-panel>.section-head{grid-column:1/-1}.time-pair{margin:0;max-width:none;grid-template-columns:1fr 1fr;align-self:stretch}.time-block,.time-block+.time-block{padding:18px 16px;display:flex;flex-direction:column;justify-content:center}.time-pair .clock{font-size:31px}.time-panel #schedule-form{border-top:0;border-left:1px solid #e9ede5;padding:6px 0 6px 24px;display:flex;flex-direction:column;justify-content:center}.time-input{margin-top:12px}.time-input .picker{width:100%;justify-content:space-between}.time-input .picker input[type=date]{min-width:125px;padding-right:7px;margin-right:3px}.picker select{min-width:42px}.time-input button{height:35px;padding:0 15px}.time-panel>.feedback{grid-column:1/-1;margin-top:0}}
+@media(min-width:621px) and (max-width:860px){.time-pair{max-width:none;grid-template-columns:1fr 1fr}.time-footer{flex-direction:row}}
+
+.send-block,.estimate-block{background:#fff;color:#203b34;border:1px solid #e4e9e0}.send-block .time-label{color:#536e5e}.send-block .time-footer{color:#7d8b81}.count-chip{color:#58735d;background:#f3f6ef;border:1px solid #e8eddf}.live-dot{background:#8aa081}.estimate-tag{background:#f4f6f0;color:#82907e}
+#trigger{background:rgba(166,199,157,.24);color:#315c3b;border-color:rgba(139,172,128,.3)}#trigger:hover:not(:disabled){background:rgba(166,199,157,.34)}@media(min-width:861px){.time-panel #schedule-form{justify-content:flex-end;padding-bottom:18px}}
+.time-label{min-height:22px}
 </style></head><body><main>
-<header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><a class="link" href="/help">帮助</a></div></header>
+<header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button class="link" type="button" id="open-help" aria-haspopup="dialog">帮助</button></div></header>
 <div class="grid">
 <section class="card"><div class="label">五小时剩余额度</div><div class="value" id="remaining">—</div><div class="small" id="weekly">每周额度：等待检测</div></section>
 <section class="card"><div class="label">服务器刷新时间</div><div class="value time-value" id="reset">—</div><div class="small">北京时间</div></section>
 <section class="card"><div class="label">上次发送请求</div><div class="value time-value" id="last">尚未发送</div><div class="small" id="result"></div></section>
 </div>
-<section class="panel time-panel"><div class="section-head"><h2>时间设置</h2><span class="small">北京时间</span></div>
+<section class="panel time-panel"><div class="section-head"><div><h2>时间安排</h2><p class="section-note">选择下一次小额请求的发送时间</p></div><span class="timezone">北京时间 · UTC+8</span></div>
 <div class="time-pair">
-<div class="time-block"><div class="label">请求发送 <span class="count-chip" id="countdown"></span></div><div class="clock" id="send-at">—</div><div class="small" id="send-date"></div></div>
-<div class="time-block"><div class="label">预计刷新 <span class="estimate-tag">+5 小时 · 估计</span></div><div class="clock" id="estimated-reset">—</div><div class="small" id="reset-date"></div></div>
+<div class="time-block send-block"><div class="time-label">请求发送<span class="live-dot"></span></div><div class="clock" id="send-at">—</div><div class="time-footer"><span id="send-date">—</span><span class="count-chip" id="countdown"></span></div></div>
+<div class="time-block estimate-block"><div class="time-label">预计刷新<span class="estimate-tag">发送后 +5 小时</span></div><div class="clock" id="estimated-reset">—</div><div class="time-footer"><span id="reset-date">—</span><span class="estimate-note">以服务器实际刷新为准</span></div></div>
 </div>
-<form id="schedule-form"><label for="schedule-time" class="label">手动时间</label><div class="actions time-input"><input id="schedule-time" type="datetime-local" step="1" required disabled aria-describedby="time-rule time-range"><button class="primary" id="save-time" type="submit" disabled>保存</button><button id="auto-time" type="button" onclick="window.action('schedule/clear','schedule-feedback')">恢复自动</button></div><div class="time-hint"><span id="time-rule">仅可选 GPT 正常刷新时刻之后</span><span id="time-range">等待检测</span></div></form>
+<form id="schedule-form"><label for="schedule-day" class="editor-label">手动安排</label><div class="actions time-input"><div class="picker"><input id="schedule-time" type="hidden"><input id="schedule-day" type="date" required disabled aria-label="手动日期（北京时间）"><select id="schedule-hour" aria-label="小时" disabled></select><span>:</span><select id="schedule-minute" aria-label="分钟" disabled></select><span>:</span><select id="schedule-second" aria-label="秒" disabled></select></div><button class="primary" id="save-time" type="submit" disabled>保存</button><button id="auto-time" type="button" onclick="window.action('schedule/clear','schedule-feedback')">恢复自动</button></div></form>
 <div class="feedback" id="schedule-feedback" role="status"></div></section>
 <section class="panel"><div class="section-head"><h2>运行状态</h2><span class="state-chip" id="status">连接中</span></div><div class="run-row"><div class="actions"><button class="primary" id="trigger" onclick="action('trigger')">手动触发一次</button><button id="pause" onclick="action(paused?'resume':'pause')">暂停</button><button onclick="action('check')">立即检测</button></div><div class="checks small"><span>上次检测 <time id="checked">—</time></span><span>下次检测 <time id="next-check">—</time></span></div></div><details class="status-details"><summary>状态详情</summary><div class="small status" id="status-detail"></div></details><div class="feedback" id="toast" role="status"></div></section>
 <section class="panel"><h2>触发记录</h2><div class="tablewrap"><table><thead><tr><th>时间（北京时间）</th><th>结果</th><th>周期验证</th></tr></thead><tbody id="history"></tbody></table></div><details><summary>查看检测日志</summary><pre id="logs"></pre></details></section>
 <section class="panel"><h2>设置</h2><label style="display:flex;align-items:center;gap:12px"><input type="checkbox" id="autostart" disabled onchange="setAutostart(this.checked)"><span>开机自启动（登录 Windows 后）</span></label><div class="small" id="startup-status"></div></section>
 <section class="panel"><h2>软件信息</h2><div class="info"><span>名称：额度启程</span><span>版本：<strong id="version">—</strong></span></div></section>
-</main><script>
-const token='__CSRF__';let paused=false,snapshot=null,startupBusy=false,timeDirty=false,lastScheduleId;
+</main><dialog id="help-dialog" aria-labelledby="help-title"><div class="help-header"><div><h2 id="help-title">使用帮助</h2><p>额度启程 · 常用操作说明</p></div><button id="close-help" type="button" aria-label="关闭帮助">×</button></div><div class="help-content">__HELP_CONTENT__</div></dialog><script>
+const helpDialog=document.getElementById('help-dialog');
+document.getElementById('open-help').addEventListener('click',()=>helpDialog.showModal());
+document.getElementById('close-help').addEventListener('click',()=>helpDialog.close());
+let backdropDown=false;
+helpDialog.addEventListener('pointerdown',e=>{const r=helpDialog.getBoundingClientRect();backdropDown=e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom;});
+helpDialog.addEventListener('click',e=>{const r=helpDialog.getBoundingClientRect();if(backdropDown&&(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom))helpDialog.close();backdropDown=false;});
+const token='__CSRF__';let paused=false,snapshot=null,startupBusy=false,timeDirty=false,lastScheduleId,refreshPromise=null;
+const cacheKey='quota-starter:last-status:v1';
 const $=id=>document.getElementById(id);
 const time=s=>s?new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(s*1000)):'—';
 const inputTime=s=>new Date(s*1000+8*3600000).toISOString().slice(0,19);
@@ -30,15 +58,92 @@ const labels={completed:'已完成',failed:'失败',interrupted:'已中断',unkn
 const clockTime=s=>s?time(s).split(' ')[1]:'—';
 function timeBlock(id,dateId,value){$(id).textContent=clockTime(value);$(dateId).textContent=value?time(value).split(' ')[0]:'—';}
 function shortStatus(s){if(s.paused)return '已暂停';if(s.busy)return '处理中';const v=s.status;if(v.startsWith('连接/检测失败'))return '检测失败';if(v.includes('额度受限'))return '额度受限';if(v.includes('手动设定'))return '等待计划';if(v.includes('本周期')||v.includes('已处理'))return '本轮已处理';if(v.includes('重置时间')||v.includes('窗口已变化'))return '等待刷新';if(v.includes('请求完成')||v.includes('观察到'))return '已完成';if(v.includes('未确认'))return '待核实';return '检测中';}
-function renderTiming(t){if(!t)return;timeBlock('send-at','send-date',t.sendAt);timeBlock('estimated-reset','reset-date',t.estimatedResetAt);const plan=t.schedule;const id=plan?.id||null;if(id!==lastScheduleId&&!timeDirty){$('schedule-time').value=plan?.status==='pending'?inputTime(plan.sendAt):'';lastScheduleId=id;}const min=t.minSendAt;$('schedule-time').disabled=!min;$('schedule-time').min=min?inputTime(min):'';$('save-time').disabled=!min||snapshot.busy;$('time-range').textContent=min?'可选起点 '+time(min):'等待检测';countdown();}
+function renderTiming(t){if(!t)return;timeBlock('send-at','send-date',t.sendAt);timeBlock('estimated-reset','reset-date',t.estimatedResetAt);const plan=t.schedule;const id=plan?.id||null;if(id!==lastScheduleId&&!timeDirty){$('schedule-time').value=plan?.status==='pending'?inputTime(plan.sendAt):'';lastScheduleId=id;}syncPicker();$('save-time').disabled=!t.minSendAt||snapshot.busy;countdown();}
+const pickerParts=['hour','minute','second'];
+for(const [index,part] of pickerParts.entries()){
+  for(let n=0;n<(index===0?24:60);n++){
+    const option=document.createElement('option');
+    option.value=String(n).padStart(2,'0');option.textContent=option.value;
+    $('schedule-'+part).append(option);
+  }
+}
+function pickerMinimum(){
+  const reset=snapshot?.timing?.serverResetAt;
+  return reset?Math.floor(Math.max(reset,Date.now()/1000))+1:null;
+}
+function syncPicker(fromInput=false){
+  const min=pickerMinimum(),day=$('schedule-day');
+  day.disabled=!min;
+  for(const part of pickerParts)$('schedule-'+part).disabled=!min;
+  if(!min)return;
+  const lower=inputTime(min),minDay=lower.slice(0,10),minParts=lower.slice(11).split(':');
+  day.min=minDay;day.title='最早可选 '+time(min);
+  if(!fromInput){
+    const value=$('schedule-time').value||lower;
+    day.value=value.slice(0,10);
+    value.slice(11).split(':').forEach((v,i)=>{$('schedule-'+pickerParts[i]).value=v;});
+  }
+  // Each disabled option represents an entire interval before the lower bound.
+  // Date changes clamp the draft to the first selectable instant; no request is sent.
+  if(day.value&&day.value<minDay)day.value=minDay;
+  let constrained=day.value===minDay;
+  for(let i=0;i<pickerParts.length;i++){
+    const select=$('schedule-'+pickerParts[i]),floor=constrained?minParts[i]:'00';
+    for(const option of select.options)option.disabled=option.value<floor;
+    if(select.value<floor)select.value=floor;
+    constrained=constrained&&select.value===minParts[i];
+  }
+  $('schedule-time').value=day.value?day.value+'T'+pickerParts.map(p=>$('schedule-'+p).value).join(':'):'';
+}
+for(const id of ['schedule-day',...pickerParts.map(p=>'schedule-'+p)]){
+  $(id).addEventListener('change',()=>{timeDirty=true;syncPicker(true);});
+}
 function countdown(){const t=snapshot?.timing;if(!t)return;const left=t.sendAt-Date.now()/1000;const pad=n=>String(n).padStart(2,'0');$('countdown').textContent=paused?'已暂停':!t.sendAt?'待检测':left>0?'倒计时 '+pad(Math.floor(left/3600))+':'+pad(Math.floor(left%3600/60))+':'+pad(Math.floor(left%60)):'已到点';}
-async function refresh(){try{const r=await fetch('/api/status');if(!r.ok)throw Error(r.status);const s=await r.json();snapshot=s;paused=s.paused;$('version').textContent='v'+s.version;$('badge').textContent=paused?'已暂停':s.busy?'正在检测 / 发送':'后台运行';$('pause').textContent=paused?'恢复运行':'暂停';$('trigger').disabled=paused||s.busy;$('save-time').disabled=s.busy;$('auto-time').disabled=s.busy;$('status').textContent=shortStatus(s);$('status-detail').textContent=s.status;const c=s.current;if(c){$('remaining').textContent=(100-c.primary.usedPercent)+'%';$('weekly').textContent=c.secondary?'长周期（'+Math.round(c.secondary.windowDurationMins/1440)+' 天）剩余 '+(100-c.secondary.usedPercent)+'%':'长周期：未返回';$('reset').textContent=time(c.primary.resetsAt);$('checked').textContent=clockTime(c.checkedAt);$('checked').title=time(c.checkedAt);$('next-check').textContent=clockTime(s.nextPoll);$('next-check').title=time(s.nextPoll);}renderTiming(s.timing);renderAutostart(s.autostart);const a=s.attempts[0];if(a){$('last').textContent=time(a.started);$('result').textContent=labels[a.status]||a.status;}const body=$('history');body.replaceChildren();for(const a of s.attempts){const tr=document.createElement('tr');for(const text of [time(a.started),labels[a.status]||a.status,a.detail.evidence||'请求已预留，本周期不重复提交']){const td=document.createElement('td');td.textContent=text;tr.append(td);}body.append(tr);}if(!s.attempts.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='暂无记录';tr.append(td);body.append(tr);}$('logs').textContent=s.events.map(e=>time(e.time)+' '+e.kind+' '+JSON.stringify(e.detail)).join('\n');}catch(e){$('badge').textContent='服务离线';$('status').textContent='服务离线';$('status-detail').textContent='请通过桌面快捷方式启动。';$('schedule-time').disabled=true;for(const id of ['trigger','save-time','auto-time','autostart'])$(id).disabled=true;}}
-async function action(name,feedback='toast',body){try{const r=await fetch('/api/'+name,{method:'POST',headers:{'X-Quota-Token':token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const d=await r.json();$(feedback).textContent=d.message||d.error;if(r.ok&&name.startsWith('schedule')){timeDirty=false;lastScheduleId=undefined;}await refresh();return r.ok;}catch(e){$(feedback).textContent='操作失败：本地服务不可达';return false;}}
+// Render synchronously: the browser paints only after the complete snapshot is applied.
+function renderStatus(s){snapshot=s;paused=s.paused;$('version').textContent='v'+s.version;$('badge').textContent=paused?'已暂停':s.busy?'正在检测 / 发送':'后台运行';$('pause').textContent=paused?'恢复运行':'暂停';$('trigger').disabled=paused||s.busy;$('save-time').disabled=s.busy;$('auto-time').disabled=s.busy;$('status').textContent=shortStatus(s);$('status-detail').textContent=s.status;const c=s.current;if(c){$('remaining').textContent=(100-c.primary.usedPercent)+'%';$('weekly').textContent=c.secondary?'长周期（'+Math.round(c.secondary.windowDurationMins/1440)+' 天）剩余 '+(100-c.secondary.usedPercent)+'%':'长周期：未返回';$('reset').textContent=time(c.primary.resetsAt);$('checked').textContent=clockTime(c.checkedAt);$('checked').title=time(c.checkedAt);$('next-check').textContent=clockTime(s.nextPoll);$('next-check').title=time(s.nextPoll);}renderTiming(s.timing);renderAutostart(s.autostart);const a=s.attempts[0];if(a){$('last').textContent=time(a.started);$('result').textContent=labels[a.status]||a.status;}else{$('last').textContent='尚未发送';$('result').textContent='';}const body=$('history');body.replaceChildren();for(const a of s.attempts){const tr=document.createElement('tr');for(const text of [time(a.started),labels[a.status]||a.status,a.detail.evidence||'请求已预留，本周期不重复提交']){const td=document.createElement('td');td.textContent=text;tr.append(td);}body.append(tr);}if(!s.attempts.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='暂无记录';tr.append(td);body.append(tr);}$('logs').textContent=s.events.map(e=>time(e.time)+' '+e.kind+' '+JSON.stringify(e.detail)).join('\n');}
+function showOffline(){ $('badge').textContent='连接中断';$('status').textContent='等待重连';$('status-detail').textContent=snapshot?'连接暂时中断，保留上次数据，正在自动重试。':'请通过桌面快捷方式启动。';$('schedule-time').disabled=true;for(const id of ['trigger','save-time','auto-time','autostart','schedule-day','schedule-hour','schedule-minute','schedule-second'])$(id).disabled=true;}
+function completeStatus(s){
+  return s?.service==='quota-starter'&&typeof s.status==='string'&&typeof s.paused==='boolean'
+    &&s.current?.primary&&s.timing&&Array.isArray(s.attempts)&&Array.isArray(s.events);
+}
+function restoreStatus(){
+  try{const s=JSON.parse(sessionStorage.getItem(cacheKey));if(completeStatus(s)){
+    renderStatus(s);
+    // Cached values are for display only until the live service answers.
+    for(const id of ['trigger','save-time','auto-time','autostart','schedule-day','schedule-hour','schedule-minute','schedule-second'])$(id).disabled=true;
+  }}catch(e){/* Storage may be disabled or contain an obsolete snapshot. */}
+}
+async function refresh(){
+  if(refreshPromise)return refreshPromise;
+  refreshPromise=(async()=>{
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),15000);
+    try{
+      const r=await fetch('/api/status',{signal:controller.signal,cache:'no-store'});
+      if(!r.ok)throw Error(r.status);
+      const s=await r.json();
+      // A running check can expose a mixture of old and new server values.
+      // Keep the last complete display (including its ticking clock) until it ends.
+      if(snapshot&&(s.busy||!completeStatus(s))){
+        paused=s.paused;
+        $('pause').textContent=paused?'恢复运行':'暂停';
+        $('trigger').disabled=true;$('save-time').disabled=true;$('auto-time').disabled=true;
+        countdown();return;
+      }
+      if(!completeStatus(s)){if(!snapshot){$('badge').textContent=s.busy?'正在检测':'等待检测';$('status-detail').textContent=s.status||'等待首次检测结果';}return;}
+      renderStatus(s);
+      if(!s.busy)try{sessionStorage.setItem(cacheKey,JSON.stringify(s));}catch(e){}
+    }catch(e){showOffline();}
+    finally{clearTimeout(timeout);}
+  })();
+  try{await refreshPromise;}finally{refreshPromise=null;}
+}
+async function action(name,feedback='toast',body){try{const r=await fetch('/api/'+name,{method:'POST',headers:{'X-Quota-Token':token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const d=await r.json();$(feedback).textContent=d.message||d.error;if(r.ok&&name.startsWith('schedule')){timeDirty=false;lastScheduleId=undefined;}if(refreshPromise)await refreshPromise;await refresh();return r.ok;}catch(e){$(feedback).textContent='操作失败：本地服务不可达';return false;}}
 function saveTime(){const v=$('schedule-time').value;const sendAt=Date.parse(v.length===16?v+':00+08:00':v+'+08:00')/1000;const reset=snapshot?.timing?.serverResetAt;if(!reset){$('schedule-feedback').textContent='请先检测 GPT 刷新时间';return;}if(!v||!Number.isFinite(sendAt)||sendAt<=Date.now()/1000){$('schedule-feedback').textContent='请选择未来时间';return;}if(sendAt<=reset){$('schedule-feedback').textContent='仅可选 GPT 正常刷新时刻之后';return;}action('schedule','schedule-feedback',{sendAt});}
 $('schedule-form').addEventListener('submit',e=>{e.preventDefault();saveTime();});
-$('schedule-time').addEventListener('invalid',()=>{$('schedule-feedback').textContent='请选择可选起点之后的时间（含起点）';});
-$('schedule-time').addEventListener('input',()=>{timeDirty=true;});
+$('schedule-day').addEventListener('invalid',()=>{$('schedule-feedback').textContent='请选择可选起点之后的时间（含起点）';});
+
 function renderAutostart(a){if(startupBusy||!a)return;$('autostart').disabled=!a.available;$('autostart').checked=a.enabled===true;$('startup-status').textContent=a.error|| (a.enabled?'已开启':'已关闭');}
 async function setAutostart(enabled){startupBusy=true;$('autostart').disabled=true;await action('autostart/'+(enabled?'enable':'disable'));startupBusy=false;await refresh();}
-setInterval(countdown,1000);setInterval(refresh,3000);refresh();
+restoreStatus();setInterval(countdown,1000);setInterval(refresh,3000);refresh();
 </script></body></html>

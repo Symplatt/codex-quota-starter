@@ -10,7 +10,7 @@ files=['windows_settings.py','Autostart-Control.ps1','app.py','core.py','rpc.py'
        'Install-Autostart.cmd','Uninstall-Autostart.ps1','Uninstall.ps1','README.md',
        'MECHANISM.md','VALIDATION.md','CHANGELOG.md','requirements.txt','LICENSE',
        'build_release.py','.gitignore','.gitattributes','.github/workflows/test.yml']
-files += ['help.html','version.py','test_schedule.py']
+files += ['help.html','version.py','test_schedule.py','test_ui.cjs']
 out=root/'dist';out.mkdir(exist_ok=True)
 target=out/f'quota-starter-{VERSION}-windows.zip'
 with zipfile.ZipFile(target,'w',compression=zipfile.ZIP_DEFLATED) as archive:

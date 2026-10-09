@@ -21,6 +21,8 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
     origin = f'http://127.0.0.1:{port}'
     page = (ROOT / 'ui.html').read_text(encoding='utf-8').replace('__CSRF__', csrf)
     help_page = (ROOT / 'help.html').read_text(encoding='utf-8').replace('__VERSION__', VERSION)
+    help_content = help_page.split('</header>', 1)[1].split('</main>', 1)[0]
+    page = page.replace('__HELP_CONTENT__', help_content)
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
