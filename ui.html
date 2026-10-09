@@ -33,7 +33,7 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 @media(max-width:620px){.time-panel{padding:20px}.time-pair{gap:18px}.time-pair .clock{font-size:29px}.time-label{font-size:13px;flex-wrap:nowrap}.estimate-tag{font-size:10px}.time-block,.time-block+.time-block{padding:0}.time-input .picker input[type=date]{min-width:120px;padding:5px 2px}.picker select{min-width:40px;padding:6px 2px}.time-footer{font-size:12px}.estimate-note{font-size:11px}.timezone{font-size:10px}}
 @media(max-width:370px){.time-pair{grid-template-columns:1fr}.time-input .picker input[type=date]{min-width:110px}.picker select{min-width:36px}}
 .time-footer{display:grid;grid-template-rows:20px 20px;gap:4px;justify-content:start;align-content:end}.time-input .picker input[type=date]{flex:0 0 150px;width:150px}.time-input .picker{justify-content:space-between}@media(max-width:620px){.time-input .picker input[type=date]{flex:1 1 120px;width:120px}}
-</style></head><body><main>
+#save-time{background:rgba(166,199,157,.24);color:#315c3b;border-color:rgba(139,172,128,.3)}#save-time:hover:not(:disabled){background:rgba(166,199,157,.34)}</style></head><body><main>
 <header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button class="link" type="button" id="open-help" aria-haspopup="dialog">帮助</button></div></header>
 <div class="grid">
 <section class="card"><div class="label">五小时剩余额度</div><div class="value" id="remaining">—</div><div class="small" id="weekly">每周额度：等待检测</div></section>
