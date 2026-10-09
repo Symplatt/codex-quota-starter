@@ -10,6 +10,7 @@ from pathlib import Path
 
 from core import Engine, Store
 from windows_settings import Autostart
+from version import VERSION
 
 ROOT = Path(__file__).resolve().parent
 
@@ -19,6 +20,7 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
     startup = startup or Autostart(ROOT)
     origin = f'http://127.0.0.1:{port}'
     page = (ROOT / 'ui.html').read_text(encoding='utf-8').replace('__CSRF__', csrf)
+    help_page = (ROOT / 'help.html').read_text(encoding='utf-8').replace('__VERSION__', VERSION)
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
@@ -33,7 +35,10 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
             self.send_header('X-Frame-Options', 'DENY')
             self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+                pass
 
         def host_ok(self):
             return self.headers.get('Host') == f'127.0.0.1:{port}'
@@ -43,12 +48,15 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                 return self.send(403, {'error': 'Host rejected'})
             if self.path == '/':
                 return self.send(200, page, 'text/html; charset=utf-8')
+            if self.path == '/help':
+                return self.send(200, help_page, 'text/html; charset=utf-8')
             if self.path == '/api/status':
-                return self.send(200, {'service': 'quota-starter', 'version': '1.0.0',
+                return self.send(200, {'service': 'quota-starter', 'version': VERSION,
                      'status': engine.status, 'busy': engine.lock.locked(),
                      'paused': engine.store.get('paused', False),
                      'current': engine.store.get('current'), 'nextPoll': engine.next_poll,
                      'autostart': startup.apply('status'),
+                     'timing': engine.timing(),
                      'attempts': engine.store.recent('attempts', 10),
                      'events': engine.store.recent('events', 30)})
             return self.send(404, {'error': 'Not found'})
@@ -57,6 +65,23 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
             if (not self.host_ok() or self.headers.get('Origin') != origin
                     or not secrets.compare_digest(self.headers.get('X-Quota-Token', ''), csrf)):
                 return self.send(403, {'error': 'Origin/token rejected'})
+            if self.path in ('/api/schedule', '/api/schedule/clear'):
+                try:
+                    if self.path.endswith('/clear'):
+                        engine.set_schedule()
+                    else:
+                        length = int(self.headers.get('Content-Length', '0'))
+                        if not 0 < length <= 1024:
+                            raise ValueError('时间数据无效')
+                        body = json.loads(self.rfile.read(length))
+                        if not isinstance(body, dict) or 'sendAt' not in body or body['sendAt'] is None:
+                            raise ValueError('请选择时间')
+                        engine.set_schedule(body['sendAt'])
+                    return self.send(200, {'message': '已恢复自动时间' if self.path.endswith('/clear') else '已保存时间'})
+                except (ValueError, TypeError, UnicodeError):
+                    return self.send(400, {'error': '请选择未来一年内的有效时间'})
+                except RuntimeError as exc:
+                    return self.send(409, {'error': str(exc)})
             if self.path == '/api/pause':
                 engine.store.set('paused', True)
                 engine.store.log('control', {'action': 'pause'})

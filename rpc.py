@@ -9,6 +9,7 @@ import subprocess
 import threading
 import time
 import tomllib
+from version import VERSION
 
 
 def find_codex():
@@ -69,7 +70,7 @@ class RPC:
         threading.Thread(target=self._read, daemon=True).start()
         try:
             self.call('initialize', {'clientInfo': {'name': 'quota_starter',
-                      'title': 'Quota Starter', 'version': '1.0.0'}})
+                      'title': 'Quota Starter', 'version': VERSION}})
             self._send({'method': 'initialized', 'params': {}})
         except Exception:
             self.close()

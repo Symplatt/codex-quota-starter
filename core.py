@@ -7,6 +7,7 @@ import sqlite3
 from contextlib import contextmanager
 import threading
 import time
+import uuid
 
 from rpc import RPC
 
@@ -126,17 +127,26 @@ class Store:
         rows = db.execute("SELECT value FROM state WHERE key LIKE 'guard:%'").fetchall()
         return max((float(json.loads(row[0])) for row in rows), default=0)
 
-    def claim(self, account, cycle, now, detail):
+    def claim(self, account, cycle, now, detail, schedule_id=None):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             if now < self.guard_until(db):
                 return None
             if db.execute('SELECT 1 FROM claims WHERE cycle=?', (cycle,)).fetchone():
                 return None
+            schedule = None
+            if schedule_id:
+                row = db.execute("SELECT value FROM state WHERE key='schedule'").fetchone()
+                schedule = json.loads(row[0]) if row else None
+                if not schedule or schedule['id'] != schedule_id or schedule['status'] != 'pending':
+                    return None
             cursor = db.execute('INSERT INTO attempts(account,cycle,started,status,detail) VALUES (?,?,?,?,?)',
                                 (account, cycle, now, 'reserved', json.dumps(detail, ensure_ascii=False)))
             attempt = cursor.lastrowid
             db.execute('INSERT INTO claims VALUES (?,?,?)', (account, cycle, attempt))
+            if schedule:
+                schedule.update(status='submitted', attemptId=attempt, submittedAt=now)
+                db.execute("UPDATE state SET value=? WHERE key='schedule'", (json.dumps(schedule),))
             # Persist BEFORE turn/start. A crash/timeout cannot cause immediate duplicate submission.
             db.execute('INSERT OR REPLACE INTO state VALUES (?,?)',
                        ('guard:' + account, json.dumps(now + WINDOW + 120)))
@@ -177,6 +187,51 @@ class Engine:
             self.rpc.close()
             self.rpc = None
 
+    def set_schedule(self, send_at=None):
+        if send_at is not None:
+            if (isinstance(send_at, bool) or not isinstance(send_at, (int, float))
+                    or not math.isfinite(send_at) or send_at <= self.clock()
+                    or send_at > self.clock() + 366 * 86400):
+                raise ValueError('请选择未来一年内的时间')
+        if not self.lock.acquire(blocking=False):
+            raise RuntimeError('正在检测或发送，请稍后再修改时间')
+        try:
+            schedule = None if send_at is None else {
+                'id': uuid.uuid4().hex, 'sendAt': send_at,
+                'createdAt': self.clock(), 'status': 'pending'}
+            self.store.set('schedule', schedule)
+            self.store.log('schedule', schedule)
+            self.next_poll = 0
+            return schedule
+        finally:
+            self.lock.release()
+
+    def timing(self):
+        schedule = self.store.get('schedule')
+        current = self.store.get('current')
+        server = current['primary']['resetsAt'] if current else None
+        if schedule and schedule['status'] == 'pending':
+            send_at = schedule['sendAt']
+            mode = 'manual'
+        else:
+            send_at = max(server + 2, self.store.guard_until()) if server else None
+            if send_at and send_at < self.clock():
+                send_at = None
+            mode = 'auto'
+        return {'mode': mode, 'schedule': schedule, 'sendAt': send_at,
+                'estimatedResetAt': send_at + WINDOW if send_at else None,
+                'serverResetAt': server}
+
+    def select_candidate(self, snapshot, previous, now, manual):
+        schedule = self.store.get('schedule')
+        if not manual and schedule and schedule['status'] == 'pending':
+            if now < schedule['sendAt']:
+                return None, '等待手动设定时间', None
+            cycle, reason = candidate(snapshot, previous, now, manual=True)
+            return cycle, ('按手动时间发送' if cycle else reason), schedule['id']
+        cycle, reason = candidate(snapshot, previous, now, manual)
+        return cycle, reason, None
+
     def tick(self, manual=False):
         if not self.lock.acquire(blocking=False):
             return '检测或请求正在进行'
@@ -204,7 +259,10 @@ class Engine:
             if self.store.get('paused', False):
                 self.status = '已暂停自动及手动发送（继续读取额度）'
                 return self.status
-            cycle, reason = candidate(snap, previous, now, manual)
+            schedule = self.store.get('schedule')
+            if schedule and schedule['status'] == 'pending' and schedule['sendAt'] > now:
+                self.next_poll = min(self.next_poll, schedule['sendAt'])
+            cycle, reason, schedule_id = self.select_candidate(snap, previous, now, manual)
             self.status = reason
             if not cycle:
                 return reason
@@ -228,12 +286,13 @@ class Engine:
                 raise ValueError('准备期间账户发生变化，停止发送')
             fresh = normalize(fresh_raw)
             now = self.clock()
-            cycle, reason = candidate(fresh, snap, now, manual)
+            cycle, reason, schedule_id = self.select_candidate(fresh, snap, now, manual)
             if not cycle or self.store.get('paused', False):
                 self.status = reason if cycle is None else '已暂停'
                 return self.status
-            detail = {'before': fresh, 'prepared': prepared, 'reason': reason, 'manual': manual}
-            attempt = self.store.claim(account_key, cycle, now, detail)
+            detail = {'before': fresh, 'prepared': prepared, 'reason': reason, 'manual': manual,
+                      'scheduleId': schedule_id}
+            attempt = self.store.claim(account_key, cycle, now, detail, schedule_id)
             if attempt is None:
                 self.status = '本周期已处理'
                 return self.status

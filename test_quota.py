@@ -219,9 +219,9 @@ class HTTPTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.server.shutdown(); cls.server.server_close(); cls.thread.join(); cls.tmp.cleanup()
 
-    def request(self,method,path,headers=None):
+    def request(self,method,path,headers=None,body=None):
         c=http.client.HTTPConnection('127.0.0.1',18769)
-        c.request(method,path,headers=headers or {})
+        c.request(method,path,headers=headers or {},body=body)
         r=c.getresponse(); result=(r.status,r.read().decode()); c.close(); return result
 
     def test_status_and_no_secret(self):

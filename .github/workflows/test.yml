@@ -10,5 +10,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -X utf8 -m unittest -v test_quota
+      - run: python -X utf8 -m unittest discover -v
       - run: python -X utf8 build_release.py
