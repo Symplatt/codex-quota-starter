@@ -39,6 +39,7 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 @media(max-width:620px){.time-heading{gap:5px}.time-glyph{width:15px;height:15px}.time-connector{top:77px;width:23px;height:23px}.time-block:after{top:119px;height:5px}}
 @media(max-width:370px){.time-connector{display:none}}
 .time-pair .clock{transform:translateY(-4px)}
+.startup-badge{font-size:13px;line-height:20px;padding:5px 11px;border-radius:6px;background:#dbeadd;color:#315c46;font-weight:400}#startup-error:empty{display:none}#startup-error:not(:empty){margin-top:8px}
 </style></head><body><main>
 <header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button class="link" type="button" id="open-help" aria-haspopup="dialog">帮助</button></div></header>
 <div class="grid">
@@ -55,7 +56,7 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 <div class="feedback" id="schedule-feedback" role="status"></div></section>
 <section class="panel"><div class="section-head"><h2>运行状态</h2><span class="state-chip" id="status">连接中</span></div><div class="run-row"><div class="actions"><button class="primary" id="trigger" onclick="action('trigger')">手动触发一次</button><button id="pause" onclick="action(paused?'resume':'pause')">暂停</button><button onclick="action('check')">立即检测</button></div><div class="checks small"><span>上次检测 <time id="checked">—</time></span><span>下次检测 <time id="next-check">—</time></span></div></div><details class="status-details"><summary>状态详情</summary><div class="small status" id="status-detail"></div></details><div class="feedback" id="toast" role="status"></div></section>
 <section class="panel"><h2>触发记录</h2><div class="tablewrap"><table><thead><tr><th>时间（北京时间）</th><th>结果</th><th>周期验证</th></tr></thead><tbody id="history"></tbody></table></div><details><summary>查看检测日志</summary><pre id="logs"></pre></details></section>
-<section class="panel"><h2>设置</h2><label style="display:flex;align-items:center;gap:12px"><input type="checkbox" id="autostart" disabled onchange="setAutostart(this.checked)"><span>开机自启动（登录 Windows 后）</span></label><div class="small" id="startup-status"></div></section>
+<section class="panel"><h2>设置</h2><label style="display:flex;align-items:center;gap:12px"><input type="checkbox" id="autostart" disabled onchange="setAutostart(this.checked)"><span>开机自启动</span><span class="startup-badge" id="startup-status" aria-live="polite" hidden></span></label><div class="small" id="startup-error" role="status"></div></section>
 <section class="panel"><h2>软件信息</h2><div class="info"><span>名称：额度启程</span><span>版本：<strong id="version">—</strong></span></div></section>
 </main><dialog id="help-dialog" aria-labelledby="help-title"><div class="help-header"><div><h2 id="help-title">使用帮助</h2><p>额度启程 · 常用操作说明</p></div><button id="close-help" type="button" aria-label="关闭帮助">×</button></div><div class="help-content">__HELP_CONTENT__</div></dialog><script>
 const helpDialog=document.getElementById('help-dialog');
@@ -158,7 +159,7 @@ function saveTime(){const v=$('schedule-time').value;const sendAt=Date.parse(v.l
 $('schedule-form').addEventListener('submit',e=>{e.preventDefault();saveTime();});
 $('schedule-day').addEventListener('invalid',()=>{$('schedule-feedback').textContent='请选择可选起点之后的时间（含起点）';});
 
-function renderAutostart(a){if(startupBusy||!a)return;$('autostart').disabled=!a.available;$('autostart').checked=a.enabled===true;$('startup-status').textContent=a.error|| (a.enabled?'已开启':'已关闭');}
+function renderAutostart(a){if(startupBusy||!a)return;$('autostart').disabled=!a.available;$('autostart').checked=a.enabled===true;$('startup-status').hidden=typeof a.enabled!=='boolean';$('startup-status').textContent=a.enabled?'已启动':'未启动';$('startup-error').textContent=a.error||'';}
 async function setAutostart(enabled){startupBusy=true;$('autostart').disabled=true;await action('autostart/'+(enabled?'enable':'disable'));startupBusy=false;await refresh();}
 restoreStatus();setInterval(countdown,1000);setInterval(refresh,3000);refresh();
 </script></body></html>
