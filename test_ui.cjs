@@ -11,7 +11,7 @@ function setup(storage={}){
   vm.runInContext(source,c);
   return {c,e:id=>elements.get(id),run:code=>vm.runInContext(code,c),respond:async s=>{response({ok:true,json:async()=>s});await vm.runInContext('refreshPromise',c);},requests:()=>requests,storage};
 }
-function status(){const at=Date.parse('2090-10-09T19:09:00+08:00')/1000;return {service:'quota-starter',version:'1.4.4',paused:false,busy:false,status:'等待重置时间',current:{primary:{usedPercent:20,resetsAt:at},checkedAt:at-3600},timing:{serverResetAt:at,minSendAt:at+1,minRefreshAt:at+18060,maxRefreshAt:at+366*86400,sendAt:at+2,estimatedResetAt:at+18002,schedule:null},nextPoll:at,attempts:[],events:[],autostart:{available:true,enabled:true}};}
+function status(){const at=Date.parse('2090-10-09T19:09:00+08:00')/1000;return {service:'quota-starter',version:'1.4.5',paused:false,busy:false,status:'等待重置时间',current:{primary:{usedPercent:20,resetsAt:at},checkedAt:at-3600},timing:{serverResetAt:at,minSendAt:at+1,minRefreshAt:at+18060,maxRefreshAt:at+366*86400,sendAt:at+2,estimatedResetAt:at+18002,schedule:null},nextPoll:at,attempts:[],events:[],autostart:{available:true,enabled:true}};}
 test('slow polling keeps data, countdown and serializes requests',async()=>{
  const p=setup();await p.respond(status());const count=p.e('countdown').textContent;
  p.run('refresh();refresh();refresh();');assert.equal(p.requests(),2);assert.equal(p.e('remaining').textContent,'80%');
@@ -56,12 +56,19 @@ test('open draft survives status polling and upper bound disables later values',
 test('manual date preserves time and rejects invalid or out-of-range dates',async()=>{
  const p=setup();await p.respond(status());
  p.run('draftRefresh=snapshot.timing.minRefreshAt+3600;syncManualDate();');
- p.e('manual-date').value='2091-02-28';p.run('manualDirty=true;applyManualDate();');
+ ['2091','02','28','01','10'].forEach((v,i)=>p.e('manual-'+['year','month','day','hour','minute'][i]).value=v);p.run('manualDirty=true;applyManualDate();');
  assert.equal(p.run('inputTime(draftRefresh)'), '2091-02-28T01:10:00');
  for(const value of ['2091-02-29','2091-13-01','2090-01-01','2091-02-']){
-  p.e('manual-date').value=value;p.run('manualDirty=true;applyManualDate();renderWheels();');
+  value.split('-').forEach((v,i)=>p.e('manual-'+['year','month','day'][i]).value=v);p.run('manualDirty=true;applyManualDate();renderWheels();');
   assert.equal(p.e('save-time').disabled,true);
   assert.equal(p.run('inputTime(draftRefresh)'), '2091-02-28T01:10:00');
  }
- p.run('stepWheel(4,1);');assert.equal(p.e('manual-date').value,'2091-02-28');assert.equal(p.run('manualDirty'),false);
+ p.run('stepWheel(4,1);');assert.equal(p.e('manual-day').value,'28');assert.equal(p.run('manualDirty'),false);
+});
+
+test('manual hour and minute synchronize and reject overflow',async()=>{
+ const p=setup();await p.respond(status());p.run('draftRefresh=snapshot.timing.minRefreshAt;syncManualDate();');
+ p.e('manual-hour').value='13';p.e('manual-minute').value='45';p.run('manualDirty=true;applyManualDate();');
+ assert.equal(p.run('inputTime(draftRefresh)'), '2090-10-10T13:45:00');
+ for(const [key,value] of [['hour','24'],['minute','60']]){p.run('syncManualDate();');p.e('manual-'+key).value=value;p.run('manualDirty=true;applyManualDate();');assert.equal(p.e('save-time').disabled,true);}
 });

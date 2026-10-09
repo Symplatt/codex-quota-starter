@@ -55,7 +55,7 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 .schedule-row .time-panel #schedule-form{align-self:center}.schedule-row .schedule-buttons button{height:30px;min-height:30px;padding:0 12px}
 
 #schedule-feedback{position:fixed;z-index:1000;right:24px;bottom:24px;max-width:min(420px,calc(100vw - 48px));margin:0;padding:10px 16px;border:1px solid #ceddcc;border-radius:10px;background:#f7faf4;box-shadow:0 6px 24px #19352e18;color:#315c3b;overflow-wrap:anywhere;pointer-events:none}
-.manual-date{display:flex;align-items:center;gap:14px;margin:0 0 20px}.manual-date label{font-size:13px;color:#71816f;white-space:nowrap}.manual-date input{width:100%;min-width:0;border:1px solid #dce5d7;border-radius:8px;padding:10px 12px;font:inherit;font-size:15px;color:#19352e;background:#fafbf8;font-variant-numeric:tabular-nums}.manual-date input:focus{outline:2px solid #75947b;outline-offset:2px}.manual-date input[aria-invalid=true]{border-color:#b35b51}
+.manual-date{display:grid;grid-template-columns:1.25fr 1fr 1fr 1.28fr 1fr;gap:10px;margin:0 0 20px}.manual-field{min-width:0}.manual-field:nth-child(4){padding-left:20px}.manual-date label{text-align:center;margin-bottom:8px;font-size:13px;color:#71816f;white-space:nowrap}.manual-date input{width:100%;min-width:0;border:1px solid #dce5d7;border-radius:8px;padding:10px 4px;text-align:center;font:inherit;font-size:15px;color:#19352e;background:#fafbf8;font-variant-numeric:tabular-nums}.manual-date input:focus{outline:2px solid #75947b;outline-offset:2px}.manual-date input[aria-invalid=true]{border-color:#b35b51}
 </style></head><body><main>
 <header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button type="button" id="open-help" aria-label="帮助" title="帮助" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M8.5 8.2a3.5 3.5 0 0 1 7 .3c0 2.5-3.5 2.7-3.5 5.2"/><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"/></svg></button></div></header>
 <div class="grid">
@@ -69,7 +69,7 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 <div class="time-block estimate-block"><div class="time-label"><span class="time-heading"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M16.4 8A6.7 6.7 0 1 0 16 13M16.5 3.5V8H12"/></svg>预计刷新</span></div><div class="clock" id="estimated-reset">—</div><div class="time-footer"><span id="reset-date">—</span></div></div>
 </div>
 <div id="schedule-form"><div class="schedule-buttons"><button id="choose-time" type="button" disabled>选择刷新时间</button><button id="auto-time" type="button" onclick="window.action('schedule/clear','schedule-feedback')">恢复自动</button></div></div>
-<dialog id="refresh-dialog" aria-labelledby="refresh-title"><header class="refresh-header"><h2 id="refresh-title">选择刷新时间</h2><button type="button" id="close-refresh" aria-label="关闭">×</button></header><div class="refresh-date" id="refresh-date"></div><div class="manual-date"><label for="manual-date">手动输入日期</label><input id="manual-date" type="text" placeholder="YYYY-MM-DD" autocomplete="off" spellcheck="false" aria-describedby="refresh-error"></div><div class="wheel-grid" id="wheel-grid"></div><div id="refresh-error" class="feedback" role="status"></div><footer class="refresh-footer"><button type="button" id="cancel-refresh">取消</button><button type="button" class="primary" id="save-time">确定</button></footer></dialog>
+<dialog id="refresh-dialog" aria-labelledby="refresh-title"><header class="refresh-header"><h2 id="refresh-title">选择刷新时间</h2><button type="button" id="close-refresh" aria-label="关闭">×</button></header><div class="refresh-date" id="refresh-date"></div><div class="manual-date"><div class="manual-field"><label for="manual-year">年</label><input id="manual-year" type="text" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="输入年" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-month">月</label><input id="manual-month" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入月" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-day">日</label><input id="manual-day" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入日" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-hour">时</label><input id="manual-hour" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入时" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-minute">分</label><input id="manual-minute" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入分" aria-describedby="refresh-error"></div></div><div class="wheel-grid" id="wheel-grid"></div><div id="refresh-error" class="feedback" role="status"></div><footer class="refresh-footer"><button type="button" id="cancel-refresh">取消</button><button type="button" class="primary" id="save-time">确定</button></footer></dialog>
 </section>
 <section class="panel run-panel"><div class="section-head"><h2>运行状态</h2><span class="state-chip" id="status">连接中</span></div><div class="run-row"><div class="actions"><button class="primary" id="trigger" onclick="action('trigger')">手动触发一次</button><button id="pause" onclick="action(paused?'resume':'pause')">暂停</button><button onclick="action('check')">立即检测</button></div><div class="small status-line" aria-live="polite"><span>状态：</span><span id="status-detail"></span></div><div class="checks small"><span>上次检测 <time id="checked">—</time></span><span>下次检测 <time id="next-check">—</time></span></div></div><div class="feedback" id="toast" role="status"></div></section>
 </div><section class="panel"><h2>触发记录</h2><div class="tablewrap"><table><thead><tr><th>时间（北京时间）</th><th>结果</th><th>周期验证</th></tr></thead><tbody id="history"></tbody></table></div><details><summary>查看检测日志</summary><pre id="logs"></pre></details></section>
@@ -94,19 +94,24 @@ function shortStatus(s){if(s.paused)return '已暂停';if(s.busy)return '处理�
 function renderTiming(t){if(!t)return;timeBlock('send-at','send-date',t.sendAt);timeBlock('estimated-reset','reset-date',t.estimatedResetAt);$('choose-time').disabled=!t.minRefreshAt||snapshot.busy;$('save-time').disabled=!t.minRefreshAt||snapshot.busy;if(refreshDialog.open)renderWheels();countdown();}
 const refreshDialog=$('refresh-dialog');
 let draftRefresh=null,wheelSignature="",manualDirty=false;
-function syncManualDate(){manualDirty=false;$("manual-date").value=inputTime(draftRefresh).slice(0,10);$("manual-date").setAttribute("aria-invalid","false");$("refresh-error").textContent="";}
+const manualKeys=['year','month','day','hour','minute'];
+function syncManualDate(){manualDirty=false;const p=parts(draftRefresh);p[1]++;manualKeys.forEach((key,i)=>{$('manual-'+key).value=i===0?String(p[i]):pad(p[i]);$('manual-'+key).setAttribute('aria-invalid','false');});$('refresh-error').textContent='';}
 function applyManualDate(){
  if(!manualDirty)return true;
- const match=$("manual-date").value.trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
- let message="请输入有效日期，格式为 YYYY-MM-DD";
- if(match){const p=parts(draftRefresh);p[0]=Number(match[1]);p[1]=Number(match[2])-1;p[2]=Number(match[3]);const next=stamp(p),actual=parts(next);
-  if(actual.slice(0,3).every((v,i)=>v===p[i])){const {min,max}=bounds();if(min&&next>=min&&next<=max){draftRefresh=next;syncManualDate();wheelSignature="";renderWheels();return true;}message="该日期与当前时分不在可选范围内，请调整日期或时分";}
+ const values=manualKeys.map(key=>$('manual-'+key).value.trim());
+ let message='请输入有效的年、月、日、时、分';
+ if(values.every((v,i)=>(i===0?/^\d{4}$/:/^\d{1,2}$/).test(v))){
+  const p=values.map(Number);p[1]--;const next=stamp(p),actual=parts(next);
+  if(actual.every((v,i)=>v===p[i])){const {min,max}=bounds();if(min&&next>=min&&next<=max){draftRefresh=next;syncManualDate();wheelSignature='';renderWheels();return true;}message='所选时间不在可选范围内';}
  }
- $("refresh-error").textContent=message;$("manual-date").setAttribute("aria-invalid","true");$("save-time").disabled=true;return false;
+ $('refresh-error').textContent=message;manualKeys.forEach(key=>$('manual-'+key).setAttribute('aria-invalid','true'));$('save-time').disabled=true;return false;
 }
-$("manual-date").addEventListener("input",()=>{manualDirty=true;$("save-time").disabled=true;});
-$("manual-date").addEventListener("change",applyManualDate);
-$("manual-date").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();if(applyManualDate())$("save-time").focus();}});
+manualKeys.forEach(key=>{
+ const input=$('manual-'+key);
+ input.addEventListener('input',()=>{manualDirty=true;$('save-time').disabled=true;});
+ input.addEventListener('change',applyManualDate);
+ input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();if(applyManualDate())$('save-time').focus();}});
+});
 const fields=[['year','年'],['month','月'],['day','日'],['hour','时'],['minute','分']];
 const pad=n=>String(n).padStart(2,'0');
 function bounds(){const t=snapshot?.timing;return {min:t?.minRefreshAt?Math.max(t.minRefreshAt,(Math.floor(Date.now()/60000)+1)*60+18000):null,max:t?.maxRefreshAt};}
