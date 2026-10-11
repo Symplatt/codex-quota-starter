@@ -33,7 +33,7 @@ Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Wor
 
 ### 从旧版本升级
 
-下载新版 Windows ZIP，完整解压后运行新版 **Install.cmd** 即可覆盖安装，无需先卸载。已有历史记录、时间计划、暂停状态和自启设置会保留。
+下载新版 Windows ZIP，完整解压后运行新版 **Install.cmd** 即可覆盖安装，无需先卸载。安装会刷新程序缓存，已有历史记录、时间计划、暂停状态和自启设置会保留。
 
 ## 开始使用
 

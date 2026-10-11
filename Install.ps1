@@ -18,6 +18,12 @@ foreach ($file in $files) {
     if (-not (Test-Path -LiteralPath $from)) { throw "Missing release file: $file" }
 }
 foreach ($file in $files) { Copy-Item -LiteralPath (Join-Path $source $file) -Destination (Join-Path $destination $file) -Force }
+# Reproducible ZIPs reuse timestamps. Equal-sized modules can otherwise load stale
+# bytecode from an earlier release, so rebuild only the allowlisted Python files.
+$pythonSources = @($files | Where-Object { $_ -like '*.py' } | ForEach-Object { Join-Path $destination $_ })
+& $python -m compileall -q -f @pythonSources
+if ($LASTEXITCODE -ne 0) { throw 'Could not refresh installed Python bytecode.' }
+
 # If installing from a locally tested source, preserve its deduplication ledger.
 # Release archives never contain data. Existing installation data is never overwritten.
 $fromDb = Join-Path $source 'data\quota.sqlite3'
