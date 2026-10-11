@@ -249,7 +249,7 @@ class Engine:
         cycle, reason = candidate(snapshot, previous, now, manual)
         return cycle, reason, None
 
-    def tick(self, manual=False):
+    def tick(self, manual=False, *, check_only=False):
         if not self.lock.acquire(blocking=False):
             return '检测或请求正在进行'
         try:
@@ -270,6 +270,11 @@ class Engine:
             self.store.set('current', {'checkedAt': now, 'account': account_key, **snap})
             self.store.log('check', snap, now)
             self.failure_count = 0
+            # A user-requested quota read must never prepare or submit an inference,
+            # even when a scheduled send is due. Keep the automatic poll deadline.
+            if check_only:
+                self.status = '已暂停；当前额度已更新' if self.store.get('paused', False) else '当前额度已更新'
+                return self.status
             self.next_poll = now + max(2, min(60, snap['primary']['resetsAt'] + 2 - now))
             if snap['primary']['resetsAt'] < now - 60:
                 self.next_poll = now + 30
@@ -342,7 +347,8 @@ class Engine:
             self.failure_count += 1
             self.status = '连接/检测失败：' + str(exc)[:1200]
             self.store.log('error', {'message': self.status})
-            self.next_poll = self.clock() + min(300, 5 * 2 ** min(self.failure_count, 6))
+            if not check_only:
+                self.next_poll = self.clock() + min(300, 5 * 2 ** min(self.failure_count, 6))
             self.close()
             return self.status
         finally:

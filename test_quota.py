@@ -7,6 +7,7 @@ import re
 import tempfile
 import threading
 import unittest
+from unittest.mock import Mock, patch
 
 from core import Engine, Store, candidate, evidence, normalize
 from app import create_server
@@ -174,6 +175,51 @@ class QuotaTests(unittest.TestCase):
         fake=FakeRPC([raw(),changed]); self.engine(fake).tick()
         self.assertEqual(fake.sent,0)
 
+    def test_quota_only_read_never_prepares_or_sends(self):
+        scenarios = [('idle', 100, 0, False, None),
+                     ('reset_due', 20002, 10, False, None),
+                     ('schedule_due', 20002, 0, False, {'status': 'pending', 'sendAt': 19000}),
+                     ('paused', 20002, 0, True, None)]
+        for name, now, used, paused, schedule in scenarios:
+            with self.subTest(name=name):
+                self.store.set('paused', paused)
+                self.store.set('schedule', schedule)
+                fake = FakeRPC([raw(20000, used)])
+                fake.prepare = Mock(side_effect=AssertionError('Read-only check prepared a request'))
+                e = self.engine(fake, now)
+                e.next_poll = 22000
+                result = e.tick(check_only=True)
+                self.assertIn('当前额度已更新', result)
+                self.assertEqual(fake.reads, 1)
+                fake.prepare.assert_not_called()
+                self.assertEqual(fake.sent, 0)
+                self.assertEqual(e.next_poll, 22000)
+                self.assertEqual(self.store.get('current')['primary']['usedPercent'], used)
+                self.assertEqual(self.store.get('current')['checkedAt'], now)
+                self.assertEqual(self.store.get('schedule'), schedule)
+                self.assertEqual(self.store.recent('attempts'), [])
+                with self.store.connect() as db:
+                    self.assertEqual(db.execute('SELECT COUNT(*) FROM claims').fetchone()[0], 0)
+
+    def test_quota_only_read_failure_preserves_data_and_deadline(self):
+        previous = {'checkedAt': 50, 'primary': {'usedPercent': 25}}
+        self.store.set('current', previous)
+        fake = FakeRPC([TimeoutError('offline')])
+        e = self.engine(fake)
+        e.next_poll = 22000
+        self.assertIn('连接/检测失败', e.tick(check_only=True))
+        self.assertEqual(e.next_poll, 22000)
+        self.assertEqual(self.store.get('current'), previous)
+        self.assertEqual(fake.sent, 0)
+
+    def test_quota_only_read_does_not_interrupt_busy_engine(self):
+        fake = FakeRPC([raw()])
+        e = self.engine(fake)
+        with e.lock:
+            self.assertEqual(e.tick(check_only=True), '检测或请求正在进行')
+        self.assertEqual(fake.reads, 0)
+        self.assertEqual(fake.sent, 0)
+
     def test_no_guess_when_read_fails(self):
         fake=FakeRPC([TimeoutError('offline')]); e=self.engine(fake); e.tick()
         self.assertEqual(fake.sent,0); self.assertGreater(e.next_poll,20002)
@@ -243,6 +289,21 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.request('POST','/api/trigger',headers)[0],409)
         self.assertEqual(self.request('POST','/api/resume',headers)[0],200)
         self.assertFalse(self.engine.store.get('paused'))
+
+    def test_check_endpoint_uses_quota_only_mode(self):
+        _, page = self.request('GET', '/')
+        token = re.search("const token='([^']+)'", page)[1]
+        headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
+        with patch.object(self.engine, 'tick', return_value='当前额度已更新') as tick:
+            code, body = self.request('POST', '/api/check', headers)
+            self.assertEqual(code, 200)
+            self.assertEqual(json.loads(body)['message'], '当前额度已更新')
+            tick.assert_called_once_with(check_only=True)
+        with patch.object(self.engine, 'tick', return_value='连接/检测失败：offline'):
+            self.assertEqual(self.request('POST', '/api/check', headers)[0], 502)
+        with self.engine.lock:
+            self.assertEqual(self.request('POST', '/api/check', headers)[0], 409)
+        self.assertEqual(self.request('POST', '/api/check')[0], 403)
 
     def test_manual_trigger_returns_result_without_queue(self):
         from unittest.mock import patch

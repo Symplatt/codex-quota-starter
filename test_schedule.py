@@ -168,7 +168,7 @@ class ScheduleHTTPTests(unittest.TestCase):
     def test_help_page_and_undecorated_home(self):
         code,help_page=self.request('GET','/help')
         self.assertEqual(code,200)
-        for text in ['手动触发一次','暂停 / 恢复运行','立即检测','选择刷新时间','恢复自动','v'+VERSION]:
+        for text in ['暂停 / 恢复运行','重新检测','选择时间','恢复自动','v'+VERSION]:
             self.assertIn(text,help_page)
         page=self.request('GET','/')[1]
         self.assertNotIn('LOCAL AUTOMATION',page)

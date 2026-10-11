@@ -103,8 +103,14 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                 result = engine.tick(manual=True)
                 return self.send(200, {'message': result})
             if self.path == '/api/check':
-                engine.next_poll = 0
-                return self.send(202, {'message': '已安排检测'})
+                if engine.lock.locked():
+                    return self.send(409, {'error': '检测或请求正在进行'})
+                result = engine.tick(check_only=True)
+                if result == '检测或请求正在进行':
+                    return self.send(409, {'error': result})
+                if result.startswith('连接/检测失败：'):
+                    return self.send(502, {'error': result})
+                return self.send(200, {'message': result})
             if self.path in ('/api/autostart/enable', '/api/autostart/disable'):
                 action = self.path.rsplit('/', 1)[-1]
                 settings = startup.apply(action)

@@ -21,16 +21,16 @@ test('slow polling keeps data, countdown and serializes requests',async()=>{
 test('busy and empty interim snapshots keep complete timing',async()=>{
  const p=setup();await p.respond(status());const send=p.e('send-at').textContent;
  p.run('refresh()');await p.respond({...status(),busy:true,current:null,timing:{sendAt:null}});
- assert.equal(p.e('remaining').textContent,'80%');assert.equal(p.e('send-at').textContent,send);assert.equal(p.e('trigger').disabled,true);
+ assert.equal(p.e('remaining').textContent,'80%');assert.equal(p.e('send-at').textContent,send);assert.equal(p.e('recheck').disabled,true);
 });
 test('failure preserves values and recovery restores controls',async()=>{
  const p=setup();await p.respond(status());await p.run('fetch=async()=>{throw Error("offline")};refresh();');
  assert.equal(p.e('remaining').textContent,'80%');assert.equal(p.e('status').textContent,'等待重连');
- p.c.next=status();await p.run('fetch=async()=>({ok:true,json:async()=>next});refresh();');assert.equal(p.e('trigger').disabled,false);
+ p.c.next=status();await p.run('fetch=async()=>({ok:true,json:async()=>next});refresh();');assert.equal(p.e('recheck').disabled,false);
 });
 test('reload restores session display without enabling stale actions',async()=>{
  const p=setup();await p.respond(status());const q=setup(p.storage);
- assert.equal(q.e('remaining').textContent,'80%');assert.equal(q.e('trigger').disabled,true);await q.respond(status());
+ assert.equal(q.e('remaining').textContent,'80%');assert.equal(q.e('recheck').disabled,true);await q.respond(status());
 });
 test('refresh picker disables invalid minutes and converts cross-day time',async()=>{
  const p=setup();await p.respond(status());
@@ -71,4 +71,15 @@ test('manual hour and minute synchronize and reject overflow',async()=>{
  p.e('manual-hour').value='13';p.e('manual-minute').value='45';p.run('manualDirty=true;applyManualDate();');
  assert.equal(p.run('inputTime(draftRefresh)'), '2090-10-10T13:45:00');
  for(const [key,value] of [['hour','24'],['minute','60']]){p.run('syncManualDate();');p.e('manual-'+key).value=value;p.run('manualDirty=true;applyManualDate();');assert.equal(p.e('save-time').disabled,true);}
+});
+
+test('quota recheck stays available while paused and never calls the trigger endpoint',async()=>{
+ const p=setup();const state={...status(),paused:true};await p.respond(state);
+ assert.equal(p.e('recheck').disabled,false);
+ const calls=[];p.c.calls=calls;p.c.next=state;
+ await p.run("fetch=async (url,options)=>{calls.push([url,options?.method||'GET']);return {ok:true,json:async()=>options?.method==='POST'?{message:'当前额度已更新'}:next}};recheckQuota();");
+ assert.deepEqual(calls.filter(([url,method])=>method==='POST').map(([url])=>url),['/api/check']);
+ assert.equal(p.e('recheck').disabled,false);
+ await p.run("fetch=async()=>{throw Error('offline')};recheckQuota();");
+ assert.equal(p.e('recheck').disabled,true);
 });
