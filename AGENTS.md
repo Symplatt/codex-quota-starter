@@ -26,6 +26,7 @@
 5. 检查项目配置、锁文件、应用显示、README、CHANGELOG 等版本信息与实际行为一致。
 6. 创建 Git commit，Push 到对应 GitHub 仓库，创建版本 Tag 并发布对应 GitHub Release；Release 内容与 CHANGELOG 一致。
 7. 完成本地安装交付，并核验远程代码、Tag、Release、发布资产及本地应用版本一致。
+8. 如果任务无法一次完成，请始终维护一个 TODO.md / progress.md，记录已完成、当前状态、下一步操作。
 
 不得省略 commit、Push、Tag 或 Release。版本号沿用项目原有格式，项目版本、Git Tag、Release 及安装包必须对应一致。
 
