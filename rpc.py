@@ -34,7 +34,8 @@ def find_codex():
 
 
 class RPC:
-    def __init__(self, cwd):
+    def __init__(self, cwd, deadline=None):
+        self.deadline = deadline
         self.pending = {}
         self.lock = threading.Lock()
         self.write_lock = threading.Lock()
@@ -105,6 +106,11 @@ class RPC:
                     waiting.put({'error': {'message': 'Codex App Server 已断开'}})
 
     def call(self, method, params=None, timeout=45):
+        retry_deadline = getattr(self, 'deadline', None)
+        if retry_deadline is not None:
+            timeout = min(timeout, retry_deadline - time.time())
+            if timeout <= 0:
+                raise TimeoutError('重试总时长已达到上限')
         with self.lock:
             self.sequence += 1
             seq = self.sequence
@@ -172,11 +178,14 @@ class RPC:
         turn_id = result['turn']['id']
         deadline, messages, usage, buckets = time.monotonic() + 120, [], None, []
         while time.monotonic() < deadline:
+            retry_deadline = getattr(self, 'deadline', None)
+            if retry_deadline is not None and time.time() >= retry_deadline:
+                raise TimeoutError('重试总时长已达到上限')
             try:
                 event = self.events.get(timeout=1)
             except queue.Empty:
                 if self.proc.poll() is not None:
-                    raise RuntimeError('发送后 App Server 退出；结果未知，本周期不重试')
+                    raise RuntimeError('发送后 App Server 退出；结果未知')
                 continue
             method, params = event.get('method'), event.get('params', {})
             if method == 'account/rateLimits/updated':
@@ -195,7 +204,7 @@ class RPC:
             self.call('turn/interrupt', {'threadId': prepared['threadId'], 'turnId': turn_id}, timeout=5)
         except Exception:
             pass
-        raise TimeoutError('请求完成通知超时，已尝试中断；本周期不重复发送')
+        raise TimeoutError('请求完成通知超时，已尝试中断')
 
     def close(self):
         if self.proc.poll() is None:

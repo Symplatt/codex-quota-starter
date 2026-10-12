@@ -56,7 +56,8 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                 return self.send(200, {'service': 'quota-starter', 'version': VERSION,
                      'status': engine.status, 'busy': engine.lock.locked(),
                      'paused': engine.store.get('paused', False),
-                     'current': engine.store.get('current'), 'nextPoll': engine.next_poll,
+                     'connection': engine.connection(),
+                     'current': engine.store.get('current'), 'nextPoll': None if engine.connection().get('stopped') else engine.next_poll,
                      'autostart': startup.apply('status'),
                      'timing': engine.timing(),
                      'attempts': engine.store.recent('attempts', 10),
@@ -67,6 +68,12 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
             if (not self.host_ok() or self.headers.get('Origin') != origin
                     or not secrets.compare_digest(self.headers.get('X-Quota-Token', ''), csrf)):
                 return self.send(403, {'error': 'Origin/token rejected'})
+            if self.path == '/api/reconnect':
+                try:
+                    engine.reconnect()
+                    return self.send(200, {'message': '正在重新连接'})
+                except RuntimeError as exc:
+                    return self.send(409, {'error': str(exc)})
             if self.path in ('/api/schedule', '/api/schedule/clear'):
                 try:
                     if self.path.endswith('/clear'):
@@ -141,7 +148,7 @@ def main():
     stop = threading.Event()
     def run():
         while not stop.is_set():
-            if time.time() >= engine.next_poll:
+            if not engine.connection().get('stopped') and time.time() >= engine.next_poll:
                 engine.tick()
             stop.wait(0.5)
     threading.Thread(target=run, daemon=True).start()

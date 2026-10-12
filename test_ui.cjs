@@ -83,3 +83,14 @@ test('quota recheck stays available while paused and never calls the trigger end
  await p.run("fetch=async()=>{throw Error('offline')};recheckQuota();");
  assert.equal(p.e('recheck').disabled,true);
 });
+
+test('stopped connection without quota still exposes reconnect',async()=>{
+ const p=setup();const s=status();s.current=null;s.connection={stopped:true};s.nextPoll=null;s.timing.sendAt=null;s.timing.estimatedResetAt=null;await p.respond(s);
+ assert.equal(p.e('badge').textContent,'已断开');assert.equal(p.e('reconnect').disabled,false);assert.equal(p.e('recheck').disabled,true);
+ assert.equal(p.e('countdown').textContent,'已停止，等待重新连接');
+});
+test('reconnect uses its own endpoint',async()=>{
+ const p=setup();await p.respond(status());const calls=[];p.c.calls=calls;p.c.next=status();
+ await p.run("fetch=async(url,options)=>{calls.push(url);return {ok:true,json:async()=>options?.method==='POST'?{message:'正在重新连接'}:next}};action('reconnect');");
+ assert.equal(calls[0],'/api/reconnect');
+});

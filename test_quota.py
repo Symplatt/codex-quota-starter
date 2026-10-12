@@ -60,7 +60,9 @@ class QuotaTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def engine(self, fake, now=20002):
-        return Engine(self.store, Path(self.tmp.name)/'empty', rpc_factory=lambda _: fake, clock=lambda: now)
+        timer = [now]
+        return Engine(self.store, Path(self.tmp.name)/'empty', rpc_factory=lambda _: fake,
+                      clock=lambda: timer[0], sleeper=lambda seconds: timer.__setitem__(0, timer[0]+seconds))
 
     def test_multi_bucket_is_authoritative(self):
         r = raw(); r['rateLimitsByLimitId'] = {'other': r['rateLimits']}
@@ -126,11 +128,12 @@ class QuotaTests(unittest.TestCase):
         self.engine(other,38004).tick()
         self.assertEqual(other.sent,1)
 
-    def test_timeout_does_not_retry(self):
+    def test_timeout_retries_three_times_then_stops(self):
         fake=FakeRPC([raw()],send_error=True)
         self.engine(fake).tick()
         self.engine(fake,20100).tick(manual=True)
-        self.assertEqual(fake.sent,1)
+        self.assertEqual(fake.sent,4)
+        self.assertTrue(self.store.get('connection')['stopped'])
         self.assertEqual(self.store.recent('attempts')[0]['status'],'unknown')
 
     def test_claim_survives_pre_send_crash(self):
@@ -201,14 +204,14 @@ class QuotaTests(unittest.TestCase):
                 with self.store.connect() as db:
                     self.assertEqual(db.execute('SELECT COUNT(*) FROM claims').fetchone()[0], 0)
 
-    def test_quota_only_read_failure_preserves_data_and_deadline(self):
+    def test_quota_only_read_failure_preserves_data_and_schedules_retry(self):
         previous = {'checkedAt': 50, 'primary': {'usedPercent': 25}}
         self.store.set('current', previous)
         fake = FakeRPC([TimeoutError('offline')])
         e = self.engine(fake)
         e.next_poll = 22000
         self.assertIn('连接/检测失败', e.tick(check_only=True))
-        self.assertEqual(e.next_poll, 22000)
+        self.assertEqual(e.next_poll, 20032)
         self.assertEqual(self.store.get('current'), previous)
         self.assertEqual(fake.sent, 0)
 
@@ -247,6 +250,85 @@ class QuotaTests(unittest.TestCase):
         rpc.call=lambda *args,**kwargs:{'data':[{'model':'gpt-6-astra','hidden':False}]}
         with self.assertRaises(RuntimeError): rpc.choose_model()
 
+
+
+class RetryTests(unittest.TestCase):
+    setUp = QuotaTests.setUp
+    tearDown = QuotaTests.tearDown
+    engine = QuotaTests.engine
+
+    def test_connection_failure_limit_survives_restart(self):
+        fake = FakeRPC([TimeoutError('offline')])
+        for now in (100, 130, 160, 190):
+            self.engine(fake, now).tick()
+        self.assertTrue(self.store.get('connection')['stopped'])
+        self.engine(fake, 999).tick(check_only=True)
+        self.assertEqual(fake.reads, 4)
+
+    def test_total_deadline_prevents_another_connection(self):
+        fake = FakeRPC([TimeoutError('offline')])
+        self.engine(fake, 100).tick()
+        self.engine(fake, 400).tick()
+        self.assertEqual(fake.reads, 1)
+        self.assertTrue(self.store.get('connection')['stopped'])
+
+    def test_interval_cannot_be_bypassed_by_recheck(self):
+        fake = FakeRPC([TimeoutError('offline')])
+        self.engine(fake, 100).tick()
+        self.engine(fake, 101).tick(check_only=True)
+        self.assertEqual(fake.reads, 1)
+        self.assertEqual(self.store.get('connection')['failures'], 1)
+
+    def test_reconnect_preserves_pause_and_guard(self):
+        self.store.set('paused', True)
+        self.store.claim('acct', 'cycle:20000', 100, {})
+        self.store.set('connection', {'stopped': True})
+        fake = FakeRPC([raw()]); e = self.engine(fake, 200)
+        guard = self.store.guard_until()
+        e.reconnect(); e.tick()
+        self.assertFalse(e.connection())
+        self.assertTrue(self.store.get('paused'))
+        self.assertEqual(self.store.guard_until(), guard)
+        self.assertEqual(fake.sent, 0)
+        self.assertEqual(fake.reads, 1)
+
+    def test_send_retry_recovers_and_clears_budget(self):
+        fake = FakeRPC([raw()])
+        fake.send_minimal = Mock(side_effect=[TimeoutError('lost'), {'status': 'completed'}])
+        e = self.engine(fake); e.tick()
+        self.assertEqual(fake.send_minimal.call_count, 2)
+        self.assertFalse(e.connection())
+        self.assertEqual(self.store.recent('attempts')[0]['status'], 'completed')
+
+    def test_send_time_budget_stops_before_retry_limit(self):
+        fake = FakeRPC([raw()], send_error=True)
+        e = self.engine(fake)
+        original = fake.send_minimal
+        def slow(prepared):
+            e.sleeper(160)
+            return original(prepared)
+        fake.send_minimal = slow
+        e.tick()
+        self.assertEqual(fake.sent, 3)
+        self.assertTrue(e.connection()['stopped'])
+
+    def test_retry_checks_weekly_limit(self):
+        fake = FakeRPC([raw(), raw(), raw(20000, 10, 100)], send_error=True)
+        e = self.engine(fake); e.tick()
+        self.assertEqual(fake.sent, 1)
+        self.assertTrue(e.connection()['stopped'])
+
+    def test_restart_during_send_requires_manual_reconnect(self):
+        self.store.set('sending', True)
+        fake = FakeRPC([raw()]); e = self.engine(fake)
+        e.tick()
+        self.assertTrue(e.connection()['stopped'])
+        self.assertEqual(fake.reads, 0)
+
+    def test_reconnect_rejected_while_busy(self):
+        e = self.engine(FakeRPC([raw()]))
+        with e.lock:
+            with self.assertRaises(RuntimeError): e.reconnect()
 
 class HTTPTests(unittest.TestCase):
     @classmethod
@@ -320,6 +402,21 @@ class HTTPTests(unittest.TestCase):
             with patch.object(self.engine,'tick') as tick:
                 self.assertEqual(self.request('POST','/api/trigger',headers)[0],409)
                 tick.assert_not_called()
+
+    def test_reconnect_endpoint_requires_token_and_preserves_pause(self):
+        self.assertEqual(self.request('POST', '/api/reconnect')[0], 403)
+        _, page = self.request('GET', '/')
+        token = re.search("const token='([^']+)'", page)[1]
+        headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
+        self.engine.store.set('connection', {'stopped': True})
+        self.engine.store.set('paused', True)
+        code, _ = self.request('POST', '/api/reconnect', headers)
+        self.assertEqual(code, 200)
+        self.assertFalse(self.engine.connection())
+        self.assertTrue(self.engine.store.get('paused'))
+        with self.engine.lock:
+            self.assertEqual(self.request('POST', '/api/reconnect', headers)[0], 409)
+        self.engine.store.set('paused', False)
 
     def test_autostart_toggle(self):
         _,page=self.request('GET','/')

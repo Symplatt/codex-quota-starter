@@ -1,4 +1,4 @@
-"""Persistent at-most-once scheduler; all times are server Unix seconds/UTC."""
+"""Persistent cycle scheduler with bounded retries; all times are Unix seconds/UTC."""
 import hashlib
 import json
 import math
@@ -12,6 +12,9 @@ import uuid
 from rpc import RPC
 
 WINDOW = 18000
+RETRY_LIMIT = 3
+RETRY_INTERVAL = 30
+RETRY_BUDGET = 300
 
 
 def normalize(raw):
@@ -173,7 +176,7 @@ class Store:
 
 
 class Engine:
-    def __init__(self, store, cwd, rpc_factory=RPC, clock=time.time):
+    def __init__(self, store, cwd, rpc_factory=RPC, clock=time.time, sleeper=time.sleep):
         self.store, self.cwd, self.rpc_factory, self.clock = store, Path(cwd), rpc_factory, clock
         self.cwd.mkdir(parents=True, exist_ok=True)
         self.lock = threading.Lock()
@@ -181,6 +184,63 @@ class Engine:
         self.failure_count = 0
         self.next_poll = 0
         self.status = '正在启动'
+        self.sleeper = sleeper
+        if self.store.get('sending', False):
+            self.stop_connection()
+        retry = self.store.get('connection', {})
+        if retry.get('stopped'):
+            self.status = '已断开，请点击重新连接'
+        elif retry:
+            self.next_poll = retry.get('nextAt', 0)
+            self.status = '连接/检测失败：等待重试'
+
+    def connection(self):
+        return self.store.get('connection', {})
+
+    def reconnect(self):
+        if not self.lock.acquire(blocking=False):
+            raise RuntimeError('检测或请求正在进行')
+        try:
+            self.close()
+            self.store.set('connection', {})
+            self.store.set('sending', False)
+            self.status = '正在重新连接'
+            self.next_poll = 0
+            self.store.log('control', {'action': 'reconnect'})
+        finally:
+            self.lock.release()
+
+    def stop_connection(self):
+        state = self.connection()
+        state['stopped'] = True
+        self.store.set('connection', state)
+        self.next_poll = 0
+        self.status = '已断开，请点击重新连接'
+        self.close()
+
+    def failed_connection(self, error):
+        now = self.clock()
+        state = self.connection()
+        state.setdefault('startedAt', now)
+        state['failures'] = state.get('failures', 0) + 1
+        state['nextAt'] = min(now + RETRY_INTERVAL, state['startedAt'] + RETRY_BUDGET)
+        state['error'] = str(error)[:1200]
+        self.store.set('connection', state)
+        self.close()
+        if state['failures'] > RETRY_LIMIT or now >= state['startedAt'] + RETRY_BUDGET:
+            self.stop_connection()
+        else:
+            self.next_poll = state['nextAt']
+            self.status = f'连接/检测失败：{error}；等待第 {state["failures"]}/{RETRY_LIMIT} 次重试'
+        return self.status
+
+    def connect(self):
+        state = self.connection()
+        deadline = state['startedAt'] + RETRY_BUDGET if state else None
+        if not self.rpc:
+            self.rpc = (RPC(str(self.cwd), deadline=deadline) if self.rpc_factory is RPC
+                        else self.rpc_factory(str(self.cwd)))
+        self.rpc.deadline = deadline
 
     def close(self):
         if self.rpc:
@@ -231,6 +291,8 @@ class Engine:
             if send_at and send_at < self.clock():
                 send_at = None
             mode = 'auto'
+        if self.connection().get('stopped'):
+            send_at = None
         return {'mode': mode, 'schedule': schedule, 'sendAt': send_at,
                 'estimatedResetAt': send_at + WINDOW if send_at else None,
                 'serverResetAt': server,
@@ -254,8 +316,15 @@ class Engine:
             return '检测或请求正在进行'
         try:
             now = self.clock()
-            if not self.rpc:
-                self.rpc = self.rpc_factory(str(self.cwd))
+            retry = self.connection()
+            if retry.get('stopped'):
+                return self.status
+            if retry and now >= retry['startedAt'] + RETRY_BUDGET:
+                self.stop_connection()
+                return self.status
+            if retry and now < retry['nextAt']:
+                return self.status
+            self.connect()
             account = self.rpc.account()
             raw = self.rpc.limits()
             identity = account.get('email') or raw.get('accountId')
@@ -269,7 +338,6 @@ class Engine:
             self.store.set('snapshot:' + account_key, snap)
             self.store.set('current', {'checkedAt': now, 'account': account_key, **snap})
             self.store.log('check', snap, now)
-            self.failure_count = 0
             # A user-requested quota read must never prepare or submit an inference,
             # even when a scheduled send is due. Keep the automatic poll deadline.
             if check_only:
@@ -319,38 +387,86 @@ class Engine:
                 self.status = '本周期已处理'
                 return self.status
             self.status = '正在发送最小请求'
+            self.store.set('sending', True)
             result, after = None, None
+            while True:
+                try:
+                    result = self.rpc.send_minimal(prepared)
+                    status = result['status']
+                    detail['result'] = result
+                    if status != 'completed':
+                        raise RuntimeError('请求未完成：' + status)
+                    break
+                except (TimeoutError, ConnectionError, OSError, RuntimeError) as exc:
+                    status = 'unknown'
+                    detail['error'] = str(exc)[:1200]
+                    self.failed_connection(exc)
+                    detail.setdefault('retries', []).append({'time': self.clock(), 'error': str(exc)[:1200]})
+                    self.store.finish(attempt, account_key, status, detail, None, self.clock())
+                if self.connection().get('stopped'):
+                    break
+                while True:
+                    retry = self.connection()
+                    self.sleeper(max(0, retry['nextAt'] - self.clock()))
+                    if self.clock() >= retry['startedAt'] + RETRY_BUDGET:
+                        self.stop_connection()
+                        break
+                    if self.store.get('paused', False):
+                        self.stop_connection()
+                        break
+                    try:
+                        self.connect()
+                        retry_account = self.rpc.account()
+                        retry_raw = self.rpc.limits()
+                        retry_identity = retry_account.get('email') or retry_raw.get('accountId')
+                        retry_snap = normalize(retry_raw)
+                        if retry_identity != identity or retry_snap['blocked'] or retry_snap['plan'] not in (None, 'plus'):
+                            self.stop_connection()
+                            break
+                        prepared = self.rpc.prepare(self.cwd)
+                        final_raw = self.rpc.limits()
+                        final_identity = self.rpc.account().get('email') or final_raw.get('accountId')
+                        if (final_identity != identity or normalize(final_raw)['blocked']
+                                or self.store.get('paused', False)):
+                            self.stop_connection()
+                            break
+                        self.status = '正在重试小额请求'
+                        break
+                    except Exception as exc:
+                        self.failed_connection(exc)
+                        if self.connection().get('stopped'):
+                            break
+                if self.connection().get('stopped'):
+                    break
             try:
-                result = self.rpc.send_minimal(prepared)
-                status = result['status']
-                detail['result'] = result
-            except Exception as exc:
-                status = 'unknown'
-                detail['error'] = str(exc)[:1200]
-            try:
+                if not self.rpc:
+                    raise RuntimeError('连接已停止')
                 after = normalize(self.rpc.limits())
                 self.store.set('snapshot:' + account_key, after)
                 self.store.set('current', {'checkedAt': self.clock(), 'account': account_key, **after})
             except Exception as exc:
                 detail['afterError'] = str(exc)[:1200]
+                if not self.connection().get('stopped'):
+                    self.failed_connection(exc)
             detail['after'] = after
             detail['evidence'] = evidence(fresh, after, now, status == 'completed')
             detail['finishedAt'] = self.clock()
             self.store.finish(attempt, account_key, status, detail, after, self.clock())
             self.store.log('trigger', {'attempt': attempt, 'status': status, **detail})
+            self.store.set('sending', False)
+            if self.connection().get('stopped') or after is None:
+                return self.status
             self.status = detail['evidence']
             self.next_poll = self.clock() + 30
             # Close ephemeral thread/process to avoid context and tool growth between cycles.
             self.close()
             return self.status
         except Exception as exc:
-            self.failure_count += 1
-            self.status = '连接/检测失败：' + str(exc)[:1200]
+            self.failed_connection(exc)
             self.store.log('error', {'message': self.status})
-            if not check_only:
-                self.next_poll = self.clock() + min(300, 5 * 2 ** min(self.failure_count, 6))
-            self.close()
             return self.status
         finally:
+            if not self.status.startswith('连接/检测失败：') and not self.connection().get('stopped'):
+                self.store.set('connection', {})
             self.store.set('health', {'status': self.status, 'updatedAt': self.clock(), 'nextPoll': self.next_poll})
             self.lock.release()
