@@ -1,6 +1,6 @@
 # 额度启程 · Quota Starter
 
-当前版本：1.5.1
+当前版本：1.5.2
 
 Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Work / Codex 共享额度，并在额度刷新后尝试发送一次简短请求。你也可以选择希望的刷新时间，由软件提前五小时安排请求。
 
@@ -124,3 +124,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Stop.ps1
 - [机制说明](MECHANISM.md)
 - [验证记录](VALIDATION.md)
 - [反馈问题](https://github.com/Symplatt/codex-quota-starter/issues)
+
+断开时保留最后已知的请求发送时间和预计刷新时间，底部显示停止状态；这些时间不会自动更新，须点击“重新连接”恢复检测。服务重启后页面会在保存时自动更新过期凭据，保留所选时间；从旧版本升级后，已打开的旧网页需刷新一次加载新版。

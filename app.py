@@ -52,6 +52,12 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                 return self.send(200, page, 'text/html; charset=utf-8')
             if self.path == '/help':
                 return self.send(200, help_page, 'text/html; charset=utf-8')
+            if self.path == '/api/session':
+                if (self.headers.get('X-Quota-Session') != 'refresh'
+                        or self.headers.get('Origin') not in (None, origin)
+                        or self.headers.get('Sec-Fetch-Site') == 'cross-site'):
+                    return self.send(403, {'error': '请求来源校验失败'})
+                return self.send(200, {'token': csrf})
             if self.path == '/api/status':
                 return self.send(200, {'service': 'quota-starter', 'version': VERSION,
                      'status': engine.status, 'busy': engine.lock.locked(),
@@ -65,9 +71,10 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
             return self.send(404, {'error': 'Not found'})
 
         def do_POST(self):
-            if (not self.host_ok() or self.headers.get('Origin') != origin
-                    or not secrets.compare_digest(self.headers.get('X-Quota-Token', ''), csrf)):
-                return self.send(403, {'error': 'Origin/token rejected'})
+            if not self.host_ok() or self.headers.get('Origin') != origin:
+                return self.send(403, {'error': '请求来源校验失败，请从本机软件页面操作'})
+            if not secrets.compare_digest(self.headers.get('X-Quota-Token', ''), csrf):
+                return self.send(403, {'code': 'stale_session', 'error': '页面连接凭据已过期，请刷新页面后重试'})
             if self.path == '/api/reconnect':
                 try:
                     engine.reconnect()

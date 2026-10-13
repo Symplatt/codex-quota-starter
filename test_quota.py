@@ -291,6 +291,17 @@ class RetryTests(unittest.TestCase):
         self.assertEqual(fake.reads, 2)
         self.assertEqual(fake.deadline, 280)
 
+    def test_disconnected_expired_plan_remains_visible_without_connecting(self):
+        self.store.set('current', {'primary': {'resetsAt': 100}})
+        self.store.set('connection', {'stopped': True})
+        fake = FakeRPC([raw()]); e = self.engine(fake, 500)
+        self.assertEqual(e.timing()['sendAt'], 102)
+        self.assertEqual(e.timing()['estimatedResetAt'], 18102)
+        e.tick()
+        self.assertEqual(fake.reads, 0)
+        self.store.set('schedule', {'status': 'pending', 'sendAt': 600})
+        self.assertEqual(e.timing()['sendAt'], 600)
+
     def test_reconnect_preserves_pause_and_guard(self):
         self.store.set('paused', True)
         self.store.claim('acct', 'cycle:20000', 100, {})
@@ -376,7 +387,7 @@ class HTTPTests(unittest.TestCase):
 
     def test_pause_resume_persists(self):
         _,page=self.request('GET','/')
-        token=re.search("const token='([^']+)'",page)[1]
+        token=re.search("(?:const|let) token='([^']+)'",page)[1]
         headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':token}
         self.assertEqual(self.request('POST','/api/pause',headers)[0],200)
         self.assertTrue(self.engine.store.get('paused'))
@@ -386,7 +397,7 @@ class HTTPTests(unittest.TestCase):
 
     def test_check_endpoint_uses_quota_only_mode(self):
         _, page = self.request('GET', '/')
-        token = re.search("const token='([^']+)'", page)[1]
+        token = re.search("(?:const|let) token='([^']+)'", page)[1]
         headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
         with patch.object(self.engine, 'tick', return_value='当前额度已更新') as tick:
             code, body = self.request('POST', '/api/check', headers)
@@ -402,7 +413,7 @@ class HTTPTests(unittest.TestCase):
     def test_manual_trigger_returns_result_without_queue(self):
         from unittest.mock import patch
         _,page=self.request('GET','/')
-        token=re.search("const token='([^']+)'",page)[1]
+        token=re.search("(?:const|let) token='([^']+)'",page)[1]
         headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':token}
         self.engine.store.set('paused',False)
         with patch.object(self.engine,'tick',return_value='本周期已处理') as tick:
@@ -418,7 +429,7 @@ class HTTPTests(unittest.TestCase):
     def test_reconnect_endpoint_requires_token_and_preserves_pause(self):
         self.assertEqual(self.request('POST', '/api/reconnect')[0], 403)
         _, page = self.request('GET', '/')
-        token = re.search("const token='([^']+)'", page)[1]
+        token = re.search("(?:const|let) token='([^']+)'", page)[1]
         headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
         self.engine.store.set('connection', {'stopped': True})
         self.engine.store.set('paused', True)
@@ -430,9 +441,24 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(self.request('POST', '/api/reconnect', headers)[0], 409)
         self.engine.store.set('paused', False)
 
+    def test_expired_token_can_refresh_without_weakening_origin_check(self):
+        headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': 'expired'}
+        code, body = self.request('POST', '/api/schedule/clear', headers)
+        self.assertEqual(code, 403)
+        self.assertEqual(json.loads(body)['code'], 'stale_session')
+        self.assertEqual(self.request('GET', '/api/session')[0], 403)
+        self.assertEqual(self.request('GET', '/api/session', {'X-Quota-Session': 'refresh', 'Origin': 'https://evil.example'})[0], 403)
+        self.assertEqual(self.request('GET', '/api/session', {'X-Quota-Session': 'refresh', 'Sec-Fetch-Site': 'cross-site'})[0], 403)
+        code, body = self.request('GET', '/api/session', {'X-Quota-Session': 'refresh'})
+        self.assertEqual(code, 200)
+        headers['X-Quota-Token'] = json.loads(body)['token']
+        self.assertEqual(self.request('POST', '/api/schedule/clear', headers)[0], 200)
+        headers['Origin'] = 'https://evil.example'
+        self.assertEqual(self.request('POST', '/api/schedule/clear', headers)[0], 403)
+
     def test_autostart_toggle(self):
         _,page=self.request('GET','/')
-        token=re.search("const token='([^']+)'",page)[1]
+        token=re.search("(?:const|let) token='([^']+)'",page)[1]
         headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':token}
         self.assertEqual(self.request('POST','/api/autostart/disable',headers)[0],200)
         self.assertFalse(json.loads(self.request('GET','/api/status')[1])['autostart']['enabled'])

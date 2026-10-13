@@ -291,11 +291,7 @@ class Engine:
             mode = 'manual'
         else:
             send_at = max(server + 2, self.store.guard_until()) if server else None
-            if send_at and send_at < self.clock():
-                send_at = None
             mode = 'auto'
-        if self.connection().get('stopped'):
-            send_at = None
         return {'mode': mode, 'schedule': schedule, 'sendAt': send_at,
                 'estimatedResetAt': send_at + WINDOW if send_at else None,
                 'serverResetAt': server,

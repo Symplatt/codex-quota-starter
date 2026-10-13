@@ -106,7 +106,7 @@ document.getElementById('close-help').addEventListener('click',()=>helpDialog.cl
 let backdropDown=false;
 helpDialog.addEventListener('pointerdown',e=>{const r=helpDialog.getBoundingClientRect();backdropDown=e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom;});
 helpDialog.addEventListener('click',e=>{const r=helpDialog.getBoundingClientRect();if(backdropDown&&(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom))helpDialog.close();backdropDown=false;});
-const token='__CSRF__';let paused=false,snapshot=null,startupBusy=false,refreshPromise=null,recheckBusy=false,connected=false;
+let token='__CSRF__';let paused=false,snapshot=null,startupBusy=false,refreshPromise=null,recheckBusy=false,connected=false;
 const cacheKey='quota-starter:last-status:v1';
 const $=id=>document.getElementById(id);
 const time=s=>s?new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(s*1000)):'—';
@@ -229,7 +229,24 @@ function showFeedback(id,message,success=false){
  }
 }
 async function recheckQuota(){if(recheckBusy)return;recheckBusy=true;$('recheck').disabled=true;try{await action('check');}finally{recheckBusy=false;$('recheck').disabled=!connected||!snapshot||snapshot.busy||Boolean(snapshot.connection?.stopped);}}
-async function action(name,feedback='toast',body){try{const r=await fetch('/api/'+name,{method:'POST',headers:{'X-Quota-Token':token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const d=await r.json();showFeedback(feedback,d.message||d.error,r.ok);if(refreshPromise)await refreshPromise;await refresh();return r.ok;}catch(e){showOffline();showFeedback(feedback,'操作失败：本地服务不可达');return false;}}
+async function action(name,feedback='toast',body){
+ try{
+  const payload=body===undefined?undefined:JSON.stringify(body);
+  const send=()=>fetch('/api/'+name,{method:'POST',headers:{'X-Quota-Token':token,'Content-Type':'application/json'},body:payload});
+  let r=await send(),d=await r.json();
+  if(r.status===403&&d.code==='stale_session'){
+   const session=await fetch('/api/session',{headers:{'X-Quota-Session':'refresh'},cache:'no-store'});
+   if(!session.ok)throw Error('session refresh failed');
+   const fresh=await session.json();
+   if(typeof fresh.token!=='string'||!fresh.token)throw Error('invalid session');
+   token=fresh.token;
+   r=await send();d=await r.json();
+  }
+  showFeedback(feedback,d.message||d.error,r.ok);
+  if(refreshPromise)await refreshPromise;
+  await refresh();return r.ok;
+ }catch(e){showOffline();showFeedback(feedback,'操作失败，请检查本地服务后重试');return false;}
+}
 async function saveTime(){if(!applyManualDate())return;const {min,max}=bounds();if(!min||draftRefresh<min||draftRefresh>max){$('refresh-error').textContent='请选择可选范围内的刷新时间';renderWheels();return;}$('save-time').disabled=true;if(await action('schedule','refresh-error',{refreshAt:draftRefresh})){refreshDialog.close();showFeedback('schedule-feedback','已保存刷新时间',true);}else renderWheels();}
 $('save-time').addEventListener('click',saveTime);
 function renderAutostart(a){if(startupBusy||!a)return;$('autostart').disabled=!a.available;$('autostart').checked=a.enabled===true;$('startup-error').textContent=a.error||'';}

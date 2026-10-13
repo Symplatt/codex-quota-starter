@@ -99,3 +99,19 @@ test('attempt counter includes initial try in five-attempt limit',async()=>{
  const p=setup();await p.respond({...status(),connection:{failures:4}});
  assert.equal(p.e('status').textContent,'等待第 5/5 次尝试');
 });
+
+test('expired session refreshes token and retries same draft once',async()=>{
+ const p=setup();await p.respond(status());const calls=[];p.c.calls=calls;p.c.next=status();
+ await p.run(`let posts=0;fetch=async(url,options)=>{
+ calls.push({url,body:options?.body,token:options?.headers?.['X-Quota-Token']});
+ if(url==='/api/session')return {ok:true,json:async()=>({token:'new-token'})};
+ if(options?.method==='POST'){posts++;return posts===1?{ok:false,status:403,json:async()=>({code:'stale_session'})}:{ok:true,json:async()=>({message:'已保存时间'})};}
+ return {ok:true,json:async()=>next};};action('schedule','refresh-error',{refreshAt:12345});`);
+ const posts=calls.filter(c=>c.url==='/api/schedule');assert.equal(posts.length,2);assert.equal(posts[0].body,posts[1].body);assert.equal(posts[1].token,'new-token');
+ assert.equal(p.e('refresh-error').textContent,'已保存时间');
+});
+test('origin rejection is not retried',async()=>{
+ const p=setup();await p.respond(status());const calls=[];p.c.calls=calls;p.c.next=status();
+ await p.run(`fetch=async(url,options)=>{calls.push(url);return options?.method==='POST'?{ok:false,status:403,json:async()=>({error:'请求来源校验失败'})}:{ok:true,json:async()=>next}};action('schedule');`);
+ assert.equal(calls.filter(u=>u==='/api/schedule').length,1);assert.ok(!calls.includes('/api/session'));
+});

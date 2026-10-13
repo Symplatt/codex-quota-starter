@@ -138,7 +138,7 @@ class ScheduleHTTPTests(unittest.TestCase):
         self.engine.store.set('current',{'primary':{'resetsAt':int(time.time())+3600}})
     def test_schedule_save_clear_and_status(self):
         _,page=self.request('GET','/')
-        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':re.search("const token='([^']+)'",page)[1]}
+        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':re.search("(?:const|let) token='([^']+)'",page)[1]}
         target=(int(time.time())//60+1440)*60
         self.assertEqual(self.request('POST','/api/schedule',headers,json.dumps({'refreshAt':target}))[0],200)
         status=json.loads(self.request('GET','/api/status')[1])
@@ -150,14 +150,14 @@ class ScheduleHTTPTests(unittest.TestCase):
 
     def test_schedule_endpoint_validation(self):
         _,page=self.request('GET','/')
-        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':re.search("const token='([^']+)'",page)[1]}
+        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':re.search("(?:const|let) token='([^']+)'",page)[1]}
         for body in ['{}','null','[]','bad','{"sendAt":null}','{"sendAt":-1}']:
             self.assertEqual(self.request('POST','/api/schedule',headers,body)[0],400)
         self.assertEqual(self.request('POST','/api/schedule',body='{}')[0],403)
 
     def test_http_rejects_before_and_equal_reset(self):
         _,page=self.request('GET','/')
-        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':re.search("const token='([^']+)'",page)[1]}
+        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':re.search("(?:const|let) token='([^']+)'",page)[1]}
         reset=self.engine.store.get('current')['primary']['resetsAt']
         for value in [(reset+18000)//60*60-60,(reset+18000)//60*60]:
             code,body=self.request('POST','/api/schedule',headers,json.dumps({'refreshAt':value}))
