@@ -94,3 +94,8 @@ test('reconnect uses its own endpoint',async()=>{
  await p.run("fetch=async(url,options)=>{calls.push(url);return {ok:true,json:async()=>options?.method==='POST'?{message:'正在重新连接'}:next}};action('reconnect');");
  assert.equal(calls[0],'/api/reconnect');
 });
+
+test('attempt counter includes initial try in five-attempt limit',async()=>{
+ const p=setup();await p.respond({...status(),connection:{failures:4}});
+ assert.equal(p.e('status').textContent,'等待第 5/5 次尝试');
+});

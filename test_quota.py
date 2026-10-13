@@ -128,11 +128,11 @@ class QuotaTests(unittest.TestCase):
         self.engine(other,38004).tick()
         self.assertEqual(other.sent,1)
 
-    def test_timeout_retries_three_times_then_stops(self):
+    def test_timeout_attempts_five_times_then_stops(self):
         fake=FakeRPC([raw()],send_error=True)
         self.engine(fake).tick()
         self.engine(fake,20100).tick(manual=True)
-        self.assertEqual(fake.sent,4)
+        self.assertEqual(fake.sent,5)
         self.assertTrue(self.store.get('connection')['stopped'])
         self.assertEqual(self.store.recent('attempts')[0]['status'],'unknown')
 
@@ -211,7 +211,7 @@ class QuotaTests(unittest.TestCase):
         e = self.engine(fake)
         e.next_poll = 22000
         self.assertIn('连接/检测失败', e.tick(check_only=True))
-        self.assertEqual(e.next_poll, 20032)
+        self.assertEqual(e.next_poll, 20022)
         self.assertEqual(self.store.get('current'), previous)
         self.assertEqual(fake.sent, 0)
 
@@ -259,16 +259,16 @@ class RetryTests(unittest.TestCase):
 
     def test_connection_failure_limit_survives_restart(self):
         fake = FakeRPC([TimeoutError('offline')])
-        for now in (100, 130, 160, 190):
+        for now in (100, 120, 140, 160, 180):
             self.engine(fake, now).tick()
         self.assertTrue(self.store.get('connection')['stopped'])
         self.engine(fake, 999).tick(check_only=True)
-        self.assertEqual(fake.reads, 4)
+        self.assertEqual(fake.reads, 5)
 
     def test_total_deadline_prevents_another_connection(self):
         fake = FakeRPC([TimeoutError('offline')])
         self.engine(fake, 100).tick()
-        self.engine(fake, 400).tick()
+        self.engine(fake, 280).tick()
         self.assertEqual(fake.reads, 1)
         self.assertTrue(self.store.get('connection')['stopped'])
 
@@ -278,6 +278,18 @@ class RetryTests(unittest.TestCase):
         self.engine(fake, 101).tick(check_only=True)
         self.assertEqual(fake.reads, 1)
         self.assertEqual(self.store.get('connection')['failures'], 1)
+
+    def test_first_attempt_has_deadline_and_retry_waits_twenty_seconds(self):
+        fake = FakeRPC([TimeoutError('offline')])
+        e = self.engine(fake, 100)
+        e.tick()
+        self.assertEqual(fake.deadline, 280)
+        self.assertEqual(e.next_poll, 120)
+        self.engine(fake, 119).tick()
+        self.assertEqual(fake.reads, 1)
+        self.engine(fake, 120).tick()
+        self.assertEqual(fake.reads, 2)
+        self.assertEqual(fake.deadline, 280)
 
     def test_reconnect_preserves_pause_and_guard(self):
         self.store.set('paused', True)
@@ -309,7 +321,7 @@ class RetryTests(unittest.TestCase):
             return original(prepared)
         fake.send_minimal = slow
         e.tick()
-        self.assertEqual(fake.sent, 3)
+        self.assertEqual(fake.sent, 1)
         self.assertTrue(e.connection()['stopped'])
 
     def test_retry_checks_weekly_limit(self):

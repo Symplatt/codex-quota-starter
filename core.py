@@ -12,9 +12,9 @@ import uuid
 from rpc import RPC
 
 WINDOW = 18000
-RETRY_LIMIT = 3
-RETRY_INTERVAL = 30
-RETRY_BUDGET = 300
+ATTEMPT_LIMIT = 5
+RETRY_INTERVAL = 20
+RETRY_BUDGET = 180
 
 
 def normalize(raw):
@@ -227,16 +227,19 @@ class Engine:
         state['error'] = str(error)[:1200]
         self.store.set('connection', state)
         self.close()
-        if state['failures'] > RETRY_LIMIT or now >= state['startedAt'] + RETRY_BUDGET:
+        if state['failures'] >= ATTEMPT_LIMIT or now >= state['startedAt'] + RETRY_BUDGET:
             self.stop_connection()
         else:
             self.next_poll = state['nextAt']
-            self.status = f'连接/检测失败：{error}；等待第 {state["failures"]}/{RETRY_LIMIT} 次重试'
+            self.status = f'连接/检测失败：{error}；等待第 {state["failures"] + 1}/{ATTEMPT_LIMIT} 次尝试'
         return self.status
 
     def connect(self):
         state = self.connection()
-        deadline = state['startedAt'] + RETRY_BUDGET if state else None
+        if not state:
+            state = {'startedAt': self.clock(), 'failures': 0, 'nextAt': self.clock()}
+            self.store.set('connection', state)
+        deadline = state['startedAt'] + RETRY_BUDGET
         if not self.rpc:
             self.rpc = (RPC(str(self.cwd), deadline=deadline) if self.rpc_factory is RPC
                         else self.rpc_factory(str(self.cwd)))

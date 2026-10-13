@@ -102,7 +102,7 @@ class ScheduleTests(unittest.TestCase):
     def test_unknown_scheduled_result_stops_after_bounded_retries(self):
         fake=FakeRPC([raw()],send_error=True); self.engine(fake,100).set_schedule(150)
         self.engine(fake,150).tick(); self.engine(fake,151).tick()
-        self.assertEqual(fake.sent,4)
+        self.assertEqual(fake.sent,5)
         self.assertEqual(self.store.get('schedule')['status'],'submitted')
 
     def test_refresh_target_converts_to_send_time_and_persists(self):
