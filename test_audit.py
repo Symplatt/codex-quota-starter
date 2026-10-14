@@ -57,7 +57,7 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(fake.sent, 0)
         self.assertTrue(e.linked)
         self.assertEqual(e.phase, 'idle')
-        self.assertEqual(e.next_poll, 115)
+        self.assertEqual(e.next_poll, 170)
 
     def test_final_preflight_cancels_when_reset_moves(self):
         fake = FakeRPC([raw(100), raw(300)])
@@ -99,7 +99,7 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(fake.sent, 0)
         self.assertEqual(fake.reads, 1)
         self.assertIsNone(e.read_requested)
-        self.assertEqual(e.next_poll, 140)
+        self.assertEqual(e.next_poll, 170)
 
     def test_actual_read_completion_time_and_connection_phase(self):
         fake = FakeRPC([raw(100)])
@@ -165,6 +165,75 @@ class AuditTests(unittest.TestCase):
         for value in [None, [], {'rateLimitsByLimitId': []}, {'rateLimits': []}]:
             with self.subTest(value=value), self.assertRaises(ValueError):
                 normalize(value)
+
+
+class PollIntervalTests(unittest.TestCase):
+    setUp = fixtures.QuotaTests.setUp
+    tearDown = fixtures.QuotaTests.tearDown
+    engine = fixtures.QuotaTests.engine
+
+    def test_all_idle_states_wait_sixty_seconds(self):
+        cases = [('active', raw(300), False), ('near_reset', raw(111), False),
+                 ('at_reset', raw(110, 100), False), ('stale_reset', raw(1, 100), False),
+                 ('weekly_limit', raw(100, 10, 100), False), ('paused', raw(100), True)]
+        for name, value, paused in cases:
+            with self.subTest(name=name):
+                self.store.set('paused', paused)
+                fake = FakeRPC([value])
+                e = self.engine(fake, 110)
+                e.tick()
+                self.assertEqual(e.next_poll, 170)
+                self.assertEqual(fake.sent, 0)
+
+    def test_schedule_changes_preserve_poll_and_due_plan_waits_for_it(self):
+        fake = FakeRPC([raw(149)])
+        e = self.engine(fake, 100)
+        e.tick()
+        e.set_schedule(150)
+        self.assertEqual(e.next_poll, 160)
+        e.sleeper(50)
+        # Match the background scheduler's wake-up condition.
+        if e.clock() >= e.next_poll:
+            e.tick()
+        self.assertEqual(fake.reads, 1)
+        self.assertEqual(fake.sent, 0)
+        e.sleeper(10)
+        if e.clock() >= e.next_poll:
+            e.tick()
+        self.assertEqual(fake.sent, 1)
+        self.assertEqual(e.next_poll, 220)
+        e.set_schedule()
+        self.assertEqual(e.next_poll, 220)
+
+    def test_claimed_boundary_does_not_shorten_poll(self):
+        e = self.engine(FakeRPC([raw(100)]), 110)
+        self.store.claim('prior', 'after:100', 1, {})
+        self.store.set('guard:prior', 0)
+        self.store.set('sending', False)
+        e.tick()
+        self.assertIn('边界已处理', e.status)
+        self.assertEqual(e.next_poll, 170)
+
+    def test_successful_send_uses_completion_time_for_next_poll(self):
+        fake = FakeRPC([raw(100), raw(100), raw(18120)])
+        e = self.engine(fake, 110)
+        original = fake.send_minimal
+        def delayed(prepared):
+            e.sleeper(10)
+            return original(prepared)
+        fake.send_minimal = delayed
+        e.tick()
+        self.assertEqual(fake.sent, 1)
+        self.assertEqual(e.next_poll, 180)
+        self.assertEqual(e.next_poll - self.store.get('current')['checkedAt'], 60)
+
+    def test_schedule_edit_does_not_bypass_failure_retry(self):
+        self.store.set('current', {'primary': {'resetsAt': 149}})
+        e = self.engine(FakeRPC([TimeoutError('offline')]), 110)
+        e.tick()
+        e.set_schedule(200)
+        self.assertEqual(e.next_poll, 120)
+        self.assertEqual(e.connection()['failures'], 1)
 
 
 class RPCTests(unittest.TestCase):

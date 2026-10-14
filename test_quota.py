@@ -196,7 +196,7 @@ class QuotaTests(unittest.TestCase):
                 self.assertEqual(fake.reads, 1)
                 fake.prepare.assert_not_called()
                 self.assertEqual(fake.sent, 0)
-                self.assertEqual(e.next_poll, 22000)
+                self.assertEqual(e.next_poll, now + 60)
                 self.assertEqual(self.store.get('current')['primary']['usedPercent'], used)
                 self.assertEqual(self.store.get('current')['checkedAt'], now)
                 self.assertEqual(self.store.get('schedule')['status'], 'cancelled') if schedule else self.assertIsNone(self.store.get('schedule'))

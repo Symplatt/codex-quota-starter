@@ -12,6 +12,7 @@ import uuid
 from rpc import RPC
 
 WINDOW = 18000
+POLL_INTERVAL = 60
 ATTEMPT_LIMIT = 5
 RETRY_INTERVAL = 10
 RETRY_BUDGET = 60
@@ -352,7 +353,6 @@ class Engine:
                 'createdAt': self.clock(), 'status': 'pending'}
             self.store.set('schedule', schedule)
             self.store.log('schedule', schedule)
-            self.next_poll = 0
             return schedule
         finally:
             self.lock.release()
@@ -392,6 +392,9 @@ class Engine:
 
     def _ok(self, status):
         self.store.set('connection', {})
+        # All successful operations resume the same periodic cadence. Only explicit
+        # checks/reconnects and failed-operation retries may wake it sooner.
+        self.next_poll = self.clock() + POLL_INTERVAL
         if self.rpc:
             self.rpc.deadline = None
         self._phase('idle', status)
@@ -522,24 +525,16 @@ class Engine:
             self.store.log('check', {**snap, 'durationSeconds': round(now - started, 3)}, now)
             if requested or check_only:
                 self.read_requested = None
-                if requested:
-                    self.next_poll = now + (5 if requested == 'reconnect' else 30)
                 message = '已连接，额度已更新' if requested == 'reconnect' else '当前额度已更新'
                 if self.store.get('paused', False):
                     message = '已暂停；' + message
                 if cancelled:
                     message += '；计划已取消：服务器刷新时间已达到或超过计划发送时间'
                 return self._ok(message)
-            self.next_poll = now + max(2, min(60, snap['primary']['resetsAt'] + 2 - now))
-            if snap['primary']['resetsAt'] < now - 60:
-                self.next_poll = now + 30
             if cancelled:
                 return self._ok('计划已取消：服务器刷新时间已达到或超过计划发送时间')
             if self.store.get('paused', False):
                 return self._ok('已暂停自动及手动发送（继续读取额度）')
-            schedule = self.store.get('schedule')
-            if schedule and schedule['status'] == 'pending' and schedule['sendAt'] > now:
-                self.next_poll = min(self.next_poll, schedule['sendAt'])
             cycle, reason, schedule_id = self.select_candidate(snap, previous, now, manual)
             if not cycle:
                 return self._ok(reason)
@@ -548,7 +543,6 @@ class Engine:
             with self.store.connect() as db:
                 claimed = db.execute('SELECT 1 FROM claims WHERE cycle=?', (cycle,)).fetchone()
             if claimed:
-                self.next_poll = now + 30
                 return self._ok('该重置边界已处理，等待服务器给出新窗口')
             self._phase('preparing', '已连接，正在准备小额请求')
             prepared = self.rpc.prepare(self.cwd)
@@ -585,7 +579,6 @@ class Engine:
             attempt = None
             if self.connection().get('stopped') or detail.get('afterError'):
                 return self.status
-            self.next_poll = self.clock() + 30
             return self._ok(detail.get('stoppedReason') or detail['evidence'])
         except Exception as exc:
             if attempt is not None:

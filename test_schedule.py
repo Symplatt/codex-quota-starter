@@ -18,7 +18,7 @@ class ScheduleTests(unittest.TestCase):
         fake=FakeRPC([raw(149,0)])
         e=self.engine(fake,100); e.set_schedule(150); e.tick()
         self.assertEqual(fake.sent,0)
-        self.assertEqual(e.next_poll,150)
+        self.assertEqual(e.next_poll,160)
         self.assertEqual(e.timing()['estimatedResetAt'],18150)
 
     def test_due_schedule_sends_once_and_survives_restart(self):
