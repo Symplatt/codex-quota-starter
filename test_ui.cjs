@@ -120,7 +120,7 @@ test('sending status updates live quota while showing connected state',async()=>
  const p=setup();await p.respond(status());
  p.run('refresh()');const s={...status(),linked:true,busy:true,phase:'sending'};
  s.current.primary.usedPercent=40;await p.respond(s);
- assert.equal(p.e('remaining').textContent,'60%');assert.equal(p.e('badge').textContent,'已连接');
+ assert.equal(p.e('remaining').textContent,'60%');assert.equal(p.e('badge').textContent,'后台运行');
  assert.equal(p.e('status').textContent,'正在发送小额请求');assert.equal(p.e('reconnect').disabled,true);
  assert.equal(p.e('pause').disabled,false);
 });

@@ -213,7 +213,7 @@ function renderStatus(s){
  if(!s.current&&snapshot?.current)s={...s,current:snapshot.current,timing:snapshot.timing};
  snapshot=s;paused=s.paused;
  $('version').textContent='v'+s.version;
- $('badge').textContent=s.connection?.stopped?'已断开':s.linked?'已连接':s.busy?'正在连接':paused?'已暂停':'后台运行';
+ $('badge').textContent=s.connection?.stopped?'已断开':s.linked?'后台运行':s.busy?'正在连接':paused?'已暂停':'后台运行';
  $('pause').textContent=paused?'恢复运行':'暂停';
  $('status').textContent=shortStatus(s);$('status-detail').textContent=s.status;$('status').title=s.status;
  const c=s.current;
