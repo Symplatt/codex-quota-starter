@@ -108,6 +108,7 @@ helpDialog.addEventListener('pointerdown',e=>{const r=helpDialog.getBoundingClie
 helpDialog.addEventListener('click',e=>{const r=helpDialog.getBoundingClientRect();if(backdropDown&&(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom))helpDialog.close();backdropDown=false;});
 let token='__CSRF__';let paused=false,snapshot=null,startupBusy=false,refreshPromise=null,recheckBusy=false,connected=false;
 const cacheKey='quota-starter:last-status:v1';
+const pendingActions=new Set();
 const $=id=>document.getElementById(id);
 const time=s=>s?new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(s*1000)):'—';
 const inputTime=s=>new Date(s*1000+8*3600000).toISOString().slice(0,19);
@@ -115,8 +116,36 @@ const labels={completed:'已完成',failed:'失败',interrupted:'已中断',unkn
 const clockTime=s=>s?time(s).split(' ')[1]:'—';
 function cardTime(id,value){const target=$(id);target.textContent=time(value);if(!value)return;const date=document.createElement('span');date.className='card-date';date.textContent=time(value).split(' ')[0];target.replaceChildren(date,' '+clockTime(value));}
 function timeBlock(id,dateId,value){$(id).textContent=clockTime(value);$(dateId).textContent=value?time(value).split(' ')[0]:'—';}
-function shortStatus(s){if(s.connection?.stopped)return '已断开，等待重新连接';if(s.connection?.failures)return '等待第 '+(s.connection.failures+1)+'/5 次尝试';if(s.paused)return '已暂停';if(s.busy)return '处理中';const v=s.status;if(v==='当前额度已更新')return '检测完成';if(v.startsWith('连接/检测失败'))return '检测失败';if(v.includes('额度受限'))return '额度受限';if(v.includes('手动设定'))return '等待计划';if(v.includes('本周期')||v.includes('已处理'))return '本轮已处理';if(v.includes('重置时间')||v.includes('窗口已变化'))return '等待刷新';if(v.includes('请求完成')||v.includes('观察到'))return '已完成';if(v.includes('未确认'))return '待核实';return '检测中';}
-function renderTiming(t){if(!t)return;timeBlock('send-at','send-date',t.sendAt);timeBlock('estimated-reset','reset-date',t.estimatedResetAt);$('choose-time').disabled=!t.minRefreshAt||snapshot.busy;$('save-time').disabled=!t.minRefreshAt||snapshot.busy;if(refreshDialog.open)renderWheels();countdown();}
+function shortStatus(s){
+ if(s.connection?.stopped)return '已断开，等待重新连接';
+ const phases={connecting:'正在连接',checking:'正在检测额度',preparing:'正在准备小额请求',sending:'正在发送小额请求',verifying:'正在核验请求结果'};
+ if(s.busy&&phases[s.phase])return phases[s.phase];
+ if(s.connection?.failures)return '等待第 '+(s.connection.failures+1)+'/5 次尝试';
+ if(s.paused)return '已暂停';
+ const v=s.status;
+ if(v.includes('计划已取消'))return '计划已自动取消';
+ if(v.includes('额度已更新'))return '已连接，检测完成';
+ if(v.startsWith('连接/检测失败'))return '检测失败';
+ if(v.includes('额度受限'))return '额度受限';
+ if(v.includes('手动设定'))return '等待计划';
+ if(v.includes('本周期')||v.includes('已处理'))return '本轮已处理';
+ if(v.includes('重置时间')||v.includes('窗口已变化'))return '等待刷新';
+ if(v.includes('请求完成')||v.includes('观察到'))return '已完成';
+ if(v.includes('未确认'))return '待核实';
+ return s.busy?'处理中':'等待检测';
+}
+function updateControls(){
+ const busy=Boolean(snapshot?.busy),offline=!connected,stopped=Boolean(snapshot?.connection?.stopped);
+ const changing=pendingActions.has('schedule')||pendingActions.has('schedule/clear');
+ $('reconnect').disabled=offline||busy||pendingActions.has('reconnect');
+ $('recheck').disabled=offline||busy||stopped||recheckBusy||pendingActions.has('check');
+ $('choose-time').disabled=offline||busy||changing||!snapshot?.timing?.minRefreshAt;
+ $('auto-time').disabled=offline||busy||changing;
+ $('save-time').disabled=offline||busy||changing||manualDirty||!snapshot?.timing?.minRefreshAt;
+ $('pause').disabled=offline||pendingActions.has('pause')||pendingActions.has('resume');
+}
+function renderTiming(t){if(!t)return;timeBlock('send-at','send-date',t.sendAt);timeBlock('estimated-reset','reset-date',t.estimatedResetAt);updateControls();if(refreshDialog.open)renderWheels();countdown();}
+
 const refreshDialog=$('refresh-dialog');
 let draftRefresh=null,wheelSignature="",manualDirty=false;
 const manualKeys=['year','month','day','hour','minute'];
@@ -166,10 +195,10 @@ function selectPart(index,item){
 function stepWheel(index,direction){const items=candidates(index).filter(x=>!x.disabled),current=items.findIndex(x=>x.value===selected(index));const next=items[current+direction];if(next)selectPart(index,next);}
 function renderWheels(){
  const {min,max}=bounds();if(!min||!max)return;
- $('save-time').disabled=snapshot.busy||manualDirty||draftRefresh<min||draftRefresh>max;
+ $('save-time').disabled=!connected||snapshot.busy||pendingActions.has('schedule')||manualDirty||draftRefresh<min||draftRefresh>max;
  const signature=[min,max,draftRefresh,snapshot.busy].join(':');if(signature===wheelSignature)return;wheelSignature=signature;
  fields.forEach(([key],index)=>{const list=$('wheel-'+key);list.replaceChildren();for(const item of candidates(index)){const button=document.createElement('button');button.type='button';button.textContent=item.label;button.disabled=item.disabled;button.className='wheel-option'+(item.value===selected(index)?' selected':'');button.setAttribute('aria-pressed',String(item.value===selected(index)));button.setAttribute('aria-label',item.label+fields[index][1]);button.addEventListener('click',()=>selectPart(index,item));list.append(button);}const active=list.querySelector('.selected');if(active)list.scrollTop=active.offsetTop-(list.clientHeight-active.offsetHeight)/2;});
- $('save-time').disabled=snapshot.busy||manualDirty||draftRefresh<min||draftRefresh>max;
+ $('save-time').disabled=!connected||snapshot.busy||pendingActions.has('schedule')||manualDirty||draftRefresh<min||draftRefresh>max;
 }
 fields.forEach(([key,label],index)=>{const column=document.createElement('div');column.className='wheel-column';const list=document.createElement('div');list.id='wheel-'+key;list.className='wheel-list';list.tabIndex=0;list.setAttribute('role','group');list.setAttribute('aria-label',label);column.append(list);$('wheel-grid').append(column);let last=0;column.addEventListener('wheel',e=>{e.preventDefault();if(!e.deltaY)return;const now=Date.now();if(now-last<90)return;last=now;stepWheel(index,e.deltaY>0?1:-1);},{passive:false});list.addEventListener('keydown',e=>{if(['ArrowDown','ArrowUp','PageDown','PageUp'].includes(e.key)){e.preventDefault();stepWheel(index,['ArrowDown','PageDown'].includes(e.key)?1:-1);list.focus();}});});
 $('choose-time').addEventListener('click',()=>{const {min,max}=bounds();if(!min||!max)return;draftRefresh=Math.max(min,Math.min(max,Math.ceil((snapshot.timing.estimatedResetAt||min)/60)*60));syncManualDate();wheelSignature='';refreshDialog.showModal();renderWheels();});
@@ -179,8 +208,26 @@ refreshDialog.addEventListener('pointerdown',e=>{refreshBackdrop=e.target===refr
 refreshDialog.addEventListener('click',e=>{if(refreshBackdrop&&e.target===refreshDialog){const r=refreshDialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)refreshDialog.close();}refreshBackdrop=false;});
 function countdown(){const t=snapshot?.timing;if(!t)return;const left=t.sendAt-Date.now()/1000;const pad=n=>String(n).padStart(2,'0');$('countdown').textContent=snapshot.connection?.stopped?'已停止，等待重新连接':paused?'已暂停':!t.sendAt?'待检测':left>0?'倒计时 '+pad(Math.floor(left/3600))+':'+pad(Math.floor(left%3600/60))+':'+pad(Math.floor(left%60)):'已到点';}
 // Render synchronously: the browser paints only after the complete snapshot is applied.
-function renderStatus(s){connected=true;snapshot=s;paused=s.paused;$('version').textContent='v'+s.version;$('badge').textContent=s.connection?.stopped?'已断开':paused?'已暂停':s.busy?'正在检测 / 发送':'后台运行';$('pause').textContent=paused?'恢复运行':'暂停';$('reconnect').disabled=s.busy;$('recheck').disabled=recheckBusy||s.busy||Boolean(s.connection?.stopped);$('save-time').disabled=s.busy;$('auto-time').disabled=s.busy;$('status').textContent=shortStatus(s);$('status-detail').textContent=s.status;$('status').title=s.status;const c=s.current;if(c){$('remaining').textContent=(100-c.primary.usedPercent)+'%';$('weekly').textContent=c.secondary?'长周期（'+Math.round(c.secondary.windowDurationMins/1440)+' 天）剩余 '+(100-c.secondary.usedPercent)+'%':'长周期：未返回';cardTime('reset',c.primary.resetsAt);timeBlock('checked','checked-date',c.checkedAt);$('checked').title=time(c.checkedAt);}timeBlock('next-check','next-check-date',s.nextPoll);$('next-check').title=time(s.nextPoll);renderTiming(s.timing);renderAutostart(s.autostart);const a=s.attempts[0];if(a){cardTime('last',a.started);$('result').textContent=labels[a.status]||a.status;}else{$('last').textContent='尚未发送';$('result').textContent='';}const body=$('history');body.replaceChildren();for(const a of s.attempts){const tr=document.createElement('tr');for(const text of [time(a.started),labels[a.status]||a.status,a.detail.evidence||'请求已预留，本周期不重复提交']){const td=document.createElement('td');td.textContent=text;tr.append(td);}body.append(tr);}if(!s.attempts.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='暂无记录';tr.append(td);body.append(tr);}$('logs').textContent=s.events.map(e=>time(e.time)+' '+e.kind+' '+JSON.stringify(e.detail)).join('\n');}
-function showOffline(){connected=false; $('badge').textContent='连接中断';$('status').textContent='等待重连';$('status-detail').textContent=snapshot?'连接暂时中断，保留上次数据，正在自动重试。':'请通过桌面快捷方式启动。';$('status').title=$('status-detail').textContent;for(const id of ['recheck','save-time','auto-time','autostart','choose-time'])$(id).disabled=true;}
+function renderStatus(s){
+ connected=true;
+ if(!s.current&&snapshot?.current)s={...s,current:snapshot.current,timing:snapshot.timing};
+ snapshot=s;paused=s.paused;
+ $('version').textContent='v'+s.version;
+ $('badge').textContent=s.connection?.stopped?'已断开':s.linked?'已连接':s.busy?'正在连接':paused?'已暂停':'后台运行';
+ $('pause').textContent=paused?'恢复运行':'暂停';
+ $('status').textContent=shortStatus(s);$('status-detail').textContent=s.status;$('status').title=s.status;
+ const c=s.current;
+ if(c){$('remaining').textContent=(100-c.primary.usedPercent)+'%';$('weekly').textContent=c.secondary?'长周期（'+Math.round(c.secondary.windowDurationMins/1440)+' 天）剩余 '+(100-c.secondary.usedPercent)+'%':'长周期：未返回';cardTime('reset',c.primary.resetsAt);timeBlock('checked','checked-date',c.checkedAt);$('checked').title=time(c.checkedAt);}
+ timeBlock('next-check','next-check-date',s.nextPoll);$('next-check').title=time(s.nextPoll);
+ renderTiming(s.timing);renderAutostart(s.autostart);
+ const a=s.attempts[0];if(a){cardTime('last',a.started);$('result').textContent=labels[a.status]||a.status;}else{$('last').textContent='尚未发送';$('result').textContent='';}
+ const body=$('history');body.replaceChildren();
+ for(const a of s.attempts){const tr=document.createElement('tr');for(const text of [time(a.started),labels[a.status]||a.status,a.detail.evidence||'请求已预留，本周期不重复提交']){const td=document.createElement('td');td.textContent=text;tr.append(td);}body.append(tr);}
+ if(!s.attempts.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='暂无记录';tr.append(td);body.append(tr);}
+ $('logs').textContent=s.events.map(e=>time(e.time)+' '+e.kind+' '+JSON.stringify(e.detail)).join('\n');
+}
+
+function showOffline(){connected=false; $('badge').textContent='连接中断';$('status').textContent='等待重连';$('status-detail').textContent=snapshot?'连接暂时中断，保留上次数据，正在自动重试。':'请通过桌面快捷方式启动。';$('status').title=$('status-detail').textContent;for(const id of ['reconnect','pause','recheck','save-time','auto-time','autostart','choose-time'])$(id).disabled=true;}
 function completeStatus(s){
   return s?.service==='quota-starter'&&typeof s.status==='string'&&typeof s.paused==='boolean'
     &&s.timing&&Array.isArray(s.attempts)&&Array.isArray(s.events);
@@ -188,8 +235,9 @@ function completeStatus(s){
 function restoreStatus(){
   try{const s=JSON.parse(sessionStorage.getItem(cacheKey));if(completeStatus(s)){
     renderStatus(s);
+    connected=false;
     // Cached values are for display only until the live service answers.
-    for(const id of ['recheck','save-time','auto-time','autostart','choose-time'])$(id).disabled=true;
+    for(const id of ['reconnect','pause','recheck','save-time','auto-time','autostart','choose-time'])$(id).disabled=true;
   }}catch(e){/* Storage may be disabled or contain an obsolete snapshot. */}
 }
 async function refresh(){
@@ -201,18 +249,7 @@ async function refresh(){
       const r=await fetch('/api/status',{signal:controller.signal,cache:'no-store'});
       if(!r.ok)throw Error(r.status);
       const s=await r.json();
-      // A running check can expose a mixture of old and new server values.
-      // Keep the last complete display (including its ticking clock) until it ends.
-      if(snapshot&&(s.busy||!completeStatus(s))){
-        paused=s.paused;
-        snapshot.connection=s.connection;
-        $('badge').textContent=s.connection?.stopped?'已断开':'正在检测 / 发送';
-        $('status').textContent=shortStatus(s);$('status-detail').textContent=s.status;
-        $('pause').textContent=paused?'恢复运行':'暂停';
-        $('reconnect').disabled=true;$('recheck').disabled=true;$('save-time').disabled=true;$('choose-time').disabled=true;$('auto-time').disabled=true;
-        countdown();return;
-      }
-      if(!completeStatus(s)){if(!snapshot){$('badge').textContent=s.busy?'正在检测':'等待检测';$('status-detail').textContent=s.status||'等待首次检测结果';}return;}
+      if(!completeStatus(s))throw Error('invalid status');
       renderStatus(s);
       if(!s.busy)try{sessionStorage.setItem(cacheKey,JSON.stringify(s));}catch(e){}
     }catch(e){showOffline();}
@@ -220,36 +257,41 @@ async function refresh(){
   })();
   try{await refreshPromise;}finally{refreshPromise=null;}
 }
-let scheduleFeedbackTimer;
+const feedbackTimers=new Map();
 function showFeedback(id,message,success=false){
+ clearTimeout(feedbackTimers.get(id));feedbackTimers.delete(id);
  $(id).textContent=message;
- if(id==='schedule-feedback'){
-  clearTimeout(scheduleFeedbackTimer);
-  if(success)scheduleFeedbackTimer=setTimeout(()=>{$(id).textContent='';},3500);
+ if(id==='schedule-feedback'||id==='toast'){
+  feedbackTimers.set(id,setTimeout(()=>{$(id).textContent='';feedbackTimers.delete(id);},success?3500:7000));
  }
 }
-async function recheckQuota(){if(recheckBusy)return;recheckBusy=true;$('recheck').disabled=true;try{await action('check');}finally{recheckBusy=false;$('recheck').disabled=!connected||!snapshot||snapshot.busy||Boolean(snapshot.connection?.stopped);}}
+async function recheckQuota(){if(recheckBusy)return;recheckBusy=true;updateControls();try{await action('check');}finally{recheckBusy=false;updateControls();}}
 async function action(name,feedback='toast',body){
+ if(pendingActions.has(name))return false;
+ pendingActions.add(name);updateControls();
+ const controller=new AbortController();
+ const timer=setTimeout(()=>controller.abort(),25000);
  try{
   const payload=body===undefined?undefined:JSON.stringify(body);
-  const send=()=>fetch('/api/'+name,{method:'POST',headers:{'X-Quota-Token':token,'Content-Type':'application/json'},body:payload});
+  const send=()=>fetch('/api/'+name,{method:'POST',signal:controller.signal,headers:{'X-Quota-Token':token,'Content-Type':'application/json'},body:payload});
   let r=await send(),d=await r.json();
   if(r.status===403&&d.code==='stale_session'){
-   const session=await fetch('/api/session',{headers:{'X-Quota-Session':'refresh'},cache:'no-store'});
+   const session=await fetch('/api/session',{signal:controller.signal,headers:{'X-Quota-Session':'refresh'},cache:'no-store'});
    if(!session.ok)throw Error('session refresh failed');
    const fresh=await session.json();
    if(typeof fresh.token!=='string'||!fresh.token)throw Error('invalid session');
-   token=fresh.token;
-   r=await send();d=await r.json();
+   token=fresh.token;r=await send();d=await r.json();
   }
   showFeedback(feedback,d.message||d.error,r.ok);
   if(refreshPromise)await refreshPromise;
   await refresh();return r.ok;
- }catch(e){showOffline();showFeedback(feedback,'操作失败，请检查本地服务后重试');return false;}
+ }catch(e){showOffline();showFeedback(feedback,'操作结果未确认，请检查当前状态后重试');return false;}
+ finally{clearTimeout(timer);pendingActions.delete(name);updateControls();if(refreshDialog.open)renderWheels();}
 }
+
 async function saveTime(){if(!applyManualDate())return;const {min,max}=bounds();if(!min||draftRefresh<min||draftRefresh>max){$('refresh-error').textContent='请选择可选范围内的刷新时间';renderWheels();return;}$('save-time').disabled=true;if(await action('schedule','refresh-error',{refreshAt:draftRefresh})){refreshDialog.close();showFeedback('schedule-feedback','已保存刷新时间',true);}else renderWheels();}
 $('save-time').addEventListener('click',saveTime);
-function renderAutostart(a){if(startupBusy||!a)return;$('autostart').disabled=!a.available;$('autostart').checked=a.enabled===true;$('startup-error').textContent=a.error||'';}
+function renderAutostart(a){if(startupBusy||!a)return;$('autostart').disabled=!a.available;if(a.enabled!==null)$('autostart').checked=a.enabled===true;$('startup-error').textContent=a.error||'';}
 async function setAutostart(enabled){startupBusy=true;$('autostart').disabled=true;await action('autostart/'+(enabled?'enable':'disable'));startupBusy=false;await refresh();}
 restoreStatus();setInterval(countdown,1000);setInterval(refresh,3000);refresh();
 </script></body></html>

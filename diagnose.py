@@ -1,29 +1,38 @@
-"""Run read-only diagnostics, or one explicitly requested live minimal turn."""
+"""Read-only diagnostics; explicit submissions use the running service's ledger and lock."""
 import argparse
 import json
-from pathlib import Path
-from core import Engine, Store
+import tempfile
+import time
+import urllib.request
+from core import normalize
+from rpc import RPC
 
-root = Path(__file__).resolve().parent
-parser = argparse.ArgumentParser()
-parser.add_argument('--send-once', action='store_true', help='Submit one real subscription request, respecting deduplication')
-args = parser.parse_args()
-store = Store(root / 'data/quota.sqlite3')
-engine = Engine(store, root / 'data/empty-workspace')
-try:
-    if not args.send_once:
-        # Read-only diagnostic must never call tick: an empty window can auto-trigger.
-        from rpc import RPC
-        rpc = RPC(str(engine.cwd))
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--send-once', action='store_true', help='Ask the running service to submit one bounded request round')
+    args = parser.parse_args()
+    if args.send_once:
+        origin = 'http://127.0.0.1:8769'
+        req = urllib.request.Request(origin + '/api/session', headers={'X-Quota-Session': 'refresh'})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            token = json.load(response)['token']
+        req = urllib.request.Request(origin + '/api/trigger', data=b'', headers={
+            'Origin': origin, 'X-Quota-Token': token})
+        with urllib.request.urlopen(req, timeout=75) as response:
+            print(response.read().decode('utf-8'))
+        return
+    with tempfile.TemporaryDirectory(prefix='quota-diagnose-') as workspace:
+        started = time.monotonic()
+        rpc = RPC(workspace, deadline=time.time() + 60)
         try:
             account = rpc.account()
-            from core import normalize
-            print(json.dumps({'auth': account['type'], 'plan': account['planType'],
-                              'quota': normalize(rpc.limits()), 'model': rpc.choose_model()}, ensure_ascii=False, indent=2))
+            quota = normalize(rpc.limits())
+            print(json.dumps({'auth': account['type'], 'plan': account['planType'], 'quota': quota,
+                              'readSeconds': round(time.monotonic() - started, 3)}, ensure_ascii=False, indent=2))
         finally:
             rpc.close()
-    else:
-        print(engine.tick(manual=True))
-        print(json.dumps(store.recent('attempts', 1), ensure_ascii=False, indent=2))
-finally:
-    engine.close()
+
+
+if __name__ == '__main__':
+    main()

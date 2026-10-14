@@ -24,6 +24,10 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
     help_content = help_page.split('</header>', 1)[1].split('</main>', 1)[0]
     page = page.replace('__HELP_CONTENT__', help_content)
     class Handler(BaseHTTPRequestHandler):
+        def setup(self):
+            super().setup()
+            self.connection.settimeout(10)
+
         def log_message(self, *_):
             pass
 
@@ -60,7 +64,8 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                 return self.send(200, {'token': csrf})
             if self.path == '/api/status':
                 return self.send(200, {'service': 'quota-starter', 'version': VERSION,
-                     'status': engine.status, 'busy': engine.lock.locked(),
+                     'status': engine.status, 'busy': engine.lock.locked() or bool(engine.read_requested),
+                     'phase': engine.phase, 'linked': engine.linked,
                      'paused': engine.store.get('paused', False),
                      'connection': engine.connection(),
                      'current': engine.store.get('current'), 'nextPoll': None if engine.connection().get('stopped') else engine.next_poll,
@@ -101,15 +106,16 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                 except RuntimeError as exc:
                     return self.send(409, {'error': str(exc)})
             if self.path == '/api/pause':
-                engine.store.set('paused', True)
-                engine.store.log('control', {'action': 'pause'})
+                engine.set_paused(True)
                 return self.send(200, {'message': '已暂停；已提交的请求可能仍会完成'})
             if self.path == '/api/resume':
-                engine.store.set('paused', False)
-                engine.store.log('control', {'action': 'resume'})
-                engine.next_poll = 0
-                return self.send(200, {'message': '已恢复自动检测与发送'})
+                engine.set_paused(False)
+                if engine.connection().get('stopped'):
+                    return self.send(200, {'message': '已解除暂停；连接仍已停止，请点击重新连接'})
+                return self.send(200, {'message': '已恢复运行，按原计划继续检测与发送'})
             if self.path == '/api/trigger':
+                if engine.connection().get('stopped') or engine.read_requested:
+                    return self.send(409, {'error': '连接已停止或正在检测，请稍后重试'})
                 if engine.store.get('paused', False):
                     return self.send(409, {'error': '请先恢复运行'})
                 if engine.lock.locked():
@@ -117,14 +123,11 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                 result = engine.tick(manual=True)
                 return self.send(200, {'message': result})
             if self.path == '/api/check':
-                if engine.lock.locked():
-                    return self.send(409, {'error': '检测或请求正在进行'})
-                result = engine.tick(check_only=True)
-                if result == '检测或请求正在进行':
-                    return self.send(409, {'error': result})
-                if result.startswith('连接/检测失败：'):
-                    return self.send(502, {'error': result})
-                return self.send(200, {'message': result})
+                try:
+                    engine.request_check()
+                    return self.send(202, {'message': '正在检测额度'})
+                except RuntimeError as exc:
+                    return self.send(409, {'error': str(exc)})
             if self.path in ('/api/autostart/enable', '/api/autostart/disable'):
                 action = self.path.rsplit('/', 1)[-1]
                 settings = startup.apply(action)

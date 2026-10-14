@@ -41,6 +41,8 @@ class RPC:
         self.write_lock = threading.Lock()
         self.sequence = 0
         self.events = queue.Queue()
+        self.collect_events = False
+        self.disconnected = threading.Event()
         env = os.environ.copy()
         for key in ('OPENAI_API_KEY', 'CODEX_API_KEY', 'OPENAI_BASE_URL'):
             env.pop(key, None)
@@ -89,6 +91,8 @@ class RPC:
                     msg = json.loads(line)
                 except ValueError:
                     continue
+                if not isinstance(msg, dict):
+                    continue
                 if 'method' in msg and 'id' in msg:
                     # No tool execution, approval, user input, or externally supplied tokens.
                     self._send({'id': msg['id'], 'error': {'code': -32601,
@@ -98,9 +102,14 @@ class RPC:
                         waiting = self.pending.get(msg['id'])
                     if waiting:
                         waiting.put(msg)
-                else:
+                elif self.collect_events and msg.get('method') in (
+                        'account/rateLimits/updated', 'thread/tokenUsage/updated',
+                        'item/completed', 'turn/completed'):
                     self.events.put(msg)
+        except (OSError, ValueError):
+            pass
         finally:
+            self.disconnected.set()
             with self.lock:
                 for waiting in self.pending.values():
                     waiting.put({'error': {'message': 'Codex App Server 已断开'}})
@@ -112,6 +121,8 @@ class RPC:
             if timeout <= 0:
                 raise TimeoutError('重试总时长已达到上限')
         with self.lock:
+            if self.disconnected.is_set():
+                raise ConnectionError(f'{method}：Codex App Server 已断开')
             self.sequence += 1
             seq = self.sequence
             waiting = self.pending[seq] = queue.Queue()
@@ -119,7 +130,9 @@ class RPC:
             self._send({'id': seq, 'method': method, 'params': params or {}})
             result = waiting.get(timeout=timeout)
             if 'error' in result:
-                raise RuntimeError(str(result['error'])[:1200])
+                raise RuntimeError(f'{method}：' + str(result['error'])[:1200])
+            if 'result' not in result:
+                raise RuntimeError(f'{method}：服务器响应缺少结果')
             return result['result']
         except queue.Empty:
             raise TimeoutError(f'{method} 超时；提交请求的结果可能未知') from None
@@ -140,12 +153,16 @@ class RPC:
 
     def choose_model(self):
         models, cursor = [], None
+        seen = set()
         while True:
             page = self.call('model/list', {'cursor': cursor, 'limit': 100})
             models.extend(page['data'])
             cursor = page.get('nextCursor')
             if not cursor:
                 break
+            if cursor in seen:
+                raise RuntimeError('模型目录分页重复，停止检测')
+            seen.add(cursor)
         for name in ('gpt-6-luna', 'gpt-5.6-luna', 'gpt-5.4-mini'):
             for model in models:
                 if model['model'] == name and not model.get('hidden'):
@@ -170,8 +187,18 @@ class RPC:
         return {'threadId': result['thread']['id'], 'model': model, 'effort': effort}
 
     def send_minimal(self, prepared):
-        while not self.events.empty():
-            self.events.get_nowait()
+        while True:
+            try:
+                self.events.get_nowait()
+            except queue.Empty:
+                break
+        self.collect_events = True
+        try:
+            return self._send_turn(prepared)
+        finally:
+            self.collect_events = False
+
+    def _send_turn(self, prepared):
         result = self.call('turn/start', {'threadId': prepared['threadId'],
                           'input': [{'type': 'text', 'text': 'Reply OK.'}],
                           'effort': prepared['effort']})
@@ -182,9 +209,12 @@ class RPC:
             if retry_deadline is not None and time.time() >= retry_deadline:
                 raise TimeoutError('重试总时长已达到上限')
             try:
-                event = self.events.get(timeout=1)
+                remaining = min(1, deadline - time.monotonic())
+                if retry_deadline is not None:
+                    remaining = min(remaining, retry_deadline - time.time())
+                event = self.events.get(timeout=max(0, remaining))
             except queue.Empty:
-                if self.proc.poll() is not None:
+                if self.disconnected.is_set() or self.proc.poll() is not None:
                     raise RuntimeError('发送后 App Server 退出；结果未知')
                 continue
             method, params = event.get('method'), event.get('params', {})
@@ -207,6 +237,8 @@ class RPC:
         raise TimeoutError('请求完成通知超时，已尝试中断')
 
     def close(self):
+        self.collect_events = False
+        self.disconnected.set()
         if self.proc.poll() is None:
             self.proc.terminate()
             try:

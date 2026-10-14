@@ -199,7 +199,7 @@ class QuotaTests(unittest.TestCase):
                 self.assertEqual(e.next_poll, 22000)
                 self.assertEqual(self.store.get('current')['primary']['usedPercent'], used)
                 self.assertEqual(self.store.get('current')['checkedAt'], now)
-                self.assertEqual(self.store.get('schedule'), schedule)
+                self.assertEqual(self.store.get('schedule')['status'], 'cancelled') if schedule else self.assertIsNone(self.store.get('schedule'))
                 self.assertEqual(self.store.recent('attempts'), [])
                 with self.store.connect() as db:
                     self.assertEqual(db.execute('SELECT COUNT(*) FROM claims').fetchone()[0], 0)
@@ -211,7 +211,7 @@ class QuotaTests(unittest.TestCase):
         e = self.engine(fake)
         e.next_poll = 22000
         self.assertIn('连接/检测失败', e.tick(check_only=True))
-        self.assertEqual(e.next_poll, 20022)
+        self.assertEqual(e.next_poll, 20012)
         self.assertEqual(self.store.get('current'), previous)
         self.assertEqual(fake.sent, 0)
 
@@ -259,7 +259,7 @@ class RetryTests(unittest.TestCase):
 
     def test_connection_failure_limit_survives_restart(self):
         fake = FakeRPC([TimeoutError('offline')])
-        for now in (100, 120, 140, 160, 180):
+        for now in (100, 110, 120, 130, 140):
             self.engine(fake, now).tick()
         self.assertTrue(self.store.get('connection')['stopped'])
         self.engine(fake, 999).tick(check_only=True)
@@ -268,7 +268,7 @@ class RetryTests(unittest.TestCase):
     def test_total_deadline_prevents_another_connection(self):
         fake = FakeRPC([TimeoutError('offline')])
         self.engine(fake, 100).tick()
-        self.engine(fake, 280).tick()
+        self.engine(fake, 160).tick()
         self.assertEqual(fake.reads, 1)
         self.assertTrue(self.store.get('connection')['stopped'])
 
@@ -279,17 +279,17 @@ class RetryTests(unittest.TestCase):
         self.assertEqual(fake.reads, 1)
         self.assertEqual(self.store.get('connection')['failures'], 1)
 
-    def test_first_attempt_has_deadline_and_retry_waits_twenty_seconds(self):
+    def test_first_attempt_has_deadline_and_retry_waits_ten_seconds(self):
         fake = FakeRPC([TimeoutError('offline')])
         e = self.engine(fake, 100)
         e.tick()
-        self.assertEqual(fake.deadline, 280)
-        self.assertEqual(e.next_poll, 120)
-        self.engine(fake, 119).tick()
+        self.assertEqual(fake.deadline, 160)
+        self.assertEqual(e.next_poll, 110)
+        self.engine(fake, 109).tick()
         self.assertEqual(fake.reads, 1)
-        self.engine(fake, 120).tick()
+        self.engine(fake, 110).tick()
         self.assertEqual(fake.reads, 2)
-        self.assertEqual(fake.deadline, 280)
+        self.assertEqual(fake.deadline, 160)
 
     def test_disconnected_expired_plan_remains_visible_without_connecting(self):
         self.store.set('current', {'primary': {'resetsAt': 100}})
@@ -339,7 +339,8 @@ class RetryTests(unittest.TestCase):
         fake = FakeRPC([raw(), raw(), raw(20000, 10, 100)], send_error=True)
         e = self.engine(fake); e.tick()
         self.assertEqual(fake.sent, 1)
-        self.assertTrue(e.connection()['stopped'])
+        self.assertIn('额度受限', e.status)
+        self.assertFalse(e.connection())
 
     def test_restart_during_send_requires_manual_reconnect(self):
         self.store.set('sending', True)
@@ -370,6 +371,11 @@ class HTTPTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.server.shutdown(); cls.server.server_close(); cls.thread.join(); cls.tmp.cleanup()
 
+    def setUp(self):
+        self.engine.read_requested = None
+        self.engine.store.set('connection', {})
+        self.engine.set_paused(False)
+
     def request(self,method,path,headers=None,body=None):
         c=http.client.HTTPConnection('127.0.0.1',18769)
         c.request(method,path,headers=headers or {},body=body)
@@ -395,17 +401,18 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.request('POST','/api/resume',headers)[0],200)
         self.assertFalse(self.engine.store.get('paused'))
 
-    def test_check_endpoint_uses_quota_only_mode(self):
+    def test_check_endpoint_queues_a_read_without_blocking(self):
         _, page = self.request('GET', '/')
         token = re.search("(?:const|let) token='([^']+)'", page)[1]
         headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
-        with patch.object(self.engine, 'tick', return_value='当前额度已更新') as tick:
+        with patch.object(self.engine, 'tick') as tick:
             code, body = self.request('POST', '/api/check', headers)
-            self.assertEqual(code, 200)
-            self.assertEqual(json.loads(body)['message'], '当前额度已更新')
-            tick.assert_called_once_with(check_only=True)
-        with patch.object(self.engine, 'tick', return_value='连接/检测失败：offline'):
-            self.assertEqual(self.request('POST', '/api/check', headers)[0], 502)
+            self.assertEqual(code, 202)
+            self.assertEqual(json.loads(body)['message'], '正在检测额度')
+            self.assertEqual(self.engine.read_requested, 'check')
+            tick.assert_not_called()
+            self.assertEqual(self.request('POST', '/api/check', headers)[0], 409)
+        self.engine.read_requested = None
         with self.engine.lock:
             self.assertEqual(self.request('POST', '/api/check', headers)[0], 409)
         self.assertEqual(self.request('POST', '/api/check')[0], 403)

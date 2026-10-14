@@ -15,18 +15,18 @@ class ScheduleTests(unittest.TestCase):
     tearDown = fixtures.QuotaTests.tearDown
     engine = fixtures.QuotaTests.engine
     def test_schedule_waits_even_with_empty_quota(self):
-        fake=FakeRPC([raw(20000,0)])
+        fake=FakeRPC([raw(149,0)])
         e=self.engine(fake,100); e.set_schedule(150); e.tick()
         self.assertEqual(fake.sent,0)
         self.assertEqual(e.next_poll,150)
         self.assertEqual(e.timing()['estimatedResetAt'],18150)
 
     def test_due_schedule_sends_once_and_survives_restart(self):
-        fake=FakeRPC([raw()]); self.engine(fake,100).set_schedule(150)
+        fake=FakeRPC([raw(149)]); self.engine(fake,100).set_schedule(150)
         self.engine(fake,150).tick()
         self.assertEqual(fake.sent,1)
         self.assertEqual(self.store.get('schedule')['status'],'submitted')
-        other=FakeRPC([raw()]); self.engine(other,151).tick()
+        other=FakeRPC([raw(149)]); self.engine(other,151).tick()
         self.assertEqual(other.sent,0)
 
     def test_schedule_does_not_bypass_guard(self):
@@ -37,13 +37,13 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(self.store.get('schedule')['status'],'pending')
 
     def test_schedule_waits_for_weekly_recovery(self):
-        fake=FakeRPC([raw(20000,1,100)]); self.engine(fake,100).set_schedule(150)
+        fake=FakeRPC([raw(149,1,100)]); self.engine(fake,100).set_schedule(150)
         self.engine(fake,150).tick()
         self.assertEqual(fake.sent,0)
         self.assertEqual(self.store.get('schedule')['status'],'pending')
 
     def test_schedule_pause_then_resume(self):
-        fake=FakeRPC([raw()]); self.engine(fake,100).set_schedule(150)
+        fake=FakeRPC([raw(149)]); self.engine(fake,100).set_schedule(150)
         self.store.set('paused',True); self.engine(fake,150).tick()
         self.assertEqual(fake.sent,0)
         self.store.set('paused',False); self.engine(fake,160).tick()
@@ -100,7 +100,7 @@ class ScheduleTests(unittest.TestCase):
         self.assertIsNone(self.store.claim('acct','cycle:20000',150,{},old['id']))
 
     def test_unknown_scheduled_result_stops_after_bounded_retries(self):
-        fake=FakeRPC([raw()],send_error=True); self.engine(fake,100).set_schedule(150)
+        fake=FakeRPC([raw(149)],send_error=True); self.engine(fake,100).set_schedule(150)
         self.engine(fake,150).tick(); self.engine(fake,151).tick()
         self.assertEqual(fake.sent,5)
         self.assertEqual(self.store.get('schedule')['status'],'submitted')

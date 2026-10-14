@@ -13,17 +13,21 @@ from rpc import RPC
 
 WINDOW = 18000
 ATTEMPT_LIMIT = 5
-RETRY_INTERVAL = 20
-RETRY_BUDGET = 180
+RETRY_INTERVAL = 10
+RETRY_BUDGET = 60
 
 
 def normalize(raw):
+    if not isinstance(raw, dict):
+        raise ValueError('服务器额度数据格式无效')
     buckets = raw.get('rateLimitsByLimitId')
+    if buckets is not None and not isinstance(buckets, dict):
+        raise ValueError('服务器额度桶格式无效')
     bucket = buckets.get('codex') if buckets is not None else raw.get('rateLimits')
-    if not bucket or bucket.get('limitId') != 'codex':
+    if not isinstance(bucket, dict) or bucket.get('limitId') != 'codex':
         raise ValueError('服务器未返回 codex 目标额度桶，停止触发')
     primary = bucket.get('primary')
-    if not primary or primary.get('windowDurationMins') != 300:
+    if not isinstance(primary, dict) or primary.get('windowDurationMins') != 300:
         raise ValueError('服务器未返回 300 分钟窗口，停止触发')
     def checked(window):
         if not isinstance(window, dict):
@@ -117,7 +121,7 @@ class Store:
     def log(self, kind, detail, now=None):
         with self.connect() as db:
             db.execute('INSERT INTO events(time,kind,detail) VALUES (?,?,?)',
-                       (now or time.time(), kind, json.dumps(detail, ensure_ascii=False)))
+                       (time.time() if now is None else now, kind, json.dumps(detail, ensure_ascii=False)))
             # Roughly a month of normal polling; attempts and their evidence are retained.
             db.execute('DELETE FROM events WHERE id < (SELECT MAX(id)-60000 FROM events)')
 
@@ -153,7 +157,30 @@ class Store:
             # Persist BEFORE turn/start. A crash/timeout cannot cause immediate duplicate submission.
             db.execute('INSERT OR REPLACE INTO state VALUES (?,?)',
                        ('guard:' + account, json.dumps(now + WINDOW + 120)))
+            db.execute('INSERT OR REPLACE INTO state VALUES (?,?)', ('sending', 'true'))
             return attempt
+
+    def cancel_invalid_schedule(self, reset_at, now):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute("SELECT value FROM state WHERE key='schedule'").fetchone()
+            schedule = json.loads(row[0]) if row else None
+            if not schedule or schedule['status'] != 'pending' or schedule['sendAt'] > reset_at:
+                return False
+            schedule.update(status='cancelled', cancelledAt=now, serverResetAt=reset_at,
+                            reason='服务器刷新时间已达到或超过计划发送时间')
+            db.execute("UPDATE state SET value=? WHERE key='schedule'", (json.dumps(schedule),))
+            db.execute('INSERT INTO events(time,kind,detail) VALUES (?,?,?)',
+                       (now, 'schedule_cancelled', json.dumps(schedule, ensure_ascii=False)))
+            return True
+
+    def record_submission(self, attempt, account, detail, now):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            db.execute('UPDATE attempts SET detail=? WHERE id=?',
+                       (json.dumps(detail, ensure_ascii=False), attempt))
+            db.execute('INSERT OR REPLACE INTO state VALUES (?,?)',
+                       ('guard:' + account, json.dumps(now + WINDOW + 120)))
 
     def finish(self, attempt, account, status, detail, after, now):
         with self.connect() as db:
@@ -181,30 +208,70 @@ class Engine:
         self.cwd.mkdir(parents=True, exist_ok=True)
         self.lock = threading.Lock()
         self.rpc = None
-        self.failure_count = 0
         self.next_poll = 0
         self.status = '正在启动'
+        self.phase = 'connecting'
+        self.linked = False
+        self.read_requested = None
+        self.pause_event = threading.Event()
         self.sleeper = sleeper
         if self.store.get('sending', False):
             self.stop_connection()
         retry = self.store.get('connection', {})
         if retry.get('stopped'):
             self.status = '已断开，请点击重新连接'
+            self.phase = 'stopped'
         elif retry:
             self.next_poll = retry.get('nextAt', 0)
             self.status = '连接/检测失败：等待重试'
+            self.phase = 'retry_wait'
+        current = self.store.get('current')
+        reset_at = (current or {}).get('primary', {}).get('resetsAt')
+        if isinstance(reset_at, (int, float)) and not isinstance(reset_at, bool) and math.isfinite(reset_at):
+            # Also reconcile plans inherited from older versions while disconnected.
+            self.store.cancel_invalid_schedule(reset_at, self.clock())
 
     def connection(self):
         return self.store.get('connection', {})
+
+    def request_check(self):
+        if not self.lock.acquire(blocking=False):
+            raise RuntimeError('检测或请求正在进行')
+        try:
+            if self.connection().get('stopped'):
+                raise RuntimeError('已断开，请点击重新连接')
+            if self.read_requested:
+                raise RuntimeError('正在等待检测')
+            if self.connection().get('failures'):
+                raise RuntimeError('正在等待重试，请稍后再检测')
+            self.read_requested = 'check'
+            self.status = '正在检测额度'
+            self.phase = 'checking'
+            self.next_poll = 0
+        finally:
+            self.lock.release()
+
+    def set_paused(self, paused):
+        self.store.set('paused', paused)
+        if paused:
+            self.pause_event.set()
+        else:
+            self.pause_event.clear()
+        self.store.log('control', {'action': 'pause' if paused else 'resume'})
 
     def reconnect(self):
         if not self.lock.acquire(blocking=False):
             raise RuntimeError('检测或请求正在进行')
         try:
+            if self.read_requested == 'reconnect':
+                return
             self.close()
             self.store.set('connection', {})
             self.store.set('sending', False)
             self.status = '正在重新连接'
+            self.phase = 'connecting'
+            self.linked = False
+            self.read_requested = 'reconnect'
             self.next_poll = 0
             self.store.log('control', {'action': 'reconnect'})
         finally:
@@ -216,6 +283,9 @@ class Engine:
         self.store.set('connection', state)
         self.next_poll = 0
         self.status = '已断开，请点击重新连接'
+        self.read_requested = None
+        self.phase = 'stopped'
+        self.linked = False
         self.close()
 
     def failed_connection(self, error):
@@ -226,11 +296,13 @@ class Engine:
         state['nextAt'] = min(now + RETRY_INTERVAL, state['startedAt'] + RETRY_BUDGET)
         state['error'] = str(error)[:1200]
         self.store.set('connection', state)
+        self.linked = False
         self.close()
         if state['failures'] >= ATTEMPT_LIMIT or now >= state['startedAt'] + RETRY_BUDGET:
             self.stop_connection()
         else:
             self.next_poll = state['nextAt']
+            self.phase = 'retry_wait'
             self.status = f'连接/检测失败：{error}；等待第 {state["failures"] + 1}/{ATTEMPT_LIMIT} 次尝试'
         return self.status
 
@@ -247,8 +319,9 @@ class Engine:
 
     def close(self):
         if self.rpc:
-            self.rpc.close()
+            rpc = self.rpc
             self.rpc = None
+            rpc.close()
 
     def set_schedule(self, send_at=None, *, refresh_at=None):
         if refresh_at is not None:
@@ -264,6 +337,8 @@ class Engine:
         if not self.lock.acquire(blocking=False):
             raise RuntimeError('正在检测或发送，请稍后再修改时间')
         try:
+            if self.read_requested:
+                raise RuntimeError('正在等待检测，请稍后再修改时间')
             if send_at is not None:
                 current = self.store.get('current')
                 if not current:
@@ -301,6 +376,8 @@ class Engine:
                 'maxRefreshAt': math.floor((self.clock() + 366 * 86400 + WINDOW) / 60) * 60}
 
     def select_candidate(self, snapshot, previous, now, manual):
+        if self.store.cancel_invalid_schedule(snapshot['primary']['resetsAt'], now):
+            return None, '计划已取消：服务器刷新时间已达到或超过计划发送时间', None
         schedule = self.store.get('schedule')
         if not manual and schedule and schedule['status'] == 'pending':
             if now < schedule['sendAt']:
@@ -310,9 +387,118 @@ class Engine:
         cycle, reason = candidate(snapshot, previous, now, manual)
         return cycle, reason, None
 
+    def _phase(self, phase, status):
+        self.phase, self.status = phase, status
+
+    def _ok(self, status):
+        self.store.set('connection', {})
+        if self.rpc:
+            self.rpc.deadline = None
+        self._phase('idle', status)
+        return status
+
+    def _read(self, expected=None):
+        account = self.rpc.account()
+        raw = self.rpc.limits()
+        identity = account.get('email') or raw.get('accountId')
+        if not identity:
+            raise ValueError('无法识别账户，停止触发以保护防重复状态')
+        if expected and (identity != expected[0] or
+                         (expected[1] and raw.get('accountId') != expected[1])):
+            raise ValueError('账户发生变化，停止本轮发送')
+        snapshot = normalize(raw)
+        if snapshot['plan'] not in (None, 'plus'):
+            raise ValueError('目标额度桶不是 Plus')
+        self.linked = True
+        return (identity, raw.get('accountId')), snapshot
+
+    def _publish(self, identity, snapshot):
+        account_key = hashlib.sha256(identity[0].encode()).hexdigest()[:24]
+        now = self.clock()
+        self.store.set('snapshot:' + account_key, snapshot)
+        self.store.set('current', {'checkedAt': now, 'account': account_key, **snapshot})
+        cancelled = self.store.cancel_invalid_schedule(snapshot['primary']['resetsAt'], now)
+        return account_key, cancelled
+
+    def _wait_retry(self):
+        state = self.connection()
+        delay = max(0, state['nextAt'] - self.clock())
+        # Pause wakes a real retry wait immediately; tests inject an advancing clock.
+        if self.sleeper is time.sleep:
+            self.pause_event.wait(delay)
+        else:
+            self.sleeper(delay)
+        if self.clock() >= state['startedAt'] + RETRY_BUDGET:
+            self.stop_connection()
+            return False
+        return not self.store.get('paused', False)
+
+    def _send_reserved(self, attempt, account_key, identity, before, prepared, detail):
+        status = 'unknown'
+        first = True
+        while True:
+            if self.store.get('paused', False):
+                detail['stoppedReason'] = '已暂停，停止本轮发送重试'
+                break
+            try:
+                if not first:
+                    self._phase('connecting', '正在重新连接')
+                    self.connect()
+                    _, fresh = self._read(identity)
+                    self._publish(identity, fresh)
+                    if fresh['blocked']:
+                        detail['stoppedReason'] = '额度受限，停止本轮发送重试'
+                        break
+                    if (fresh['primary']['resetsAt'] > before['primary']['resetsAt'] + 5
+                            and fresh['primary']['usedPercent'] > 0):
+                        detail['stoppedReason'] = '新窗口已有使用，停止本轮发送重试'
+                        break
+                    self._phase('preparing', '已连接，正在准备小额请求')
+                    prepared = self.rpc.prepare(self.cwd)
+                    _, fresh = self._read(identity)
+                    self._publish(identity, fresh)
+                    if fresh['blocked'] or self.store.get('paused', False):
+                        detail['stoppedReason'] = '额度受限或已暂停，停止本轮发送重试'
+                        break
+                    if (fresh['primary']['resetsAt'] > before['primary']['resetsAt'] + 5
+                            and fresh['primary']['usedPercent'] > 0):
+                        detail['stoppedReason'] = '新窗口已有使用，停止本轮发送重试'
+                        break
+                if self.clock() >= self.connection()['startedAt'] + RETRY_BUDGET:
+                    self.stop_connection()
+                    break
+                self._phase('sending', '已连接，正在发送小额请求')
+                detail.setdefault('submissions', []).append({'startedAt': self.clock(), 'prepared': prepared})
+                self.store.record_submission(attempt, account_key, detail, self.clock())
+                result = self.rpc.send_minimal(prepared)
+                status = result['status']
+                detail['result'] = result
+                if status == 'completed':
+                    break
+                raise RuntimeError('请求未完成：' + status)
+            except ValueError as exc:
+                detail['stoppedReason'] = str(exc)
+                self.stop_connection()
+                break
+            except Exception as exc:
+                status = 'unknown'
+                detail.setdefault('retries', []).append({'time': self.clock(), 'error': str(exc)[:1200]})
+                self.store.finish(attempt, account_key, status, detail, None, self.clock())
+                self.failed_connection(exc)
+                if self.connection().get('stopped'):
+                    break
+                if not self._wait_retry():
+                    if not self.connection().get('stopped'):
+                        detail['stoppedReason'] = '已暂停，停止本轮发送重试'
+                    break
+            first = False
+        return status
+
     def tick(self, manual=False, *, check_only=False):
         if not self.lock.acquire(blocking=False):
             return '检测或请求正在进行'
+        attempt = None
+        detail = {}
         try:
             now = self.clock()
             retry = self.connection()
@@ -323,149 +509,96 @@ class Engine:
                 return self.status
             if retry and now < retry['nextAt']:
                 return self.status
+            requested = self.read_requested
+            self._phase('connecting' if not self.rpc else 'checking',
+                        '正在连接' if not self.rpc else '正在检测额度')
+            started = self.clock()
             self.connect()
-            account = self.rpc.account()
-            raw = self.rpc.limits()
-            identity = account.get('email') or raw.get('accountId')
-            if not identity:
-                raise ValueError('无法识别账户，停止触发以保护防重复状态')
-            account_key = hashlib.sha256(identity.encode()).hexdigest()[:24]
-            snap = normalize(raw)
-            if snap['plan'] not in (None, 'plus'):
-                raise ValueError('目标额度桶不是 Plus')
+            identity, snap = self._read()
+            account_key = hashlib.sha256(identity[0].encode()).hexdigest()[:24]
             previous = self.store.get('snapshot:' + account_key)
-            self.store.set('snapshot:' + account_key, snap)
-            self.store.set('current', {'checkedAt': now, 'account': account_key, **snap})
-            self.store.log('check', snap, now)
-            # A user-requested quota read must never prepare or submit an inference,
-            # even when a scheduled send is due. Keep the automatic poll deadline.
-            if check_only:
-                self.status = '已暂停；当前额度已更新' if self.store.get('paused', False) else '当前额度已更新'
-                return self.status
+            _, cancelled = self._publish(identity, snap)
+            now = self.clock()
+            self.store.log('check', {**snap, 'durationSeconds': round(now - started, 3)}, now)
+            if requested or check_only:
+                self.read_requested = None
+                if requested:
+                    self.next_poll = now + (5 if requested == 'reconnect' else 30)
+                message = '已连接，额度已更新' if requested == 'reconnect' else '当前额度已更新'
+                if self.store.get('paused', False):
+                    message = '已暂停；' + message
+                if cancelled:
+                    message += '；计划已取消：服务器刷新时间已达到或超过计划发送时间'
+                return self._ok(message)
             self.next_poll = now + max(2, min(60, snap['primary']['resetsAt'] + 2 - now))
             if snap['primary']['resetsAt'] < now - 60:
                 self.next_poll = now + 30
+            if cancelled:
+                return self._ok('计划已取消：服务器刷新时间已达到或超过计划发送时间')
             if self.store.get('paused', False):
-                self.status = '已暂停自动及手动发送（继续读取额度）'
-                return self.status
+                return self._ok('已暂停自动及手动发送（继续读取额度）')
             schedule = self.store.get('schedule')
             if schedule and schedule['status'] == 'pending' and schedule['sendAt'] > now:
                 self.next_poll = min(self.next_poll, schedule['sendAt'])
             cycle, reason, schedule_id = self.select_candidate(snap, previous, now, manual)
-            self.status = reason
             if not cycle:
-                return reason
-            guard = self.store.guard_until()
-            if now < guard:
-                self.status = '本周期已有发送记录，等待下一窗口；结果未知时保留防重复保护'
-                return self.status
-            # Preparation does not submit an inference turn. Check persisted claim first.
+                return self._ok(reason)
+            if now < self.store.guard_until():
+                return self._ok('本周期已有发送记录，等待下一窗口；结果未知时保留防重复保护')
             with self.store.connect() as db:
-                if db.execute('SELECT 1 FROM claims WHERE cycle=?', (cycle,)).fetchone():
-                    self.status = '该重置边界已处理，等待服务器给出新窗口'
-                    self.next_poll = now + 30
-                    return self.status
-            self.status = '正在准备最小请求'
+                claimed = db.execute('SELECT 1 FROM claims WHERE cycle=?', (cycle,)).fetchone()
+            if claimed:
+                self.next_poll = now + 30
+                return self._ok('该重置边界已处理，等待服务器给出新窗口')
+            self._phase('preparing', '已连接，正在准备小额请求')
             prepared = self.rpc.prepare(self.cwd)
-            # Re-read immediately before reserving/sending to respect weekly limits and elapsed preparation.
-            fresh_raw = self.rpc.limits()
-            fresh_identity = self.rpc.account().get('email') or fresh_raw.get('accountId')
-            if (fresh_identity != identity or (raw.get('accountId') and fresh_raw.get('accountId')
-                    and raw['accountId'] != fresh_raw['accountId'])):
-                raise ValueError('准备期间账户发生变化，停止发送')
-            fresh = normalize(fresh_raw)
+            _, fresh = self._read(identity)
+            _, cancelled = self._publish(identity, fresh)
             now = self.clock()
+            if cancelled:
+                return self._ok('计划已取消：服务器刷新时间已达到或超过计划发送时间')
             cycle, reason, schedule_id = self.select_candidate(fresh, snap, now, manual)
             if not cycle or self.store.get('paused', False):
-                self.status = reason if cycle is None else '已暂停'
-                return self.status
-            detail = {'before': fresh, 'prepared': prepared, 'reason': reason, 'manual': manual,
-                      'scheduleId': schedule_id}
+                return self._ok(reason if cycle is None else '已暂停')
+            detail = {'before': fresh, 'prepared': prepared, 'reason': reason,
+                      'manual': manual, 'scheduleId': schedule_id}
             attempt = self.store.claim(account_key, cycle, now, detail, schedule_id)
             if attempt is None:
-                self.status = '本周期已处理'
-                return self.status
-            self.status = '正在发送最小请求'
-            self.store.set('sending', True)
-            result, after = None, None
-            while True:
+                return self._ok('本周期已处理')
+            status = self._send_reserved(attempt, account_key, identity, fresh, prepared, detail)
+            after = None
+            if self.rpc and not self.connection().get('stopped'):
                 try:
-                    result = self.rpc.send_minimal(prepared)
-                    status = result['status']
-                    detail['result'] = result
-                    if status != 'completed':
-                        raise RuntimeError('请求未完成：' + status)
-                    break
-                except (TimeoutError, ConnectionError, OSError, RuntimeError) as exc:
-                    status = 'unknown'
-                    detail['error'] = str(exc)[:1200]
-                    self.failed_connection(exc)
-                    detail.setdefault('retries', []).append({'time': self.clock(), 'error': str(exc)[:1200]})
-                    self.store.finish(attempt, account_key, status, detail, None, self.clock())
-                if self.connection().get('stopped'):
-                    break
-                while True:
-                    retry = self.connection()
-                    self.sleeper(max(0, retry['nextAt'] - self.clock()))
-                    if self.clock() >= retry['startedAt'] + RETRY_BUDGET:
-                        self.stop_connection()
-                        break
-                    if self.store.get('paused', False):
-                        self.stop_connection()
-                        break
-                    try:
-                        self.connect()
-                        retry_account = self.rpc.account()
-                        retry_raw = self.rpc.limits()
-                        retry_identity = retry_account.get('email') or retry_raw.get('accountId')
-                        retry_snap = normalize(retry_raw)
-                        if retry_identity != identity or retry_snap['blocked'] or retry_snap['plan'] not in (None, 'plus'):
-                            self.stop_connection()
-                            break
-                        prepared = self.rpc.prepare(self.cwd)
-                        final_raw = self.rpc.limits()
-                        final_identity = self.rpc.account().get('email') or final_raw.get('accountId')
-                        if (final_identity != identity or normalize(final_raw)['blocked']
-                                or self.store.get('paused', False)):
-                            self.stop_connection()
-                            break
-                        self.status = '正在重试小额请求'
-                        break
-                    except Exception as exc:
-                        self.failed_connection(exc)
-                        if self.connection().get('stopped'):
-                            break
-                if self.connection().get('stopped'):
-                    break
-            try:
-                if not self.rpc:
-                    raise RuntimeError('连接已停止')
-                after = normalize(self.rpc.limits())
-                self.store.set('snapshot:' + account_key, after)
-                self.store.set('current', {'checkedAt': self.clock(), 'account': account_key, **after})
-            except Exception as exc:
-                detail['afterError'] = str(exc)[:1200]
-                if not self.connection().get('stopped'):
+                    self._phase('verifying', '已连接，正在核验请求结果')
+                    _, after = self._read(identity)
+                    self._publish(identity, after)
+                except Exception as exc:
+                    detail['afterError'] = str(exc)[:1200]
                     self.failed_connection(exc)
             detail['after'] = after
-            detail['evidence'] = evidence(fresh, after, now, status == 'completed')
+            last_start = detail.get('submissions', [{}])[-1].get('startedAt', now)
+            detail['evidence'] = evidence(fresh, after, last_start, status == 'completed')
             detail['finishedAt'] = self.clock()
             self.store.finish(attempt, account_key, status, detail, after, self.clock())
             self.store.log('trigger', {'attempt': attempt, 'status': status, **detail})
             self.store.set('sending', False)
-            if self.connection().get('stopped') or after is None:
+            attempt = None
+            if self.connection().get('stopped') or detail.get('afterError'):
                 return self.status
-            self.status = detail['evidence']
             self.next_poll = self.clock() + 30
-            # Close ephemeral thread/process to avoid context and tool growth between cycles.
-            self.close()
-            return self.status
+            return self._ok(detail.get('stoppedReason') or detail['evidence'])
         except Exception as exc:
-            self.failed_connection(exc)
-            self.store.log('error', {'message': self.status})
+            if attempt is not None:
+                detail['error'] = str(exc)[:1200]
+                self.store.finish(attempt, account_key, 'unknown', detail, None, self.clock())
+                self.store.set('sending', False)
+                self.stop_connection()
+            else:
+                self.failed_connection(exc)
+            self.store.log('error', {'message': self.status, 'error': str(exc)[:1200]})
             return self.status
         finally:
-            if not self.status.startswith('连接/检测失败：') and not self.connection().get('stopped'):
-                self.store.set('connection', {})
-            self.store.set('health', {'status': self.status, 'updatedAt': self.clock(), 'nextPoll': self.next_poll})
-            self.lock.release()
+            try:
+                self.store.set('health', {'status': self.status, 'updatedAt': self.clock(), 'nextPoll': self.next_poll})
+            finally:
+                self.lock.release()

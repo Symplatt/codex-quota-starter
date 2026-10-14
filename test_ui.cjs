@@ -115,3 +115,51 @@ test('origin rejection is not retried',async()=>{
  await p.run(`fetch=async(url,options)=>{calls.push(url);return options?.method==='POST'?{ok:false,status:403,json:async()=>({error:'请求来源校验失败'})}:{ok:true,json:async()=>next}};action('schedule');`);
  assert.equal(calls.filter(u=>u==='/api/schedule').length,1);assert.ok(!calls.includes('/api/session'));
 });
+
+test('sending status updates live quota while showing connected state',async()=>{
+ const p=setup();await p.respond(status());
+ p.run('refresh()');const s={...status(),linked:true,busy:true,phase:'sending'};
+ s.current.primary.usedPercent=40;await p.respond(s);
+ assert.equal(p.e('remaining').textContent,'60%');assert.equal(p.e('badge').textContent,'已连接');
+ assert.equal(p.e('status').textContent,'正在发送小额请求');assert.equal(p.e('reconnect').disabled,true);
+ assert.equal(p.e('pause').disabled,false);
+});
+
+test('pending schedule cannot be resubmitted or reenabled by polling',async()=>{
+ const p=setup();await p.respond(status());
+ p.run("draftRefresh=snapshot.timing.minRefreshAt;refreshDialog.open=true;globalThis.firstAction=action('schedule','refresh-error',{refreshAt:draftRefresh});");
+ assert.equal(p.e('save-time').disabled,true);
+ await p.run("action('schedule','refresh-error',{refreshAt:draftRefresh})");assert.equal(p.requests(),2);
+ p.c.next=status();p.run('renderStatus(next)');assert.equal(p.e('save-time').disabled,true);
+ // Complete the POST, then the follow-up status poll.
+ await p.respond({message:'saved'});await new Promise(resolve=>setImmediate(resolve));
+ await p.respond(status());await p.run('firstAction');
+ assert.equal(p.e('save-time').disabled,false);
+});
+
+test('invalid status disables stale controls without erasing data',async()=>{
+ const p=setup();await p.respond(status());p.run('refresh()');await p.respond({service:'unexpected'});
+ assert.equal(p.e('remaining').textContent,'80%');assert.equal(p.e('reconnect').disabled,true);
+ assert.equal(p.e('pause').disabled,true);
+});
+
+test('rejected replacement token is never retried a third time',async()=>{
+ const p=setup();await p.respond(status());p.c.next=status();
+ await p.run("globalThis.postCount=0;fetch=async(url,options)=>{if(url==='/api/session')return {ok:true,json:async()=>({token:'another'})};if(options?.method==='POST'){postCount++;return {ok:false,status:403,json:async()=>({code:'stale_session',error:'expired'})};}return {ok:true,json:async()=>next};};action('schedule');");
+ assert.equal(p.run('postCount'),2);
+});
+
+test('operation toasts expire and old timers cannot erase a replacement',async()=>{
+ const p=setup();await p.respond(status());
+ p.run("globalThis.feedbackClock=new Map();globalThis.timerId=0;setTimeout=(f,ms)=>{feedbackClock.set(++timerId,{f,ms});return timerId;};clearTimeout=id=>feedbackClock.delete(id);");
+ p.run("showFeedback('toast','正在重新连接',true)");
+ assert.equal(p.e('toast').textContent,'正在重新连接');
+ assert.equal(p.run('[...feedbackClock.values()][0].ms'),3500);
+ p.run("showFeedback('toast','检测失败',false)");
+ assert.equal(p.run('feedbackClock.size'),1);
+ assert.equal(p.run('[...feedbackClock.values()][0].ms'),7000);
+ p.run('[...feedbackClock.values()][0].f()');assert.equal(p.e('toast').textContent,'');
+ p.run("showFeedback('refresh-error','请选择有效时间')");
+ assert.equal(p.e('refresh-error').textContent,'请选择有效时间');
+ assert.equal(p.run('feedbackTimers.size'),0);
+});

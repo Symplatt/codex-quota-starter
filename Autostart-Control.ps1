@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $taskName = 'QuotaStarter-WorkCodex'
 $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 $expected = Join-Path $PSScriptRoot 'supervisor.py'
-if ($task -and -not $task.Actions[0].Arguments.Contains($expected)) {
+if ($task -and @($task.Actions | Where-Object { $_.Arguments -and $_.Arguments.Contains($expected) }).Count -eq 0) {
     throw 'The startup task belongs to a different installation. Open that installation or reinstall this copy.'
 }
 if ($Action -eq 'enable') {
