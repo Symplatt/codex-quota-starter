@@ -8,7 +8,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-from core import Engine, normalize
+from core import Engine, normalize, RECOVERY_INTERVAL
 from rpc import RPC
 import test_quota as fixtures
 from test_quota import FakeRPC, raw
@@ -247,28 +247,101 @@ class RecoveryTests(unittest.TestCase):
             if not engine.connection().get('recoveryAt'):
                 engine.sleeper(10)
 
+    def test_three_single_probes_per_hour_and_restart_preserves_wait(self):
+        fake = FakeRPC([TimeoutError('offline')])
+        e = self.engine(fake, 100)
+        self.failed_round(e)
+        self.assertEqual(fake.reads, 5)
+        start = e.clock()
+        for index in range(1, 4):
+            due = start + index * 1200
+            restarted = self.engine(fake, due - 1)
+            restarted.tick()
+            self.assertEqual(fake.reads, 4 + index)
+            restarted.sleeper(1)
+            restarted.tick()
+            self.assertEqual(fake.reads, 5 + index)
+            self.assertEqual(restarted.next_poll, due + 1200)
+            restarted.sleeper(10)
+            restarted.tick()
+            self.assertEqual(fake.reads, 5 + index)
+        self.assertEqual(fake.sent, 0)
+
+    def test_restart_during_probe_does_not_repeat_it(self):
+        self.store.set('connection', {'startedAt': 100, 'nextAt': 100, 'failures': 0,
+                                     'autoRecovery': True, 'recoveryStartedAt': 100})
+        fake = FakeRPC([raw()])
+        e = self.engine(fake, 101)
+        e.tick()
+        self.assertEqual(fake.reads, 0)
+        self.assertEqual(e.next_poll, 1300)
+
+    def test_old_one_minute_wait_migrates_once(self):
+        self.store.set('connection', {'startedAt': 100, 'nextAt': 200, 'failures': 5,
+                                     'stopped': False, 'recoveryAt': 200})
+        fake = FakeRPC([raw()])
+        e = self.engine(fake, 150)
+        self.assertEqual(e.next_poll, 1340)
+        self.assertEqual(self.engine(fake, 160).next_poll, 1340)
+
+    def test_manual_reconnect_bypasses_twenty_minute_wait(self):
+        fake = FakeRPC([TimeoutError('offline')] * 5 + [raw(20000, 0)])
+        e = self.engine(fake, 100)
+        self.failed_round(e)
+        e.reconnect()
+        e.tick()
+        self.assertTrue(e.linked)
+        self.assertEqual(fake.sent, 0)
+        self.assertEqual(e.next_poll, 200)
+
+    def test_upstream_timeout_keeps_live_transport_for_short_retry(self):
+        fake = FakeRPC([TimeoutError('routing timed out'), raw()])
+        fake.is_alive = lambda: True
+        fake.close = Mock()
+        e = self.engine(fake, 100)
+        e.tick()
+        fake.close.assert_not_called()
+        e.sleeper(10)
+        e.tick()
+        self.assertTrue(e.linked)
+        fake.close.assert_not_called()
+
+    def test_completed_send_verification_timeout_remains_recoverable(self):
+        fake = FakeRPC([raw(100), raw(100), TimeoutError('offline')])
+        e = self.engine(fake, 110)
+        e.tick()
+        self.assertEqual(self.store.recent('attempts')[0]['status'], 'completed')
+        self.assertFalse(self.store.get('sending'))
+        self.assertTrue(e.connection()['recoverable'])
+        for _ in range(4):
+            e.sleeper(10)
+            e.tick()
+        self.assertFalse(e.connection()['stopped'])
+        self.assertTrue(e.connection()['recoveryAt'])
+        self.assertEqual(fake.sent, 1)
+
     def test_outage_past_due_recovers_then_sends_plan_once(self):
         fake = FakeRPC([TimeoutError('offline')] * 5 + [raw(149)])
         e = self.engine(fake, 100)
         self.store.set('current', {'primary': {'resetsAt': 149}})
         plan = e.set_schedule(150)
         self.failed_round(e)
-        self.assertEqual(e.next_poll, 200)
+        self.assertEqual(e.next_poll, 1340)
         self.assertEqual(self.store.get('schedule')['id'], plan['id'])
-        e.sleeper(60)
+        e.sleeper(RECOVERY_INTERVAL)
         e.tick()
         self.assertTrue(e.linked)
         self.assertEqual(fake.sent, 0)  # Recovery first verifies the account/quota.
-        self.assertEqual(e.next_poll, 260)
+        self.assertEqual(e.next_poll, 1400)
         e.sleeper(60)
         e.tick()
         self.assertEqual(fake.sent, 1)
         self.assertEqual(self.store.get('schedule')['status'], 'submitted')
-        self.engine(fake, 320).tick()
+        self.engine(fake, 1460).tick()
         self.assertEqual(fake.sent, 1)
 
     def test_recovery_respects_pause_and_changed_server_window(self):
-        for paused, end in [(True, 149), (False, 300)]:
+        for paused, end in [(True, 149), (False, 3000)]:
             with self.subTest(paused=paused):
                 self.store.set('connection', {})
                 self.store.set('current', {'primary': {'resetsAt': 149}})
@@ -277,7 +350,7 @@ class RecoveryTests(unittest.TestCase):
                 e.set_schedule(150)
                 e.set_paused(paused)
                 self.failed_round(e)
-                e.sleeper(60)
+                e.sleeper(RECOVERY_INTERVAL)
                 e.tick()
                 e.sleeper(60)
                 e.tick()
@@ -295,12 +368,12 @@ class RecoveryTests(unittest.TestCase):
         fake = FakeRPC([raw(149)])
         e = self.engine(fake, 200)
         self.assertFalse(e.connection()['stopped'])
-        self.assertEqual(e.next_poll, 260)
+        self.assertEqual(e.next_poll, 1400)
         restarted = self.engine(fake, 220)
-        self.assertEqual(restarted.next_poll, 260)
+        self.assertEqual(restarted.next_poll, 1400)
         restarted.tick()
         self.assertEqual(fake.reads, 0)
-        restarted.sleeper(40)
+        restarted.sleeper(1180)
         restarted.tick()
         self.assertTrue(restarted.linked)
         self.assertEqual(self.store.get('schedule')['id'], 'existing')
@@ -356,6 +429,19 @@ class RPCTests(unittest.TestCase):
         self.assertTrue(rpc.events.empty())
         with self.assertRaises(ConnectionError):
             rpc.call('account/read')
+
+    def test_windows_pipe_write_failure_is_a_transport_error(self):
+        for error in (OSError(22, 'Invalid argument'), ValueError('closed file')):
+            with self.subTest(error=error):
+                rpc = self.rpc()
+                rpc.write_lock = threading.Lock()
+                rpc.proc = Mock()
+                rpc.proc.stdin.write.side_effect = error
+                with self.assertRaises(ConnectionError):
+                    rpc.call('account/read')
+                self.assertTrue(rpc.disconnected.is_set())
+                self.assertFalse(rpc.is_alive())
+                self.assertEqual(rpc.pending, {})
 
     def test_pending_call_wakes_on_eof(self):
         rpc = self.rpc()

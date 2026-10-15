@@ -81,8 +81,15 @@ class RPC:
 
     def _send(self, message):
         with self.write_lock:
-            self.proc.stdin.write(json.dumps(message, ensure_ascii=False) + '\n')
-            self.proc.stdin.flush()
+            try:
+                self.proc.stdin.write(json.dumps(message, ensure_ascii=False) + '\n')
+                self.proc.stdin.flush()
+            except (OSError, ValueError) as exc:
+                self.disconnected.set()
+                raise ConnectionError('Codex App Server 已断开（写入管道失败）') from exc
+
+    def is_alive(self):
+        return not self.disconnected.is_set() and self.proc.poll() is None
 
     def _read(self):
         try:

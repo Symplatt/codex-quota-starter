@@ -16,7 +16,7 @@ POLL_INTERVAL = 60
 ATTEMPT_LIMIT = 5
 RETRY_INTERVAL = 10
 RETRY_BUDGET = 60
-RECOVERY_INTERVAL = 60
+RECOVERY_INTERVAL = 20 * 60
 
 
 def transient_connection_error(error):
@@ -27,6 +27,7 @@ def transient_connection_error(error):
         'workspace routing discovery', 'error sending request', 'timed out',
         'connection reset', 'connection refused', 'connection closed',
         'temporarily unavailable', 'dns error', 'codex app server 已断开',
+        'broken pipe', 'pipe has been ended', '管道已结束', '管道正在被关闭',
         'account/read 超时', 'account/ratelimits/read 超时'))
 
 
@@ -233,15 +234,20 @@ class Engine:
         retry = self.store.get('connection', {})
         last_attempt = self.store.recent('attempts', 1)
         # Older releases permanently stopped after read-only network failures.
-        # Never migrate a stop with an unresolved submission or an explicit cause.
-        if (retry.get('stopped') and 'stopReason' not in retry
+        # Read-only transport failures from older versions can be retried safely.
+        if (retry.get('stopped') and retry.get('stopReason') in (None, 'manual_required')
                 and not self.store.get('sending', False)
                 and not (last_attempt and last_attempt[0]['status'] in ('reserved', 'unknown')
                          and last_attempt[0]['started'] >= retry.get('startedAt', 0))
-                and str(retry.get('error', '')).startswith(('account/read', 'account/rateLimits/read'))
                 and transient_connection_error(retry.get('error', ''))):
             self.stop_connection(recoverable=True)
             retry = self.connection()
+        if retry.get('recoveryAt') and retry.get('recoveryInterval') != RECOVERY_INTERVAL:
+            # Upgrade the old one-minute wait once, without postponing on every restart.
+            retry['recoveryAt'] = max(self.clock(), retry['recoveryAt'] - 60 + RECOVERY_INTERVAL)
+            retry['nextAt'] = retry['recoveryAt']
+            retry['recoveryInterval'] = RECOVERY_INTERVAL
+            self.store.set('connection', retry)
         if retry.get('stopped'):
             self.status = '已断开，请点击重新连接'
             self.phase = 'stopped'
@@ -308,8 +314,9 @@ class Engine:
         state['stopReason'] = 'network' if recoverable else 'manual_required'
         state.pop('recoveryAt', None)
         if recoverable:
-            state['recoveryAt'] = self.clock() + RECOVERY_INTERVAL
+            state['recoveryAt'] = max(self.clock(), state.get('recoveryStartedAt', self.clock()) + RECOVERY_INTERVAL)
             state['nextAt'] = state['recoveryAt']
+            state['recoveryInterval'] = RECOVERY_INTERVAL
         self.store.set('connection', state)
         self.next_poll = state['recoveryAt'] if recoverable else 0
         self.status = ('连接暂时不可用，等待自动重连' if recoverable
@@ -332,8 +339,11 @@ class Engine:
                                 and not self.store.get('sending', False))
         self.store.set('connection', state)
         self.linked = False
-        self.close()
-        if state['failures'] >= ATTEMPT_LIMIT or now >= state['startedAt'] + RETRY_BUDGET:
+        # An upstream timeout does not imply the stdio transport has died. Keeping
+        # it avoids repeated process startup/routing discovery during short outages.
+        if not (state['recoverable'] and self.rpc and getattr(self.rpc, 'is_alive', lambda: False)()):
+            self.close()
+        if state.get('autoRecovery') or state['failures'] >= ATTEMPT_LIMIT or now >= state['startedAt'] + RETRY_BUDGET:
             self.stop_connection(recoverable=state['recoverable'])
         else:
             self.next_poll = state['nextAt']
@@ -544,9 +554,14 @@ class Engine:
             if retry.get('recoveryAt'):
                 if now < retry['recoveryAt']:
                     return self.status
-                self.store.set('connection', {})
+                retry = {'startedAt': now, 'nextAt': now, 'failures': 0,
+                         'autoRecovery': True, 'recoveryStartedAt': now, 'recoverable': True}
+                self.store.set('connection', retry)
                 self.read_requested = 'reconnect'
-                retry = {}
+            elif retry.get('autoRecovery'):
+                # A restart during a probe must not start another probe in that slot.
+                self.stop_connection(recoverable=True)
+                return self.status
             if retry and now >= retry['startedAt'] + RETRY_BUDGET:
                 self.stop_connection(recoverable=retry.get('recoverable', False))
                 return self.status
@@ -600,6 +615,11 @@ class Engine:
             if attempt is None:
                 return self._ok('本周期已处理')
             status = self._send_reserved(attempt, account_key, identity, fresh, prepared, detail)
+            if status == 'completed':
+                # Persist the acknowledged send before the separate read-only check.
+                # A failed verification must not be mistaken for an unknown submission.
+                self.store.finish(attempt, account_key, status, detail, None, self.clock())
+                self.store.set('sending', False)
             after = None
             if self.rpc and not self.connection().get('stopped'):
                 try:
