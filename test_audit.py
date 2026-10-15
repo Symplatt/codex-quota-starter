@@ -236,6 +236,107 @@ class PollIntervalTests(unittest.TestCase):
         self.assertEqual(e.connection()['failures'], 1)
 
 
+class RecoveryTests(unittest.TestCase):
+    setUp = fixtures.QuotaTests.setUp
+    tearDown = fixtures.QuotaTests.tearDown
+    engine = fixtures.QuotaTests.engine
+
+    def failed_round(self, engine):
+        for _ in range(5):
+            engine.tick()
+            if not engine.connection().get('recoveryAt'):
+                engine.sleeper(10)
+
+    def test_outage_past_due_recovers_then_sends_plan_once(self):
+        fake = FakeRPC([TimeoutError('offline')] * 5 + [raw(149)])
+        e = self.engine(fake, 100)
+        self.store.set('current', {'primary': {'resetsAt': 149}})
+        plan = e.set_schedule(150)
+        self.failed_round(e)
+        self.assertEqual(e.next_poll, 200)
+        self.assertEqual(self.store.get('schedule')['id'], plan['id'])
+        e.sleeper(60)
+        e.tick()
+        self.assertTrue(e.linked)
+        self.assertEqual(fake.sent, 0)  # Recovery first verifies the account/quota.
+        self.assertEqual(e.next_poll, 260)
+        e.sleeper(60)
+        e.tick()
+        self.assertEqual(fake.sent, 1)
+        self.assertEqual(self.store.get('schedule')['status'], 'submitted')
+        self.engine(fake, 320).tick()
+        self.assertEqual(fake.sent, 1)
+
+    def test_recovery_respects_pause_and_changed_server_window(self):
+        for paused, end in [(True, 149), (False, 300)]:
+            with self.subTest(paused=paused):
+                self.store.set('connection', {})
+                self.store.set('current', {'primary': {'resetsAt': 149}})
+                fake = FakeRPC([TimeoutError('offline')] * 5 + [raw(end)])
+                e = self.engine(fake, 100)
+                e.set_schedule(150)
+                e.set_paused(paused)
+                self.failed_round(e)
+                e.sleeper(60)
+                e.tick()
+                e.sleeper(60)
+                e.tick()
+                self.assertEqual(fake.sent, 0)
+                self.assertEqual(self.store.get('paused'), paused)
+                self.assertEqual(self.store.get('schedule')['status'], 'pending' if paused else 'cancelled')
+
+    def test_upgrade_recovers_legacy_read_timeout_and_keeps_plan(self):
+        # An unrelated old unresolved attempt must not prevent read-only recovery.
+        self.store.claim('old', 'cycle:1', 0, {})
+        self.store.set('sending', False)
+        self.store.set('connection', {'startedAt': 1, 'nextAt': 61, 'failures': 3,
+                                     'stopped': True, 'error': 'account/read: workspace routing discovery timed out'})
+        self.store.set('schedule', {'id': 'existing', 'sendAt': 150, 'status': 'pending'})
+        fake = FakeRPC([raw(149)])
+        e = self.engine(fake, 200)
+        self.assertFalse(e.connection()['stopped'])
+        self.assertEqual(e.next_poll, 260)
+        restarted = self.engine(fake, 220)
+        self.assertEqual(restarted.next_poll, 260)
+        restarted.tick()
+        self.assertEqual(fake.reads, 0)
+        restarted.sleeper(40)
+        restarted.tick()
+        self.assertTrue(restarted.linked)
+        self.assertEqual(self.store.get('schedule')['id'], 'existing')
+        self.assertEqual(fake.sent, 0)
+
+    def test_non_network_errors_still_stop(self):
+        fake = FakeRPC([ValueError('服务器额度窗口无效')])
+        e = self.engine(fake, 100)
+        self.failed_round(e)
+        self.assertTrue(e.connection()['stopped'])
+        e.sleeper(600)
+        e.tick()
+        self.assertEqual(fake.reads, 5)
+
+    def test_unknown_send_does_not_migrate_to_auto_recovery(self):
+        self.store.set('sending', True)
+        self.store.set('connection', {'stopped': True, 'error': 'account/read: workspace routing discovery failed'})
+        fake = FakeRPC([raw(149)])
+        e = self.engine(fake, 200)
+        e.tick()
+        self.assertTrue(e.connection()['stopped'])
+        self.assertEqual(fake.reads, 0)
+        self.assertEqual(self.engine(fake, 900).phase, 'stopped')
+
+    def test_legacy_unknown_submission_blocks_migration_even_after_sending_cleared(self):
+        attempt = self.store.claim('acct', 'cycle:149', 100, {})
+        self.store.finish(attempt, 'acct', 'unknown', {}, None, 120)
+        self.store.set('sending', False)
+        self.store.set('connection', {'stopped': True, 'error': 'account/read: workspace routing discovery failed'})
+        fake = FakeRPC([raw(149)])
+        e = self.engine(fake, 200)
+        e.tick()
+        self.assertTrue(e.connection()['stopped'])
+        self.assertEqual(fake.reads, 0)
+
+
 class RPCTests(unittest.TestCase):
     def rpc(self):
         rpc = object.__new__(RPC)

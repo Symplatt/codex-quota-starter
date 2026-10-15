@@ -118,6 +118,7 @@ function cardTime(id,value){const target=$(id);target.textContent=time(value);if
 function timeBlock(id,dateId,value){$(id).textContent=clockTime(value);$(dateId).textContent=value?time(value).split(' ')[0]:'—';}
 function shortStatus(s){
  if(s.connection?.stopped)return '已断开，等待重新连接';
+ if(s.connection?.recoveryAt)return '等待自动重连';
  const phases={connecting:'正在连接',checking:'正在检测额度',preparing:'正在准备小额请求',sending:'正在发送小额请求',verifying:'正在核验请求结果'};
  if(s.busy&&phases[s.phase])return phases[s.phase];
  if(s.connection?.failures)return '等待第 '+(s.connection.failures+1)+'/5 次尝试';
@@ -206,14 +207,14 @@ for(const id of ['close-refresh','cancel-refresh'])$(id).addEventListener('click
 let refreshBackdrop=false;
 refreshDialog.addEventListener('pointerdown',e=>{refreshBackdrop=e.target===refreshDialog;});
 refreshDialog.addEventListener('click',e=>{if(refreshBackdrop&&e.target===refreshDialog){const r=refreshDialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)refreshDialog.close();}refreshBackdrop=false;});
-function countdown(){const t=snapshot?.timing;if(!t)return;const left=t.sendAt-Date.now()/1000;const pad=n=>String(n).padStart(2,'0');$('countdown').textContent=snapshot.connection?.stopped?'已停止，等待重新连接':paused?'已暂停':!t.sendAt?'待检测':left>0?'倒计时 '+pad(Math.floor(left/3600))+':'+pad(Math.floor(left%3600/60))+':'+pad(Math.floor(left%60)):'已到点';}
+function countdown(){const t=snapshot?.timing;if(!t)return;const left=t.sendAt-Date.now()/1000;const pad=n=>String(n).padStart(2,'0');$('countdown').textContent=snapshot.connection?.stopped?'已停止，等待重新连接':paused?'已暂停':snapshot.connection?.recoveryAt?'等待自动重连，计划保留':!t.sendAt?'待检测':left>0?'倒计时 '+pad(Math.floor(left/3600))+':'+pad(Math.floor(left%3600/60))+':'+pad(Math.floor(left%60)):'已到点';}
 // Render synchronously: the browser paints only after the complete snapshot is applied.
 function renderStatus(s){
  connected=true;
  if(!s.current&&snapshot?.current)s={...s,current:snapshot.current,timing:snapshot.timing};
  snapshot=s;paused=s.paused;
  $('version').textContent='v'+s.version;
- $('badge').textContent=s.connection?.stopped?'已断开':s.linked?'后台运行':s.busy?'正在连接':paused?'已暂停':'后台运行';
+ $('badge').textContent=s.connection?.stopped?'已断开':s.connection?.recoveryAt?'等待重连':s.linked?'后台运行':s.busy?'正在连接':paused?'已暂停':'后台运行';
  $('pause').textContent=paused?'恢复运行':'暂停';
  $('status').textContent=shortStatus(s);$('status-detail').textContent=s.status;$('status').title=s.status;
  const c=s.current;

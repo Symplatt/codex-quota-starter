@@ -100,6 +100,19 @@ test('attempt counter includes initial try in five-attempt limit',async()=>{
  assert.equal(p.e('status').textContent,'等待第 5/5 次尝试');
 });
 
+test('network cooldown displays automatic recovery and retains schedule',async()=>{
+ const p=setup();const s={...status(),linked:false,connection:{stopped:false,failures:5,recoveryAt:12345}};
+ await p.respond(s);
+ assert.equal(p.e('status').textContent,'等待自动重连');
+ assert.equal(p.e('badge').textContent,'等待重连');
+ assert.equal(p.e('countdown').textContent,'等待自动重连，计划保留');
+ assert.notEqual(p.e('send-at').textContent,'—');
+ assert.equal(p.e('reconnect').disabled,false);
+ p.run('refresh()');await p.respond({...status(),linked:true});
+ assert.equal(p.e('badge').textContent,'后台运行');
+ assert.match(p.e('countdown').textContent,/倒计时/);
+});
+
 test('expired session refreshes token and retries same draft once',async()=>{
  const p=setup();await p.respond(status());const calls=[];p.c.calls=calls;p.c.next=status();
  await p.run(`let posts=0;fetch=async(url,options)=>{

@@ -16,6 +16,18 @@ POLL_INTERVAL = 60
 ATTEMPT_LIMIT = 5
 RETRY_INTERVAL = 10
 RETRY_BUDGET = 60
+RECOVERY_INTERVAL = 60
+
+
+def transient_connection_error(error):
+    if isinstance(error, (TimeoutError, ConnectionError)):
+        return True
+    message = str(error).lower()
+    return any(text in message for text in (
+        'workspace routing discovery', 'error sending request', 'timed out',
+        'connection reset', 'connection refused', 'connection closed',
+        'temporarily unavailable', 'dns error', 'codex app server 已断开',
+        'account/read 超时', 'account/ratelimits/read 超时'))
 
 
 def normalize(raw):
@@ -219,12 +231,24 @@ class Engine:
         if self.store.get('sending', False):
             self.stop_connection()
         retry = self.store.get('connection', {})
+        last_attempt = self.store.recent('attempts', 1)
+        # Older releases permanently stopped after read-only network failures.
+        # Never migrate a stop with an unresolved submission or an explicit cause.
+        if (retry.get('stopped') and 'stopReason' not in retry
+                and not self.store.get('sending', False)
+                and not (last_attempt and last_attempt[0]['status'] in ('reserved', 'unknown')
+                         and last_attempt[0]['started'] >= retry.get('startedAt', 0))
+                and str(retry.get('error', '')).startswith(('account/read', 'account/rateLimits/read'))
+                and transient_connection_error(retry.get('error', ''))):
+            self.stop_connection(recoverable=True)
+            retry = self.connection()
         if retry.get('stopped'):
             self.status = '已断开，请点击重新连接'
             self.phase = 'stopped'
         elif retry:
             self.next_poll = retry.get('nextAt', 0)
-            self.status = '连接/检测失败：等待重试'
+            self.status = ('连接暂时不可用，等待自动重连' if retry.get('recoveryAt')
+                           else '连接/检测失败：等待重试')
             self.phase = 'retry_wait'
         current = self.store.get('current')
         reset_at = (current or {}).get('primary', {}).get('resetsAt')
@@ -278,16 +302,24 @@ class Engine:
         finally:
             self.lock.release()
 
-    def stop_connection(self):
+    def stop_connection(self, *, recoverable=False):
         state = self.connection()
-        state['stopped'] = True
+        state['stopped'] = not recoverable
+        state['stopReason'] = 'network' if recoverable else 'manual_required'
+        state.pop('recoveryAt', None)
+        if recoverable:
+            state['recoveryAt'] = self.clock() + RECOVERY_INTERVAL
+            state['nextAt'] = state['recoveryAt']
         self.store.set('connection', state)
-        self.next_poll = 0
-        self.status = '已断开，请点击重新连接'
+        self.next_poll = state['recoveryAt'] if recoverable else 0
+        self.status = ('连接暂时不可用，等待自动重连' if recoverable
+                       else '已断开，请点击重新连接')
         self.read_requested = None
-        self.phase = 'stopped'
+        self.phase = 'retry_wait' if recoverable else 'stopped'
         self.linked = False
         self.close()
+        if recoverable:
+            self.store.log('connection_recovery', {'nextAt': self.next_poll, 'error': state.get('error')})
 
     def failed_connection(self, error):
         now = self.clock()
@@ -296,11 +328,13 @@ class Engine:
         state['failures'] = state.get('failures', 0) + 1
         state['nextAt'] = min(now + RETRY_INTERVAL, state['startedAt'] + RETRY_BUDGET)
         state['error'] = str(error)[:1200]
+        state['recoverable'] = (transient_connection_error(error)
+                                and not self.store.get('sending', False))
         self.store.set('connection', state)
         self.linked = False
         self.close()
         if state['failures'] >= ATTEMPT_LIMIT or now >= state['startedAt'] + RETRY_BUDGET:
-            self.stop_connection()
+            self.stop_connection(recoverable=state['recoverable'])
         else:
             self.next_poll = state['nextAt']
             self.phase = 'retry_wait'
@@ -507,8 +541,14 @@ class Engine:
             retry = self.connection()
             if retry.get('stopped'):
                 return self.status
+            if retry.get('recoveryAt'):
+                if now < retry['recoveryAt']:
+                    return self.status
+                self.store.set('connection', {})
+                self.read_requested = 'reconnect'
+                retry = {}
             if retry and now >= retry['startedAt'] + RETRY_BUDGET:
-                self.stop_connection()
+                self.stop_connection(recoverable=retry.get('recoverable', False))
                 return self.status
             if retry and now < retry['nextAt']:
                 return self.status

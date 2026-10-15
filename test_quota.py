@@ -257,20 +257,25 @@ class RetryTests(unittest.TestCase):
     tearDown = QuotaTests.tearDown
     engine = QuotaTests.engine
 
-    def test_connection_failure_limit_survives_restart(self):
+    def test_connection_failure_cooldown_survives_restart(self):
         fake = FakeRPC([TimeoutError('offline')])
         for now in (100, 110, 120, 130, 140):
             self.engine(fake, now).tick()
-        self.assertTrue(self.store.get('connection')['stopped'])
-        self.engine(fake, 999).tick(check_only=True)
+        self.assertFalse(self.store.get('connection')['stopped'])
+        self.assertEqual(self.store.get('connection')['recoveryAt'], 200)
+        self.engine(fake, 199).tick(check_only=True)
         self.assertEqual(fake.reads, 5)
+        self.engine(fake, 200).tick()
+        self.assertEqual(fake.reads, 6)
+        self.assertEqual(self.store.get('connection')['failures'], 1)
 
     def test_total_deadline_prevents_another_connection(self):
         fake = FakeRPC([TimeoutError('offline')])
         self.engine(fake, 100).tick()
         self.engine(fake, 160).tick()
         self.assertEqual(fake.reads, 1)
-        self.assertTrue(self.store.get('connection')['stopped'])
+        self.assertFalse(self.store.get('connection')['stopped'])
+        self.assertEqual(self.store.get('connection')['recoveryAt'], 220)
 
     def test_interval_cannot_be_bypassed_by_recheck(self):
         fake = FakeRPC([TimeoutError('offline')])
