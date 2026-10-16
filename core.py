@@ -346,14 +346,13 @@ class Engine:
         state['error'] = str(error)[:1200]
         state['recoverable'] = (transient_connection_error(error)
                                 and not self.store.get('sending', False))
+        state['readOnlyRecovery'] = state['recoverable']
         self.store.set('connection', state)
         self.linked = False
         diagnostics = getattr(error, 'rpc_diagnostics', {})
         # A live stdio child can still have broken HTTP/proxy state. Recreate it
         # before the next bounded retry so routing and transport are rebuilt.
         self.close()
-        if state['recoverable']:
-            self.read_requested = 'reconnect'
         self.store.log('connection_failure', {'error': state['error'], 'failures': state['failures'],
                                              'nextAt': state['nextAt'], 'diagnostics': diagnostics}, now)
         if state.get('autoRecovery') or state['failures'] >= ATTEMPT_LIMIT or now >= state['startedAt'] + RETRY_BUDGET:
@@ -587,7 +586,7 @@ class Engine:
                 return self.status
             if retry and now < retry['nextAt']:
                 return self.status
-            requested = self.read_requested
+            requested = self.read_requested or ('reconnect' if retry.get('readOnlyRecovery') else None)
             self._phase('connecting' if not self.rpc else 'checking',
                         '正在连接' if not self.rpc else '正在检测额度')
             started = self.clock()
