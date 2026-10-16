@@ -24,6 +24,21 @@ class AuditTests(unittest.TestCase):
         self.store.set('current', {'primary': {'resetsAt': 100}})
         engine.set_schedule(200)
 
+    def test_schedule_actions_survive_routine_checks_in_activity(self):
+        e = self.engine(FakeRPC([raw(149)]), 100)
+        self.store.set('current', {'primary': {'resetsAt': 149}})
+        e.set_schedule(200)
+        e.set_schedule(210)
+        e.set_schedule()
+        e.request_check()
+        for _ in range(35):
+            self.store.log('check', {})
+        rows = self.store.activity()
+        self.assertEqual([r['detail']['action'] for r in rows], ['check', 'clear', 'update', 'create'])
+        self.assertEqual(rows[2]['detail']['previous']['sendAt'], 200)
+        self.assertEqual(rows[2]['detail']['refreshAt'], 18210)
+        self.assertEqual(rows[1]['detail']['previous']['sendAt'], 210)
+
     def test_periodic_check_cancels_before_due_and_logs_once(self):
         fake = FakeRPC([raw(300)])
         e = self.engine(fake, 110)
@@ -294,17 +309,19 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(fake.sent, 0)
         self.assertEqual(e.next_poll, 200)
 
-    def test_upstream_timeout_keeps_live_transport_for_short_retry(self):
+    def test_upstream_timeout_rebuilds_live_transport_before_read_only_retry(self):
         fake = FakeRPC([TimeoutError('routing timed out'), raw()])
         fake.is_alive = lambda: True
         fake.close = Mock()
         e = self.engine(fake, 100)
         e.tick()
-        fake.close.assert_not_called()
+        fake.close.assert_called_once()
+        self.assertIsNone(e.rpc)
         e.sleeper(10)
         e.tick()
         self.assertTrue(e.linked)
-        fake.close.assert_not_called()
+        fake.close.assert_called_once()
+        self.assertEqual(fake.sent, 0)
 
     def test_completed_send_verification_timeout_remains_recoverable(self):
         fake = FakeRPC([raw(100), raw(100), TimeoutError('offline')])

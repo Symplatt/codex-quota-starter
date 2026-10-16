@@ -176,3 +176,37 @@ test('operation toasts expire and old timers cannot erase a replacement',async()
  assert.equal(p.e('refresh-error').textContent,'请选择有效时间');
  assert.equal(p.run('feedbackTimers.size'),0);
 });
+
+test('persistent activity shows schedule changes and connection events alongside trigger records',async()=>{
+ const p=setup(),s=status(),at=s.current.checkedAt;
+ s.attempts=[{started:at,status:'completed',detail:{evidence:'周期已核验'}}];
+ s.events=[{time:at,kind:'check',detail:{primary:s.current.primary}}];
+ s.activity=[
+  {time:at,kind:'schedule',detail:{action:'update',previous:{sendAt:at+1800},sendAt:at+3600,refreshAt:at+21600}},
+  {time:at-1,kind:'schedule',detail:{action:'clear',previous:{sendAt:at+1800}}},
+  {time:at-2,kind:'control',detail:{action:'check'}},
+  {time:at-3,kind:'control',detail:{action:'autostart/enable',result:{error:'无法写入设置'}}},
+  {time:at-4,kind:'connection_failure',detail:{error:'读取超时',failures:1,nextAt:at+10}},
+  {time:at-5,kind:'connection_recovered',detail:{durationSeconds:12}},
+ ];
+ await p.respond(s);
+ const rows=p.e('activity').children.map(row=>row.children.map(cell=>cell.textContent));
+ assert.equal(rows.length,6);assert.equal(rows[0][1],'修改定时请求');
+ assert.match(rows[0][2],/原发送时间：.*\n发送时间：.*\n预计刷新：/);
+ assert.ok(rows[0][2].includes(p.run(`time(${at+21600})`)));
+ assert.equal(rows[1][1],'取消定时请求，恢复自动');assert.match(rows[1][2],/原发送时间/);
+ assert.equal(rows[2][1],'重新检测');assert.match(rows[3][2],/操作失败：无法写入设置/);
+ assert.match(rows[4][2],/错误：读取超时\n失败次数：1\n下次尝试：/);
+ assert.equal(rows[5][1],'连接已恢复');assert.equal(rows[5][2],'耗时：12 秒');
+ assert.equal(p.e('history').children[0].children[2].textContent,'周期已核验');
+ assert.match(p.e('logs').textContent,/check/);
+});
+
+test('activity reads old schedule records and excludes routine checks',async()=>{
+ const p=setup(),s=status(),at=s.current.checkedAt;
+ s.events=[{time:at,kind:'check',detail:{}},{time:at-1,kind:'schedule',detail:null},{time:at-2,kind:'schedule',detail:{sendAt:at+3600}}];
+ await p.respond(s);
+ const rows=p.e('activity').children.map(row=>row.children.map(cell=>cell.textContent));
+ assert.equal(rows.length,2);assert.equal(rows[0][1],'取消定时请求，恢复自动');
+ assert.equal(rows[1][1],'设置定时请求');assert.match(rows[1][2],/发送时间：.*\n预计刷新：/);
+});

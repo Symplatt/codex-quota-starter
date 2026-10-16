@@ -215,6 +215,12 @@ class Store:
             rows = db.execute(f'SELECT * FROM {table} ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
         return [{**dict(row), 'detail': json.loads(row['detail'])} for row in rows]
 
+    def activity(self, limit=50):
+        with self.connect() as db:
+            rows = db.execute("SELECT * FROM events WHERE kind != 'check' ORDER BY id DESC LIMIT ?",
+                              (limit,)).fetchall()
+        return [{**dict(row), 'detail': json.loads(row['detail'])} for row in rows]
+
 
 class Engine:
     def __init__(self, store, cwd, rpc_factory=RPC, clock=time.time, sleeper=time.sleep):
@@ -279,6 +285,7 @@ class Engine:
             self.status = '正在检测额度'
             self.phase = 'checking'
             self.next_poll = 0
+            self.store.log('control', {'action': 'check'}, self.clock())
         finally:
             self.lock.release()
 
@@ -327,6 +334,8 @@ class Engine:
         self.close()
         if recoverable:
             self.store.log('connection_recovery', {'nextAt': self.next_poll, 'error': state.get('error')})
+        else:
+            self.store.log('connection_stopped', {'message': self.status, 'error': state.get('error')})
 
     def failed_connection(self, error):
         now = self.clock()
@@ -339,10 +348,14 @@ class Engine:
                                 and not self.store.get('sending', False))
         self.store.set('connection', state)
         self.linked = False
-        # An upstream timeout does not imply the stdio transport has died. Keeping
-        # it avoids repeated process startup/routing discovery during short outages.
-        if not (state['recoverable'] and self.rpc and getattr(self.rpc, 'is_alive', lambda: False)()):
-            self.close()
+        diagnostics = getattr(error, 'rpc_diagnostics', {})
+        # A live stdio child can still have broken HTTP/proxy state. Recreate it
+        # before the next bounded retry so routing and transport are rebuilt.
+        self.close()
+        if state['recoverable']:
+            self.read_requested = 'reconnect'
+        self.store.log('connection_failure', {'error': state['error'], 'failures': state['failures'],
+                                             'nextAt': state['nextAt'], 'diagnostics': diagnostics}, now)
         if state.get('autoRecovery') or state['failures'] >= ATTEMPT_LIMIT or now >= state['startedAt'] + RETRY_BUDGET:
             self.stop_connection(recoverable=state['recoverable'])
         else:
@@ -392,11 +405,14 @@ class Engine:
                     raise ValueError('只能选择 GPT 正常刷新时刻之后的时间')
             if refresh_at is not None and send_at < self.store.guard_until():
                 raise ValueError('所选刷新时间早于防重复保护结束后的可选时间')
+            previous = self.store.get('schedule')
             schedule = None if send_at is None else {
                 'id': uuid.uuid4().hex, 'sendAt': send_at,
                 'createdAt': self.clock(), 'status': 'pending'}
             self.store.set('schedule', schedule)
-            self.store.log('schedule', schedule)
+            action = 'clear' if schedule is None else ('update' if previous and previous.get('status') == 'pending' else 'create')
+            self.store.log('schedule', {'action': action, 'previous': previous, **(schedule or {}),
+                                       'refreshAt': send_at + WINDOW if send_at is not None else None}, self.clock())
             return schedule
         finally:
             self.lock.release()
@@ -435,6 +451,10 @@ class Engine:
         self.phase, self.status = phase, status
 
     def _ok(self, status):
+        previous = self.connection()
+        if previous.get('failures') or previous.get('autoRecovery'):
+            self.store.log('connection_recovered', {'message': '已恢复连接，账户和额度核验成功',
+                                                   'failures': previous.get('failures', 0)}, self.clock())
         self.store.set('connection', {})
         # All successful operations resume the same periodic cadence. Only explicit
         # checks/reconnects and failed-operation retries may wake it sooner.
@@ -648,7 +668,8 @@ class Engine:
                 self.stop_connection()
             else:
                 self.failed_connection(exc)
-            self.store.log('error', {'message': self.status, 'error': str(exc)[:1200]})
+            if attempt is not None:
+                self.store.log('error', {'message': self.status, 'error': str(exc)[:1200]})
             return self.status
         finally:
             try:

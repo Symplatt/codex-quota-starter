@@ -72,6 +72,7 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                      'autostart': startup.apply('status'),
                      'timing': engine.timing(),
                      'attempts': engine.store.recent('attempts', 10),
+                     'activity': engine.store.activity(),
                      'events': engine.store.recent('events', 30)})
             return self.send(404, {'error': 'Not found'})
 
@@ -120,6 +121,7 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                     return self.send(409, {'error': '请先恢复运行'})
                 if engine.lock.locked():
                     return self.send(409, {'error': '检测或请求正在进行'})
+                engine.store.log('control', {'action': 'trigger'})
                 result = engine.tick(manual=True)
                 return self.send(200, {'message': result})
             if self.path == '/api/check':

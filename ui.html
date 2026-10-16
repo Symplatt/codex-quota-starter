@@ -82,7 +82,7 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 @media(max-width:460px){.schedule-row>.panel{grid-template-columns:minmax(0,1fr);grid-template-rows:32px 40px minmax(108px,1fr) 41px}.schedule-row .section-head{min-height:32px}.schedule-row .time-panel #schedule-form,.run-panel>.actions{grid-column:1;grid-row:2}.schedule-row .panel-metrics{grid-row:3}.schedule-row .panel-footer{grid-row:4}}
 .refresh-description{margin:4px 0 32px;color:#8a8e8b;font-size:12px;line-height:1.7}.refresh-description strong{font-weight:600;color:inherit}
 @media(min-width:961px) and (max-width:1250px){.schedule-row{grid-template-columns:minmax(0,1fr)}}
-.card-date{color:#234b39}</style></head><body><main>
+.card-date{color:#234b39}.activity-heading{margin-top:24px}.activity-table{max-height:330px;overflow:auto}.activity-table th{position:sticky;top:0;background:#fff}.activity-table th:first-child{width:175px}.activity-table th:nth-child(2){width:145px}.activity-table td:first-child{font-variant-numeric:tabular-nums}.activity-table td:last-child{white-space:pre-line}</style></head><body><main>
 <header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button type="button" id="open-help" aria-label="帮助" title="帮助" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M8.5 8.2a3.5 3.5 0 0 1 7 .3c0 2.5-3.5 2.7-3.5 5.2"/><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"/></svg></button></div></header>
 <div class="grid">
 <section class="card"><div class="label">五小时剩余额度</div><div class="value" id="remaining">—</div><div class="small" id="weekly">每周额度：等待检测</div></section>
@@ -96,7 +96,7 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 <dialog id="refresh-dialog" aria-labelledby="refresh-title" aria-describedby="refresh-description"><header class="refresh-header"><h2 id="refresh-title">选择时间</h2><button type="button" id="close-refresh" aria-label="关闭">×</button></header><p class="refresh-description" id="refresh-description">选择<strong>完成刷新</strong>的时间</p><div class="manual-date"><div class="manual-field"><label for="manual-year">年</label><input id="manual-year" type="text" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="输入年" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-month">月</label><input id="manual-month" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入月" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-day">日</label><input id="manual-day" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入日" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-hour">时</label><input id="manual-hour" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入时" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-minute">分</label><input id="manual-minute" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入分" aria-describedby="refresh-error"></div></div><div class="wheel-grid" id="wheel-grid"></div><div id="refresh-error" class="feedback" role="status"></div><footer class="refresh-footer"><button type="button" id="cancel-refresh">取消</button><button type="button" class="primary" id="save-time">确定</button></footer></dialog>
 </section>
 <section class="panel run-panel"><div class="section-head"><h2>运行状态</h2></div><div class="actions"><button class="primary" id="recheck" onclick="recheckQuota()">重新检测</button><button id="reconnect" onclick="action('reconnect')">重新连接</button><button id="pause" onclick="action(paused?'resume':'pause')">暂停</button></div><div class="panel-metrics"><div class="metric"><div class="metric-label"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25"/><path d="M10 5.5V10l3 1.8"/></svg>上次检测</div><div class="metric-value" id="checked">—</div><div class="metric-date" id="checked-date">—</div></div><div class="metric"><div class="metric-label"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M16.4 8A6.7 6.7 0 1 0 16 13M16.5 3.5V8H12"/></svg>下次检测</div><div class="metric-value" id="next-check">—</div><div class="metric-date" id="next-check-date">—</div></div></div><div class="panel-footer" aria-live="polite"><span class="footer-dot" aria-hidden="true"></span><span class="state-chip" id="status">连接中</span><span id="status-detail" hidden></span></div></section>
-</div><section class="panel"><h2>触发记录</h2><div class="tablewrap"><table><thead><tr><th>时间（北京时间）</th><th>结果</th><th>周期验证</th></tr></thead><tbody id="history"></tbody></table></div><details><summary>查看检测日志</summary><pre id="logs"></pre></details></section>
+</div><section class="panel"><h2>触发记录</h2><div class="tablewrap"><table><thead><tr><th>时间（北京时间）</th><th>结果</th><th>周期验证</th></tr></thead><tbody id="history"></tbody></table></div><h2 class="activity-heading">操作与连接日志</h2><div class="tablewrap activity-table"><table><thead><tr><th>时间（北京时间）</th><th>操作 / 事件</th><th>详情</th></tr></thead><tbody id="activity"></tbody></table></div><details><summary>查看检测明细</summary><pre id="logs"></pre></details></section>
 <section class="panel"><h2>设置</h2><label style="display:flex;align-items:center;gap:12px"><input type="checkbox" id="autostart" disabled onchange="setAutostart(this.checked)"><span>开机自启动</span></label><div class="small" id="startup-error" role="status"></div></section>
 <section class="panel"><h2>软件信息</h2><div class="info"><span>名称：额度启程</span><span>版本：<strong id="version">—</strong></span><span>版权所有 © 2026 Symplatt</span></div></section>
 </main><div class="feedback-stack"><div class="feedback" id="schedule-feedback" role="status"></div><div class="feedback" id="toast" role="status"></div></div><dialog id="help-dialog" aria-labelledby="help-title"><div class="help-header"><div><h2 id="help-title">使用帮助</h2><p>额度启程 · 常用操作说明</p></div><button id="close-help" type="button" aria-label="关闭帮助">×</button></div><div class="help-content">__HELP_CONTENT__</div></dialog><script>
@@ -208,6 +208,41 @@ let refreshBackdrop=false;
 refreshDialog.addEventListener('pointerdown',e=>{refreshBackdrop=e.target===refreshDialog;});
 refreshDialog.addEventListener('click',e=>{if(refreshBackdrop&&e.target===refreshDialog){const r=refreshDialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)refreshDialog.close();}refreshBackdrop=false;});
 function countdown(){const t=snapshot?.timing;if(!t)return;const left=t.sendAt-Date.now()/1000;const pad=n=>String(n).padStart(2,'0');$('countdown').textContent=snapshot.connection?.stopped?'已停止，等待重新连接':paused?'已暂停':snapshot.connection?.recoveryAt?'等待自动重连，计划保留':!t.sendAt?'待检测':left>0?'倒计时 '+pad(Math.floor(left/3600))+':'+pad(Math.floor(left%3600/60))+':'+pad(Math.floor(left%60)):'已到点';}
+function activityText(event){
+ const d=event.detail||{},details=[];
+ const names={service:'服务启动',schedule:'设置定时请求',schedule_cancelled:'自动取消定时请求',connection_failure:'连接检测失败',connection_recovery:'等待自动重连',connection_recovered:'连接已恢复',connection_stopped:'连接已停止',trigger:'发送小额请求',error:'运行异常'};
+ const actions={check:'重新检测',reconnect:'重新连接',pause:'暂停运行',resume:'恢复运行',trigger:'手动发送请求','autostart/enable':'开启开机自启动','autostart/disable':'关闭开机自启动'};
+ let name=names[event.kind]||event.kind;
+ if(event.kind==='schedule'){
+  name=d.action==='clear'||!event.detail?'取消定时请求，恢复自动':d.action==='update'?'修改定时请求':'设置定时请求';
+  if(d.previous?.sendAt)details.push('原发送时间：'+time(d.previous.sendAt));
+  if(d.sendAt){details.push('发送时间：'+time(d.sendAt));details.push('预计刷新：'+time(d.refreshAt||d.sendAt+18000));}
+ }else if(event.kind==='schedule_cancelled'){
+  if(d.sendAt)details.push('原发送时间：'+time(d.sendAt));
+  if(d.serverResetAt)details.push('服务器刷新：'+time(d.serverResetAt));
+ }else if(event.kind==='control'){
+  name=actions[d.action]||d.action||'操作';
+  if(d.action==='check'||d.action==='reconnect')details.push('已提交，等待检测结果');
+  if(d.result?.error)details.push('操作失败：'+d.result.error);
+ }else if(event.kind==='trigger'){
+  details.push(labels[d.status]||d.status||'');
+  if(d.evidence)details.push(d.evidence);
+ }
+ if(d.message)details.push(d.message);
+ if(d.reason)details.push(d.reason);
+ if(d.error&&d.error!==d.message)details.push('错误：'+d.error);
+ if(d.failures)details.push('失败次数：'+d.failures);
+ if(d.nextAt)details.push('下次尝试：'+time(d.nextAt));
+ if(d.durationSeconds!=null)details.push('耗时：'+d.durationSeconds+' 秒');
+ if(!details.length&&!names[event.kind]&&event.kind!=='control')details.push(typeof event.detail==='string'?event.detail:JSON.stringify(event.detail));
+ return [name,details.filter(Boolean).join('\n')||'—'];
+}
+function renderActivity(s){
+ const body=$('activity');body.replaceChildren();
+ const events=(Array.isArray(s.activity)?s.activity:s.events).filter(e=>e.kind!=='check');
+ for(const event of events){const tr=document.createElement('tr');for(const text of [time(event.time),...activityText(event)]){const td=document.createElement('td');td.textContent=text;tr.append(td);}body.append(tr);}
+ if(!events.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='暂无操作记录';tr.append(td);body.append(tr);}
+}
 // Render synchronously: the browser paints only after the complete snapshot is applied.
 function renderStatus(s){
  connected=true;
@@ -225,6 +260,7 @@ function renderStatus(s){
  const body=$('history');body.replaceChildren();
  for(const a of s.attempts){const tr=document.createElement('tr');for(const text of [time(a.started),labels[a.status]||a.status,a.detail.evidence||'请求已预留，本周期不重复提交']){const td=document.createElement('td');td.textContent=text;tr.append(td);}body.append(tr);}
  if(!s.attempts.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='暂无记录';tr.append(td);body.append(tr);}
+ renderActivity(s);
  $('logs').textContent=s.events.map(e=>time(e.time)+' '+e.kind+' '+JSON.stringify(e.detail)).join('\n');
 }
 

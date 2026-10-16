@@ -52,6 +52,7 @@ class RPC:
                      'features.shell_tool=false', 'features.multi_agent=false',
                      'features.apps=false', 'features.plugins=false',
                      'features.memories=false', 'features.hooks=false',
+                     'features.respect_system_proxy=true',
                      'skills.max_context_tokens=1', 'service_tier="default"']
         # Disable user-configured MCP tools without exposing their configuration.
         home = Path(env.get('CODEX_HOME', str(Path.home() / '.codex')))
@@ -122,6 +123,7 @@ class RPC:
                     waiting.put({'error': {'message': 'Codex App Server 已断开'}})
 
     def call(self, method, params=None, timeout=45):
+        started = time.monotonic()
         retry_deadline = getattr(self, 'deadline', None)
         if retry_deadline is not None:
             timeout = min(timeout, retry_deadline - time.time())
@@ -142,7 +144,17 @@ class RPC:
                 raise RuntimeError(f'{method}：服务器响应缺少结果')
             return result['result']
         except queue.Empty:
-            raise TimeoutError(f'{method} 超时；提交请求的结果可能未知') from None
+            suffix = '；提交请求的结果可能未知' if method == 'turn/start' else ''
+            exc = TimeoutError(f'{method} 超时{suffix}')
+            exc.rpc_diagnostics = {'method': method,
+                                   'elapsedSeconds': round(time.monotonic() - started, 3),
+                                   'processAlive': self.is_alive()}
+            raise exc from None
+        except Exception as exc:
+            exc.rpc_diagnostics = {'method': method,
+                                   'elapsedSeconds': round(time.monotonic() - started, 3),
+                                   'processAlive': self.is_alive()}
+            raise
         finally:
             with self.lock:
                 self.pending.pop(seq, None)
@@ -156,7 +168,9 @@ class RPC:
         return account
 
     def limits(self):
-        return self.call('account/rateLimits/read')
+        # Reset-credit details are unrelated to quota polling and add another HTTP
+        # request (with its own timeout) to every check on recent CLI versions.
+        return self.call('account/rateLimits/read', {'excludeResetCreditDetails': True})
 
     def choose_model(self):
         models, cursor = [], None
