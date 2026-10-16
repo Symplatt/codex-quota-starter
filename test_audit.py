@@ -24,6 +24,36 @@ class AuditTests(unittest.TestCase):
         self.store.set('current', {'primary': {'resetsAt': 100}})
         engine.set_schedule(200)
 
+    def test_monthly_logs_keep_full_events_and_resume_without_duplicates(self):
+        from datetime import datetime, timezone
+        from core import Store
+        before = datetime(2026, 10, 31, 15, 59, tzinfo=timezone.utc).timestamp()
+        after = before + 60
+        self.store.log('control', {'action': 'pause'}, before)
+        self.store.log('check', {'full': '检测明细'}, after)
+        Store(self.store.path)
+        october = self.store.log_dir / 'quota-starter-2026-10.jsonl'
+        november = self.store.log_dir / 'quota-starter-2026-11.jsonl'
+        self.assertEqual(len(october.read_text(encoding='utf-8').splitlines()), 1)
+        rows = [json.loads(line) for line in november.read_text(encoding='utf-8').splitlines()]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['detail'], {'full': '检测明细'})
+        self.assertTrue(rows[0]['time'].startswith('2026-11-01T00:00:'))
+
+    def test_monthly_logs_retry_after_directory_failure(self):
+        from core import Store
+        original = self.store.log_dir
+        blocked = original.parent / 'blocked'
+        blocked.write_text('occupied', encoding='utf-8')
+        self.store.log_dir = blocked
+        self.store.log('control', {'action': 'pause'}, 100)
+        self.assertEqual(len(self.store.recent('events')), 1)
+        self.store.log_dir = original
+        Store(self.store.path)
+        rows = (original / 'quota-starter-1970-01.jsonl').read_text(encoding='utf-8').splitlines()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(json.loads(rows[0])['kind'], 'control')
+
     def test_schedule_actions_survive_routine_checks_in_activity(self):
         e = self.engine(FakeRPC([raw(149)]), 100)
         self.store.set('current', {'primary': {'resetsAt': 149}})

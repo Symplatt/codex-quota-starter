@@ -89,7 +89,7 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 <section class="card"><div class="label">服务器刷新时间</div><div class="value time-value" id="reset">—</div><div class="small">北京时间</div></section>
 <section class="card"><div class="label">上次发送请求</div><div class="value time-value" id="last">尚未发送</div><div class="small" id="result"></div></section>
 </div>
-<div class="schedule-row"><section class="panel time-panel"><div class="section-head"><h2>时间安排</h2></div>
+<div class="schedule-row"><section class="panel time-panel"><div class="section-head"><h2>定时刷新</h2></div>
 <div id="schedule-form"><div class="schedule-buttons"><button id="choose-time" type="button" disabled>选择时间</button><button id="auto-time" type="button" onclick="window.action('schedule/clear','schedule-feedback')">恢复自动</button></div></div>
 <div class="panel-metrics"><div class="metric"><div class="metric-label"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25"/><path d="M10 5.5V10l3 1.8"/></svg>请求发送</div><div class="metric-value" id="send-at">—</div><div class="metric-date" id="send-date">—</div></div><div class="metric"><div class="metric-label"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M16.4 8A6.7 6.7 0 1 0 16 13M16.5 3.5V8H12"/></svg>预计刷新</div><div class="metric-value" id="estimated-reset">—</div><div class="metric-date" id="reset-date">—</div></div></div>
 <div class="panel-footer"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25"/><path d="M10 5.5V10l3 1.8"/></svg><span class="count-chip" id="countdown"></span></div>

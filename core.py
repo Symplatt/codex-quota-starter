@@ -2,9 +2,12 @@
 import hashlib
 import json
 import math
+import os
+import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sqlite3
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 import threading
 import time
 import uuid
@@ -97,6 +100,9 @@ def evidence(before, after, started, completed):
 class Store:
     def __init__(self, path):
         self.path = Path(path)
+        self.log_dir = self.path.parent / "logs"
+        self._archive_lock = threading.Lock()
+        self._archive_error = None
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript('''
@@ -111,6 +117,7 @@ class Store:
                 CREATE TABLE IF NOT EXISTS events (
                     id INTEGER PRIMARY KEY, time REAL NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL);
             ''')
+        self._archive_events()
 
     @contextmanager
     def connect(self):
@@ -120,8 +127,46 @@ class Store:
         try:
             with db:
                 yield db
+            if db.total_changes:
+                self._archive_events()
         finally:
             db.close()
+
+    def _archive_events(self):
+        # SQLite remains the retry source if the log directory is temporarily unwritable.
+        with self._archive_lock:
+            try:
+                self.log_dir.mkdir(parents=True, exist_ok=True)
+                with closing(sqlite3.connect(self.path, timeout=15)) as archive_db:
+                    row = archive_db.execute("SELECT value FROM state WHERE key='logArchiveId'").fetchone()
+                    last_id = int(json.loads(row[0])) if row else 0
+                    while True:
+                        rows = archive_db.execute(
+                            'SELECT id,time,kind,detail FROM events WHERE id>? ORDER BY id LIMIT 1000',
+                            (last_id,)).fetchall()
+                        if not rows:
+                            break
+                        grouped = {}
+                        for event_id, stamp, kind, detail in rows:
+                            date = datetime.fromtimestamp(stamp, timezone(timedelta(hours=8)))
+                            record = {'id': event_id, 'time': date.isoformat(), 'kind': kind,
+                                      'detail': json.loads(detail)}
+                            grouped.setdefault(date.strftime('%Y-%m'), []).append(
+                                json.dumps(record, ensure_ascii=False) + '\n')
+                        for month, lines in grouped.items():
+                            with (self.log_dir / f'quota-starter-{month}.jsonl').open('a', encoding='utf-8') as output:
+                                output.writelines(lines)
+                                output.flush()
+                                os.fsync(output.fileno())
+                        last_id = rows[-1][0]
+                        archive_db.execute("INSERT OR REPLACE INTO state VALUES ('logArchiveId',?)",
+                                           (json.dumps(last_id),))
+                        archive_db.commit()
+                self._archive_error = None
+            except (OSError, sqlite3.Error) as exc:
+                if str(exc) != self._archive_error:
+                    print(f'日志归档暂时失败，将在下次写入时重试：{exc}', file=sys.stderr)
+                    self._archive_error = str(exc)
 
     def get(self, key, default=None):
         with self.connect() as db:
@@ -137,7 +182,8 @@ class Store:
             db.execute('INSERT INTO events(time,kind,detail) VALUES (?,?,?)',
                        (time.time() if now is None else now, kind, json.dumps(detail, ensure_ascii=False)))
             # Roughly a month of normal polling; attempts and their evidence are retained.
-            db.execute('DELETE FROM events WHERE id < (SELECT MAX(id)-60000 FROM events)')
+            db.execute("DELETE FROM events WHERE id < (SELECT MAX(id)-60000 FROM events) "
+                       "AND id <= COALESCE((SELECT CAST(value AS INTEGER) FROM state WHERE key='logArchiveId'),0)")
 
     def guard_until(self, db=None):
         if db is None:
