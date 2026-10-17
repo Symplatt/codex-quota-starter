@@ -386,6 +386,21 @@ class HTTPTests(unittest.TestCase):
         c.request(method,path,headers=headers or {},body=body)
         r=c.getresponse(); result=(r.status,r.read().decode()); c.close(); return result
 
+    def test_open_logs_uses_fixed_directory_and_records_result(self):
+        _, page = self.request('GET', '/')
+        token = re.search("(?:const|let) token='([^']+)'", page)[1]
+        headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
+        with patch('app.os.startfile', create=True) as open_folder:
+            self.assertEqual(self.request('POST', '/api/logs/open')[0], 403)
+            open_folder.assert_not_called()
+            self.assertEqual(self.request('POST', '/api/logs/open', headers)[0], 200)
+            open_folder.assert_called_once_with(str(self.engine.store.log_dir.resolve()))
+        with patch('app.os.startfile', side_effect=OSError('failed'), create=True):
+            self.assertEqual(self.request('POST', '/api/logs/open', headers)[0], 500)
+        event = self.engine.store.recent('events', 1)[0]
+        self.assertEqual(event['detail']['action'], 'open_logs')
+        self.assertEqual(event['detail']['error'], 'failed')
+
     def test_status_and_no_secret(self):
         status,body=self.request('GET','/api/status')
         self.assertEqual(status,200); self.assertEqual(json.loads(body)['service'],'quota-starter')
