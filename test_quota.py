@@ -187,6 +187,7 @@ class QuotaTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.store.set('paused', paused)
                 self.store.set('schedule', schedule)
+                self.store.set('current', normalize(raw(20000, used)))
                 fake = FakeRPC([raw(20000, used)])
                 fake.prepare = Mock(side_effect=AssertionError('Read-only check prepared a request'))
                 e = self.engine(fake, now)
@@ -199,7 +200,7 @@ class QuotaTests(unittest.TestCase):
                 self.assertEqual(e.next_poll, now + 60)
                 self.assertEqual(self.store.get('current')['primary']['usedPercent'], used)
                 self.assertEqual(self.store.get('current')['checkedAt'], now)
-                self.assertEqual(self.store.get('schedule')['status'], 'cancelled') if schedule else self.assertIsNone(self.store.get('schedule'))
+                self.assertEqual(self.store.get('schedule')['status'], 'pending') if schedule else self.assertIsNone(self.store.get('schedule'))
                 self.assertEqual(self.store.recent('attempts'), [])
                 with self.store.connect() as db:
                     self.assertEqual(db.execute('SELECT COUNT(*) FROM claims').fetchone()[0], 0)

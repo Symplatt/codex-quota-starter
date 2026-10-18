@@ -91,7 +91,7 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(fake.sent, 0)
 
     def test_reconnect_checks_schedule_without_sending(self):
-        fake = FakeRPC([raw(300, 0)])
+        fake = FakeRPC([raw(300, 1)])
         e = self.engine(fake, 110)
         self.schedule(e)
         e.stop_connection()
@@ -103,6 +103,53 @@ class AuditTests(unittest.TestCase):
         self.assertTrue(e.linked)
         self.assertEqual(e.phase, 'idle')
         self.assertEqual(e.next_poll, 170)
+
+    def assert_due_empty_schedule_survives_read_only(self, action):
+        fake = FakeRPC([raw(18200, 0)])
+        self.schedule(self.engine(fake, 110))
+        e = self.engine(fake, 200)
+        if action == 'check':
+            e.request_check()
+        else:
+            e.stop_connection()
+            e.reconnect()
+        e.tick()
+        self.assertEqual(self.store.get('schedule')['status'], 'pending')
+        self.assertEqual(fake.reads, 1)
+        self.assertEqual(fake.sent, 0)
+        self.assertEqual(e.next_poll, 260)
+        e.sleeper(60)
+        e.tick()
+        self.assertEqual(fake.sent, 1)
+        self.assertEqual(self.store.get('schedule')['status'], 'submitted')
+        self.assertEqual(e.next_poll, 320)
+
+    def test_due_empty_schedule_survives_manual_read(self):
+        self.assert_due_empty_schedule_survives_read_only('check')
+
+    def test_due_empty_schedule_survives_reconnect(self):
+        self.assert_due_empty_schedule_survives_read_only('reconnect')
+
+    def test_final_preflight_keeps_schedule_when_empty_reset_moves(self):
+        fake = FakeRPC([raw(100, 0), raw(18201, 0), raw(18200, 1)])
+        self.schedule(self.engine(fake, 110))
+        self.engine(fake, 200).tick()
+        self.assertEqual(fake.sent, 1)
+        self.assertEqual(self.store.get('schedule')['status'], 'submitted')
+
+    def test_schedule_cancels_when_rolling_empty_window_becomes_used(self):
+        fake = FakeRPC([raw(18110, 0), raw(18170, 1)])
+        e = self.engine(fake, 110)
+        self.schedule(e)
+        e.tick()
+        self.assertEqual(self.store.get('schedule')['status'], 'pending')
+        e.sleeper(60)
+        e.tick()
+        self.assertEqual(self.store.get('schedule')['status'], 'cancelled')
+        e.sleeper(60)
+        e.tick()
+        self.assertEqual(fake.sent, 0)
+        self.assertEqual(len([row for row in self.store.recent('events') if row['kind'] == 'schedule_cancelled']), 1)
 
     def test_final_preflight_cancels_when_reset_moves(self):
         fake = FakeRPC([raw(100), raw(300)])
@@ -125,7 +172,7 @@ class AuditTests(unittest.TestCase):
     def test_upgrade_cancels_known_invalid_plan_without_reconnecting(self):
         e = self.engine(FakeRPC([raw(300)]), 110)
         self.schedule(e)
-        self.store.set('current', {'primary': {'resetsAt': 300}})
+        self.store.set('current', {'primary': {'resetsAt': 300, 'usedPercent': 1}})
         e.stop_connection()
         fake = FakeRPC([raw(300)])
         restarted = self.engine(fake, 120)

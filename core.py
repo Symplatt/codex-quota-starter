@@ -220,7 +220,13 @@ class Store:
             db.execute('INSERT OR REPLACE INTO state VALUES (?,?)', ('sending', 'true'))
             return attempt
 
-    def cancel_invalid_schedule(self, reset_at, now):
+    def cancel_invalid_schedule(self, reset_at, now, *, used_percent=None):
+        # An idle window can report a rolling reset of now + five hours before
+        # any request. That timestamp alone must not discard the user's plan.
+        # Legacy snapshots without usage wait for a fresh read before cancelling.
+        if (isinstance(used_percent, bool) or not isinstance(used_percent, (int, float))
+                or not math.isfinite(used_percent) or not 0 < used_percent <= 100):
+            return False
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute("SELECT value FROM state WHERE key='schedule'").fetchone()
@@ -312,7 +318,8 @@ class Engine:
         reset_at = (current or {}).get('primary', {}).get('resetsAt')
         if isinstance(reset_at, (int, float)) and not isinstance(reset_at, bool) and math.isfinite(reset_at):
             # Also reconcile plans inherited from older versions while disconnected.
-            self.store.cancel_invalid_schedule(reset_at, self.clock())
+            self.store.cancel_invalid_schedule(
+                reset_at, self.clock(), used_percent=current['primary'].get('usedPercent'))
 
     def connection(self):
         return self.store.get('connection', {})
@@ -481,7 +488,8 @@ class Engine:
                 'maxRefreshAt': math.floor((self.clock() + 366 * 86400 + WINDOW) / 60) * 60}
 
     def select_candidate(self, snapshot, previous, now, manual):
-        if self.store.cancel_invalid_schedule(snapshot['primary']['resetsAt'], now):
+        if self.store.cancel_invalid_schedule(snapshot['primary']['resetsAt'], now,
+                                              used_percent=snapshot['primary']['usedPercent']):
             return None, '计划已取消：服务器刷新时间已达到或超过计划发送时间', None
         schedule = self.store.get('schedule')
         if not manual and schedule and schedule['status'] == 'pending':
@@ -529,7 +537,8 @@ class Engine:
         now = self.clock()
         self.store.set('snapshot:' + account_key, snapshot)
         self.store.set('current', {'checkedAt': now, 'account': account_key, **snapshot})
-        cancelled = self.store.cancel_invalid_schedule(snapshot['primary']['resetsAt'], now)
+        cancelled = self.store.cancel_invalid_schedule(
+            snapshot['primary']['resetsAt'], now, used_percent=snapshot['primary']['usedPercent'])
         return account_key, cancelled
 
     def _wait_retry(self):

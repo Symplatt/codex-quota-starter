@@ -21,6 +21,60 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(e.next_poll,160)
         self.assertEqual(e.timing()['estimatedResetAt'],18150)
 
+    def test_three_am_recovery_waits_for_three_thirty_with_rolling_reset(self):
+        reset_at, send_at, refresh_at = 3 * 3600, 3 * 3600 + 30 * 60, 8 * 3600 + 30 * 60
+        self.store.set('current', {'primary': {'resetsAt': reset_at, 'usedPercent': 10}})
+        # Empty quota may report a moving now + 5h timestamp until a request starts it.
+        values = [raw(reset_at)] + [raw(now + 18000, 0) for now in range(reset_at, send_at, 60)]
+        values += [raw(refresh_at, 0), raw(refresh_at + 1, 0), raw(refresh_at, 1)]
+        fake = FakeRPC(values)
+        e = self.engine(fake, reset_at - 60)
+        plan = e.set_schedule(refresh_at=refresh_at)
+        e.tick()
+        for now in range(reset_at, send_at, 60):
+            e.sleeper(60)
+            e.tick()
+            self.assertEqual(e.clock(), now)
+            self.assertEqual(fake.sent, 0)
+            self.assertEqual(self.store.get('schedule')['status'], 'pending')
+            self.assertEqual(e.timing()['sendAt'], send_at)
+            self.assertEqual(e.next_poll, now + 60)
+        e.sleeper(60)
+        e.tick()
+        self.assertEqual(fake.sent, 1)
+        self.assertEqual(self.store.get('schedule')['status'], 'submitted')
+        attempt = self.store.recent('attempts')[0]
+        self.assertEqual(attempt['detail']['scheduleId'], plan['id'])
+        self.assertEqual(attempt['detail']['submissions'][0]['startedAt'], send_at)
+        self.assertEqual(e.next_poll, send_at + 60)
+        e.sleeper(60)
+        e.tick()
+        self.engine(fake, send_at + 120).tick()
+        self.assertEqual(fake.sent, 1)
+        self.assertEqual(len(self.store.recent('attempts')), 1)
+        self.assertFalse(any(row['kind'] == 'schedule_cancelled' for row in self.store.recent('events', 100)))
+
+    def test_restart_preserves_plan_with_empty_or_unknown_cached_usage(self):
+        for stopped in (False, True):
+            for primary in ({'resetsAt': 300, 'usedPercent': 0}, {'resetsAt': 300}):
+                with self.subTest(stopped=stopped, primary=primary):
+                    self.store.set('schedule', None)
+                    self.store.set('connection', {})
+                    self.store.set('current', {'primary': {'resetsAt': 149}})
+                    fake = FakeRPC([raw(300, 0)])
+                    e = self.engine(fake, 100)
+                    plan = e.set_schedule(200)
+                    self.store.set('current', {'primary': primary})
+                    if stopped:
+                        e.stop_connection()
+                    restarted = self.engine(fake, 120)
+                    self.assertEqual(self.store.get('schedule')['id'], plan['id'])
+                    self.assertEqual(self.store.get('schedule')['status'], 'pending')
+                    restarted.tick()
+                    self.assertEqual(fake.reads, 0 if stopped else 1)
+                    self.assertEqual(fake.sent, 0)
+                    self.assertEqual(self.store.get('schedule')['status'], 'pending')
+
     def test_due_schedule_sends_once_and_survives_restart(self):
         fake=FakeRPC([raw(149)]); self.engine(fake,100).set_schedule(150)
         self.engine(fake,150).tick()
@@ -31,7 +85,7 @@ class ScheduleTests(unittest.TestCase):
 
     def test_schedule_does_not_bypass_guard(self):
         self.store.claim('prior','cycle:20000',100,{})
-        fake=FakeRPC([raw()]); e=self.engine(fake,110); e.set_schedule(150)
+        fake=FakeRPC([raw(149)]); e=self.engine(fake,110); e.set_schedule(150)
         self.engine(fake,150).tick()
         self.assertEqual(fake.sent,0)
         self.assertEqual(self.store.get('schedule')['status'],'pending')
