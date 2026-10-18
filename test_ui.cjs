@@ -18,7 +18,7 @@ test('timeline places near-immediate sends visibly and keeps exact cross-day tim
  assert.equal(p.e('send-at').textContent,'19:09:02');
  assert.equal(p.e('estimated-reset').textContent,'00:09:02');
  assert.equal(p.e('reset-date').textContent,'2090/10/10');
- assert.match(p.e('schedule-timeline').attributes.style,/--send-position:3%/);
+ assert.match(p.e('schedule-timeline').attributes.style,/--send-position:12\.4%/);
  assert.equal(p.e('timeline-break').hidden,true);
 });
 test('timeline compresses long waits without changing timestamps and removes break after edits',async()=>{
@@ -33,7 +33,7 @@ test('timeline compresses long waits without changing timestamps and removes bre
  p.run('refresh()');await p.respond(s);
  assert.equal(p.e('timeline-break').hidden,true);
  const position=Number(p.e('schedule-timeline').attributes.style.match(/position:([\d.]+)/)[1]);
- assert.ok(Math.abs(position-100/6)<0.001);
+ assert.ok(Math.abs(position-(10+.8*100/6))<0.001);
  s.timing.sendAt=at+18000;s.timing.estimatedResetAt=at+36000;
  p.run('refresh()');await p.respond(s);assert.equal(p.e('timeline-break').hidden,true);
 });
@@ -49,14 +49,21 @@ test('hour labels follow Beijing time across midnight and become sparser in narr
  s.timing={...s.timing,serverResetAt:at,sendAt:at+2,estimatedResetAt:at+18002};
  await p.respond(s);
  const hours=()=>p.e('timeline-ticks').children.flatMap(t=>t.children.map(l=>l.textContent));
- assert.deepEqual(hours(),['21:00','22:00','23:00','00:00']);
+ assert.deepEqual(hours(),['20:00','21:00','22:00','23:00','00:00','01:00']);
  p.e('timeline-rail').clientWidth=160;p.run('renderTimeline(snapshot.timing)');
  assert.ok(hours().length<4);assert.ok(hours().every(h=>h.endsWith(':00')));
  p.e('timeline-rail').clientWidth=560;s.timing.sendAt=at+5*86400;s.timing.estimatedResetAt=s.timing.sendAt+18000;
  p.run('refresh()');await p.respond(s);
  assert.equal(p.e('timeline-break').hidden,false);
- assert.ok(p.e('timeline-ticks').children.length<65);
+ assert.ok(p.e('timeline-ticks').children.length<80);
  assert.ok(hours().includes('00:00'));
+});
+test('restore automatic is disabled without a pending manual schedule',async()=>{
+ const p=setup(),s=status();await p.respond(s);assert.equal(p.e('auto-time').disabled,true);
+ s.timing.mode='manual';s.timing.schedule={status:'pending',sendAt:s.timing.sendAt};
+ p.run('refresh()');await p.respond(s);assert.equal(p.e('auto-time').disabled,false);
+ s.timing.mode='auto';s.timing.schedule.status='cancelled';
+ p.run('refresh()');await p.respond(s);assert.equal(p.e('auto-time').disabled,true);
 });
 test('slow polling keeps data, countdown and serializes requests',async()=>{
  const p=setup();await p.respond(status());const count=p.e('countdown').textContent;
