@@ -53,8 +53,8 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 #schedule-feedback{position:fixed;z-index:1000;right:24px;bottom:24px;max-width:min(420px,calc(100vw - 48px));margin:0;padding:10px 16px;border:1px solid #ceddcc;border-radius:10px;background:#f7faf4;box-shadow:0 6px 24px #19352e18;color:#315c3b;overflow-wrap:anywhere;pointer-events:none}
 .manual-date{display:grid;grid-template-columns:1.25fr 1fr 1fr 1.28fr 1fr;gap:10px;margin:0 0 20px}.manual-field{min-width:0}.manual-field:nth-child(4){padding-left:20px}.manual-date label{text-align:center;margin-bottom:8px;font-size:13px;color:#71816f;white-space:nowrap}.manual-date input{width:100%;min-width:0;border:1px solid #dce5d7;border-radius:8px;padding:10px 4px;text-align:center;font:inherit;font-size:15px;color:#19352e;background:#fafbf8;font-variant-numeric:tabular-nums}.manual-date input:focus{outline:2px solid #75947b;outline-offset:2px}.manual-date input[aria-invalid=true]{border-color:#b35b51}
 /* Matching control, metric and footer rows keep the paired panels visually balanced. */
-.schedule-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:1fr;gap:18px;margin-top:20px}
-.schedule-row>.panel{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:40px minmax(108px,1fr) 41px;gap:22px 16px;margin:0;padding:24px;min-width:0;align-content:stretch;border-radius:18px}
+.schedule-row{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);grid-auto-rows:1fr;gap:18px;margin-top:20px}
+.schedule-row>.panel{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:40px minmax(108px,1fr) 41px;gap:18px 12px;margin:0;padding:24px;min-width:0;align-content:stretch;border-radius:18px}
 .schedule-row .section-head{grid-column:1;grid-row:1;display:flex;align-items:center;min-height:40px;align-self:center}
 .schedule-row .section-head h2{margin:0;font-size:22px;line-height:32px;font-weight:650;letter-spacing:.2px}
 .schedule-row .time-panel #schedule-form{grid-column:2;grid-row:1;display:block;align-self:start;border:0;padding:0;margin:0}
@@ -82,7 +82,39 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 @media(max-width:460px){.schedule-row>.panel{grid-template-columns:minmax(0,1fr);grid-template-rows:32px 40px minmax(108px,1fr) 41px}.schedule-row .section-head{min-height:32px}.schedule-row .time-panel #schedule-form,.run-panel>.actions{grid-column:1;grid-row:2}.schedule-row .panel-metrics{grid-row:3}.schedule-row .panel-footer{grid-row:4}}
 .refresh-description{margin:4px 0 32px;color:#8a8e8b;font-size:12px;line-height:1.7}.refresh-description strong{font-weight:600;color:inherit}
 @media(min-width:961px) and (max-width:1250px){.schedule-row{grid-template-columns:minmax(0,1fr)}}
-.card-date{color:#234b39}.panel{scroll-margin-top:24px}.panel-jump{font:inherit;color:inherit;border:0;padding:0;background:transparent;text-align:left}.panel-jump:focus-visible{outline:2px solid #73926f;outline-offset:5px}.activity-table{max-height:520px;overflow:auto}.activity-table th{position:sticky;top:0;background:#fff}.activity-table th:first-child{width:175px}.activity-table th:nth-child(2){width:145px}.activity-table td:first-child{font-variant-numeric:tabular-nums}.activity-table td:last-child{white-space:pre-line}</style></head><body><main>
+.card-date{color:#234b39}.panel{scroll-margin-top:24px}.panel-jump{font:inherit;color:inherit;border:0;padding:0;background:transparent;text-align:left}.panel-jump:focus-visible{outline:2px solid #73926f;outline-offset:5px}.activity-table{max-height:520px;overflow:auto}.activity-table th{position:sticky;top:0;background:#fff}.activity-table th:first-child{width:175px}.activity-table th:nth-child(2){width:145px}.activity-table td:first-child{font-variant-numeric:tabular-nums}.activity-table td:last-child{white-space:pre-line}
+/* The rail never grows with elapsed time. Refresh events share its upper side. */
+.schedule-timeline{--send-position:50%;--break-position:25%;position:relative;grid-column:1/-1;grid-row:2;align-self:center;height:176px;min-width:0;margin:0;padding:0 10px;list-style:none}
+.timeline-rail{position:absolute;left:10px;right:10px;top:84px;height:1px;background:#b6c8b8}
+.timeline-rail:before{content:'';position:absolute;inset:0 0 auto;height:12px;background:repeating-linear-gradient(90deg,#a4b9a7 0 1px,transparent 1px 60px) left top/100% 12px no-repeat,repeating-linear-gradient(90deg,#c9d5c5 0 1px,transparent 1px 12px) left top/100% 6px no-repeat}
+.timeline-rail:after{content:'';position:absolute;right:-7px;top:-4px;width:8px;height:8px;border-top:1px solid #8da68f;border-right:1px solid #8da68f;transform:rotate(45deg)}
+.timeline-event{position:absolute;z-index:1;top:0;width:calc(100% - 20px);height:100%;pointer-events:none}
+.timeline-event:before{content:'';position:absolute;top:72px;height:12px;width:1px;background:#a5bba7}
+.timeline-event:after{content:'';position:absolute;top:80px;width:9px;height:9px;border:2px solid #78997e;border-radius:50%;background:#fff;transform:translateX(-50%)}
+.timeline-label{position:absolute;top:0;display:grid;gap:2px;width:46%;pointer-events:auto}
+.timeline-name{font-size:12px;line-height:18px;color:#61776a;white-space:nowrap}
+.timeline-time{font-size:28px;line-height:32px;font-weight:600;letter-spacing:-.5px;color:#23483a;font-variant-numeric:tabular-nums;white-space:nowrap}
+.timeline-date{font-size:12px;line-height:18px;color:#7a897f;font-variant-numeric:tabular-nums;white-space:nowrap}
+.timeline-reset:before,.timeline-reset:after{left:0}.timeline-reset .timeline-label{left:0}
+.timeline-next:before,.timeline-next:after{left:100%}.timeline-next .timeline-label{right:0;text-align:right}
+.timeline-send:before{left:max(12px,var(--send-position));top:85px;height:11px;background:#557e60}
+.timeline-send:after{left:max(12px,var(--send-position));background:#315c43;border-color:#315c43}
+.timeline-send .timeline-label{top:104px;left:max(12px,var(--send-position));width:max-content;max-width:100%;transform:translateX(-50%)}
+.schedule-timeline[data-send-align=start] .timeline-send .timeline-label{transform:none}
+.timeline-break{position:absolute;left:var(--break-position);top:-8px;width:27px;height:22px;transform:translateX(-50%);background:#fff;color:#78917b}
+.timeline-break[hidden]{display:none}.timeline-break svg{display:block;width:100%;height:100%;stroke:currentColor;stroke-width:1.5;fill:none}
+.schedule-row .run-panel .panel-metrics{grid-template-columns:1fr;gap:16px;padding:0;align-content:center}
+.schedule-row .run-panel .actions button{padding:0 12px}
+.schedule-row .run-panel .metric{grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;align-items:center}
+.schedule-row .run-panel .metric+.metric{padding:14px 0 0;border-left:0;border-top:1px solid #edf0e9}
+.schedule-row .run-panel .metric-label{grid-column:1;grid-row:1/3}
+.schedule-row .run-panel .metric-value{grid-column:2;grid-row:1;font-size:28px;line-height:36px;text-align:right}
+.schedule-row .run-panel .metric-date{grid-column:2;grid-row:2;text-align:right}
+@media(max-width:1250px){.schedule-row{grid-auto-rows:auto}.schedule-row .run-panel .panel-metrics{padding:8px 0}}
+@media(max-width:620px){.timeline-time{font-size:25px}.timeline-name,.timeline-date{font-size:11px}}
+@media(max-width:460px){.schedule-timeline{grid-row:3}}
+@media(max-width:360px){.timeline-time{font-size:22px}.schedule-timeline{padding:0 5px}.timeline-rail{left:5px;right:5px}.timeline-event{width:calc(100% - 10px)}}
+</style></head><body><main>
 <header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button type="button" id="open-help" aria-label="帮助" title="帮助" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M8.5 8.2a3.5 3.5 0 0 1 7 .3c0 2.5-3.5 2.7-3.5 5.2"/><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"/></svg></button></div></header>
 <div class="grid">
 <section class="card"><div class="label">五小时剩余额度</div><div class="value" id="remaining">—</div><div class="small" id="weekly">每周额度：等待检测</div></section>
@@ -91,7 +123,12 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 </div>
 <div class="schedule-row"><section class="panel time-panel"><div class="section-head"><h2>定时刷新</h2></div>
 <div id="schedule-form"><div class="schedule-buttons"><button id="choose-time" type="button" disabled>选择时间</button><button id="auto-time" type="button" onclick="window.action('schedule/clear','schedule-feedback')">恢复自动</button></div></div>
-<div class="panel-metrics"><div class="metric"><div class="metric-label"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25"/><path d="M10 5.5V10l3 1.8"/></svg>请求发送</div><div class="metric-value" id="send-at">—</div><div class="metric-date" id="send-date">—</div></div><div class="metric"><div class="metric-label"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M16.4 8A6.7 6.7 0 1 0 16 13M16.5 3.5V8H12"/></svg>预计刷新</div><div class="metric-value" id="estimated-reset">—</div><div class="metric-date" id="reset-date">—</div></div></div>
+<ol class="schedule-timeline" id="schedule-timeline" aria-label="额度刷新与请求时间轴">
+<li class="timeline-event timeline-reset"><div class="timeline-label"><span class="timeline-name">额度刷新</span><span class="timeline-time" id="timeline-reset-at">—</span><span class="timeline-date" id="timeline-reset-date">—</span></div></li>
+<li class="timeline-event timeline-send"><div class="timeline-label"><span class="timeline-name">发送请求</span><span class="timeline-time" id="send-at">—</span><span class="timeline-date" id="send-date">—</span></div></li>
+<li class="timeline-event timeline-next"><div class="timeline-label"><span class="timeline-name">额度再次刷新（预计）</span><span class="timeline-time" id="estimated-reset">—</span><span class="timeline-date" id="reset-date">—</span></div></li>
+<li class="timeline-rail" role="presentation"><span class="timeline-break" id="timeline-break" hidden role="img" aria-label="较长等待区间已省略"><svg viewBox="0 0 27 17" aria-hidden="true"><path d="M9 15 14 2M16 15 21 2"/></svg></span></li>
+</ol>
 <div class="panel-footer"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25"/><path d="M10 5.5V10l3 1.8"/></svg><span class="count-chip" id="countdown"></span></div>
 <dialog id="refresh-dialog" aria-labelledby="refresh-title" aria-describedby="refresh-description"><header class="refresh-header"><h2 id="refresh-title">选择时间</h2><button type="button" id="close-refresh" aria-label="关闭">×</button></header><p class="refresh-description" id="refresh-description">选择<strong>完成刷新</strong>的时间</p><div class="manual-date"><div class="manual-field"><label for="manual-year">年</label><input id="manual-year" type="text" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="输入年" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-month">月</label><input id="manual-month" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入月" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-day">日</label><input id="manual-day" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入日" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-hour">时</label><input id="manual-hour" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入时" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-minute">分</label><input id="manual-minute" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入分" aria-describedby="refresh-error"></div></div><div class="wheel-grid" id="wheel-grid"></div><div id="refresh-error" class="feedback" role="status"></div><footer class="refresh-footer"><button type="button" id="cancel-refresh">取消</button><button type="button" class="primary" id="save-time">确定</button></footer></dialog>
 </section>
@@ -146,7 +183,23 @@ function updateControls(){
  $('save-time').disabled=offline||busy||changing||manualDirty||!snapshot?.timing?.minRefreshAt;
  $('pause').disabled=offline||pendingActions.has('pause')||pendingActions.has('resume');
 }
-function renderTiming(t){if(!t)return;timeBlock('send-at','send-date',t.sendAt);timeBlock('estimated-reset','reset-date',t.estimatedResetAt);updateControls();if(refreshDialog.open)renderWheels();countdown();}
+function renderTimeline(t){
+ timeBlock('timeline-reset-at','timeline-reset-date',t.serverResetAt);
+ timeBlock('send-at','send-date',t.sendAt);timeBlock('estimated-reset','reset-date',t.estimatedResetAt);
+ const known=[t.serverResetAt,t.sendAt,t.estimatedResetAt].every(v=>Number.isFinite(v)&&v>0);
+ const wait=known?Math.max(0,t.sendAt-t.serverResetAt):0;
+ const cycle=known?Math.max(1,t.estimatedResetAt-t.sendAt):18000;
+ const compressed=known&&wait>cycle;
+ // Cap the waiting segment at one cycle; keep nearly simultaneous markers legible.
+ const shownWait=Math.min(wait,cycle);
+ const position=known?Math.max(3,100*shownWait/(shownWait+cycle)):50;
+ const timeline=$('schedule-timeline');
+ timeline.setAttribute('style',`--send-position:${position}%;--break-position:${position/2}%`);
+ timeline.setAttribute('data-send-align',position<25?'start':'center');
+ $('timeline-break').hidden=!compressed;
+ $('timeline-break').title=compressed?'已省略部分等待区间：'+time(t.serverResetAt)+' → '+time(t.sendAt):'';
+}
+function renderTiming(t){if(!t)return;renderTimeline(t);updateControls();if(refreshDialog.open)renderWheels();countdown();}
 
 const refreshDialog=$('refresh-dialog');
 let draftRefresh=null,wheelSignature="",manualDirty=false;

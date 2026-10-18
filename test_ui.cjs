@@ -5,13 +5,45 @@ const fs=require('node:fs');
 const source=fs.readFileSync(__dirname+'/ui.html','utf8').split('<script>')[1].split('</script>')[0];
 function setup(storage={}){
   const elements=new Map();
-  function element(){return {value:'',textContent:'',disabled:false,children:[],options:[],setAttribute(){},querySelector(){return null;},addEventListener(){},append(child){this.children.push(child);this.options.push(child);if(!this.value)this.value=child.value;},replaceChildren(){this.children=[];},showModal(){},close(){}};}
+  function element(){return {value:'',textContent:'',disabled:false,children:[],options:[],attributes:{},setAttribute(key,value){this.attributes[key]=value;},querySelector(){return null;},addEventListener(){},append(child){this.children.push(child);this.options.push(child);if(!this.value)this.value=child.value;},replaceChildren(){this.children=[];},showModal(){},close(){}};}
   const intervals=[];let response,requests=0;
   const c=vm.createContext({document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element},Intl,Date,JSON,AbortController,setTimeout,clearTimeout,setInterval(f){intervals.push(f);},sessionStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v},fetch:()=>{requests++;return new Promise(resolve=>response=resolve);}});
   vm.runInContext(source,c);
   return {c,e:id=>elements.get(id),run:code=>vm.runInContext(code,c),respond:async s=>{response({ok:true,json:async()=>s});await vm.runInContext('refreshPromise',c);},requests:()=>requests,storage};
 }
 function status(){const at=Date.parse('2090-10-09T19:09:00+08:00')/1000;return {service:'quota-starter',version:'1.4.5',paused:false,busy:false,status:'等待重置时间',current:{primary:{usedPercent:20,resetsAt:at},checkedAt:at-3600},timing:{serverResetAt:at,minSendAt:at+1,minRefreshAt:at+18060,maxRefreshAt:at+366*86400,sendAt:at+2,estimatedResetAt:at+18002,schedule:null},nextPoll:at,attempts:[],events:[],autostart:{available:true,enabled:true}};}
+test('timeline places near-immediate sends visibly and keeps exact cross-day times',async()=>{
+ const p=setup(),s=status();await p.respond(s);
+ assert.equal(p.e('timeline-reset-at').textContent,'19:09:00');
+ assert.equal(p.e('send-at').textContent,'19:09:02');
+ assert.equal(p.e('estimated-reset').textContent,'00:09:02');
+ assert.equal(p.e('reset-date').textContent,'2090/10/10');
+ assert.match(p.e('schedule-timeline').attributes.style,/--send-position:3%/);
+ assert.equal(p.e('timeline-break').hidden,true);
+});
+test('timeline compresses long waits without changing timestamps and removes break after edits',async()=>{
+ const p=setup(),s=status(),at=s.timing.serverResetAt;
+ s.timing.sendAt=at+300*86400;s.timing.estimatedResetAt=s.timing.sendAt+18000;
+ await p.respond(s);
+ assert.equal(p.e('timeline-break').hidden,false);
+ assert.match(p.e('schedule-timeline').attributes.style,/--send-position:50%/);
+ assert.equal(p.e('send-date').textContent,p.run(`time(${s.timing.sendAt}).split(' ')[0]`));
+ assert.ok(p.e('timeline-break').title.includes(p.run(`time(${s.timing.sendAt})`)));
+ s.timing.sendAt=at+3600;s.timing.estimatedResetAt=at+21600;
+ p.run('refresh()');await p.respond(s);
+ assert.equal(p.e('timeline-break').hidden,true);
+ const position=Number(p.e('schedule-timeline').attributes.style.match(/position:([\d.]+)/)[1]);
+ assert.ok(Math.abs(position-100/6)<0.001);
+ s.timing.sendAt=at+18000;s.timing.estimatedResetAt=at+36000;
+ p.run('refresh()');await p.respond(s);assert.equal(p.e('timeline-break').hidden,true);
+});
+test('timeline tolerates missing times and retains all three events offline',async()=>{
+ const p=setup(),s=status();s.current=null;s.timing={sendAt:null,serverResetAt:null,estimatedResetAt:null};
+ await p.respond(s);assert.equal(p.e('timeline-reset-at').textContent,'—');assert.equal(p.e('timeline-break').hidden,true);
+ p.run('refresh()');await p.respond(status());
+ await p.run('fetch=async()=>{throw Error("offline")};refresh();');
+ assert.equal(p.e('timeline-reset-at').textContent,'19:09:00');assert.equal(p.e('send-at').textContent,'19:09:02');
+});
 test('slow polling keeps data, countdown and serializes requests',async()=>{
  const p=setup();await p.respond(status());const count=p.e('countdown').textContent;
  p.run('refresh();refresh();refresh();');assert.equal(p.requests(),2);assert.equal(p.e('remaining').textContent,'80%');
