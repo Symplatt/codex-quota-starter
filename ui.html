@@ -100,12 +100,12 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 .timeline-time{font-size:28px;line-height:32px;font-weight:600;letter-spacing:-.5px;color:#23483a;font-variant-numeric:tabular-nums;white-space:nowrap}
 .timeline-label .timeline-time{grid-column:1/-1;grid-row:2;text-align:left}
 .timeline-date{grid-column:2;grid-row:1;font-size:11px;line-height:18px;color:#7a897f;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
-.timeline-reset:before,.timeline-reset:after{left:10%}.timeline-reset .timeline-label{left:0}
+.timeline-reset:before,.timeline-reset:after{left:10%}.timeline-reset .timeline-label{left:-10px}
 .timeline-next:before,.timeline-next:after{left:90%}.timeline-next .timeline-label{right:0}
-.timeline-send:before{left:max(calc(10% + 12px),var(--send-position));top:85px;height:11px;background:#557e60}
+.timeline-send:before{left:max(calc(10% + 12px),var(--send-position));top:85px;height:39px;background:#557e60}
 .timeline-send:after{left:max(calc(10% + 12px),var(--send-position));background:#315c43;border-color:#315c43}
 .timeline-send .timeline-label{top:124px;left:max(calc(10% + 12px),var(--send-position));width:46%;max-width:100%;transform:translateX(-50%)}
-.schedule-timeline[data-send-align=start] .timeline-send .timeline-label{transform:none}
+.schedule-timeline[data-send-align=start] .timeline-send .timeline-label{transform:translateX(-12px)}
 .timeline-break{position:absolute;left:var(--break-position);top:-8px;width:27px;height:22px;transform:translateX(-50%);background:#fff;color:#78917b}
 .timeline-break[hidden]{display:none}.timeline-break svg{display:block;width:100%;height:100%;stroke:currentColor;stroke-width:1.5;fill:none}
 .schedule-row .run-panel .panel-metrics{grid-template-columns:1fr;gap:16px;padding:0;align-content:center}
@@ -118,7 +118,7 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 @media(max-width:1250px){.schedule-row{grid-auto-rows:auto}.schedule-row .run-panel .panel-metrics{padding:8px 0}}
 @media(max-width:620px){.timeline-label,.timeline-send .timeline-label{width:48%;padding:5px;grid-template-columns:1fr;gap:1px}.timeline-name{grid-row:1;font-size:10px;line-height:16px;gap:3px}.timeline-name small{font-size:9px}.timeline-date{grid-column:1;grid-row:2;text-align:left;font-size:10px;line-height:14px}.timeline-label .timeline-time{grid-column:1;grid-row:3;font-size:22px;line-height:26px;text-align:left}}
 @media(max-width:460px){.schedule-timeline{grid-row:3}}
-@media(max-width:360px){.timeline-time{font-size:22px}.schedule-timeline{padding:0 5px}.timeline-rail{left:5px;right:5px}.timeline-event{width:calc(100% - 10px)}}
+@media(max-width:360px){.timeline-time{font-size:22px}.schedule-timeline{padding:0 5px}.timeline-rail{left:5px;right:5px}.timeline-event{width:calc(100% - 10px)}.timeline-reset .timeline-label{left:-5px}}
 </style></head><body><main>
 <header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button type="button" id="open-help" aria-label="帮助" title="帮助" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M8.5 8.2a3.5 3.5 0 0 1 7 .3c0 2.5-3.5 2.7-3.5 5.2"/><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"/></svg></button></div></header>
 <div class="grid">
@@ -210,14 +210,14 @@ function renderTimeline(t){
  // Omit the middle of a long wait, preserving real time on both visible sides.
  const visibleSpan=shownWait+cycle,padding=visibleSpan/8,span=visibleSpan+2*padding;
  const segments=compressed?[[t.serverResetAt-padding,t.serverResetAt+cycle/2,0],[t.sendAt-cycle/2,t.estimatedResetAt+padding,padding+cycle/2]]:[[t.serverResetAt-padding,t.estimatedResetAt+padding,0]];
- const width=rail.clientWidth||560;let lastLabel=-Infinity;
+ const width=rail.clientWidth||560,sendX=Math.max(width*.1+12,position*width/100);let lastLabel=-Infinity;
  for(const [start,end,offset] of segments){
   for(let at=Math.ceil(start/600)*600;at<=end;at+=600){
    const percent=100*(at-start+offset)/span,x=percent*width/100;
    if(compressed&&Math.abs(percent-breakPosition)*width/100<16)continue;
    const tick=document.createElement('span'),major=at%3600===0;
    tick.className='timeline-tick'+(major?' major':'');tick.setAttribute('style',`left:${percent}%`);
-   if(major&&x>=18&&x<=width-18&&x-lastLabel>=42&&(!compressed||Math.abs(percent-breakPosition)*width/100>=30)){
+   if(major&&x>=18&&x<=width-18&&x-lastLabel>=42&&Math.abs(x-sendX)>=20&&(!compressed||Math.abs(percent-breakPosition)*width/100>=30)){
     const label=document.createElement('span');label.className='timeline-hour';label.textContent=clockTime(at).slice(0,5);tick.append(label);lastLabel=x;
    }
    ticks.append(tick);

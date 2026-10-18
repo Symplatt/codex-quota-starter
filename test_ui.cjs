@@ -49,7 +49,7 @@ test('hour labels follow Beijing time across midnight and become sparser in narr
  s.timing={...s.timing,serverResetAt:at,sendAt:at+2,estimatedResetAt:at+18002};
  await p.respond(s);
  const hours=()=>p.e('timeline-ticks').children.flatMap(t=>t.children.map(l=>l.textContent));
- assert.deepEqual(hours(),['20:00','21:00','22:00','23:00','00:00','01:00']);
+ assert.deepEqual(hours(),['21:00','22:00','23:00','00:00','01:00']);
  p.e('timeline-rail').clientWidth=160;p.run('renderTimeline(snapshot.timing)');
  assert.ok(hours().length<4);assert.ok(hours().every(h=>h.endsWith(':00')));
  p.e('timeline-rail').clientWidth=560;s.timing.sendAt=at+5*86400;s.timing.estimatedResetAt=s.timing.sendAt+18000;
