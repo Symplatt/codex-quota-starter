@@ -44,6 +44,20 @@ test('timeline tolerates missing times and retains all three events offline',asy
  await p.run('fetch=async()=>{throw Error("offline")};refresh();');
  assert.equal(p.e('timeline-reset-at').textContent,'19:09:00');assert.equal(p.e('send-at').textContent,'19:09:02');
 });
+test('hour labels follow Beijing time across midnight and become sparser in narrow cards',async()=>{
+ const p=setup(),s=status(),at=Date.parse('2090-10-09T20:00:00+08:00')/1000;
+ s.timing={...s.timing,serverResetAt:at,sendAt:at+2,estimatedResetAt:at+18002};
+ await p.respond(s);
+ const hours=()=>p.e('timeline-ticks').children.flatMap(t=>t.children.map(l=>l.textContent));
+ assert.deepEqual(hours(),['21:00','22:00','23:00','00:00']);
+ p.e('timeline-rail').clientWidth=160;p.run('renderTimeline(snapshot.timing)');
+ assert.ok(hours().length<4);assert.ok(hours().every(h=>h.endsWith(':00')));
+ p.e('timeline-rail').clientWidth=560;s.timing.sendAt=at+5*86400;s.timing.estimatedResetAt=s.timing.sendAt+18000;
+ p.run('refresh()');await p.respond(s);
+ assert.equal(p.e('timeline-break').hidden,false);
+ assert.ok(p.e('timeline-ticks').children.length<65);
+ assert.ok(hours().includes('00:00'));
+});
 test('slow polling keeps data, countdown and serializes requests',async()=>{
  const p=setup();await p.respond(status());const count=p.e('countdown').textContent;
  p.run('refresh();refresh();refresh();');assert.equal(p.requests(),2);assert.equal(p.e('remaining').textContent,'80%');
