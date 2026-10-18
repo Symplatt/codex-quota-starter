@@ -9,4 +9,7 @@
 - 桌面快捷方式目标和工作目录正确，已执行其目标启动脚本并确认运行版本1.5.17。
 - 安装包与校验文件已放入D:\根目录，SHA256：c33b3efb879d6dc6571d320c912114a8b8bc1718e34ebe78bef8fe0ce783e171。
 - 已检查安装后帮助说明的实际界面；预览待用户确认。调度回归采用模拟额度和时钟，未额外发送真实模型请求。
-- 用户已追加要求补完此前省略的流程；正在执行Push、v1.5.17 Tag、GitHub Release及发布资产一致性核验。
+- 已按用户追加要求完成Push、v1.5.17 Tag与GitHub Release；Tag指向2d44daf，发布说明与CHANGELOG的1.5.17记录一致。
+- Windows CI通过：https://github.com/Symplatt/codex-quota-starter/actions/runs/39127155701 。Python测试、Node界面检查及发布包构建均成功。
+- Release：https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.5.17 。已上传Windows ZIP与SHA256SUMS.txt，并重新下载确认逐字节等于本地构建产物；D盘副本、已安装24个文件、Tag源码和应用版本均核验一致。
+- 远程发布流程已补齐；此前展示的帮助说明实际界面预览仍待用户明确确认。
