@@ -229,11 +229,11 @@ class QuotaTests(unittest.TestCase):
 
     def test_delayed_reset_is_not_fabricated(self):
         e=evidence(normalize(raw()),normalize(raw()),20002,True)
-        self.assertIn('不能证明',e)
+        self.assertEqual(e,'本次请求并未导致下次额度刷新时间出现变化（相差≤5秒视为不变）')
 
     def test_one_second_jitter_is_not_new_cycle_evidence(self):
         e=evidence(normalize(raw()),normalize(raw(20001)),20002,True)
-        self.assertIn('不能证明',e)
+        self.assertEqual(e,'本次请求并未导致下次额度刷新时间出现变化（相差≤5秒视为不变）')
         self.assertEqual(candidate(normalize(raw(20001)),normalize(raw()),100)[1],'等待服务器重置时间')
 
     def test_alignment_is_evidence_not_proof(self):

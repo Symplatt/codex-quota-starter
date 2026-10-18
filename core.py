@@ -91,7 +91,7 @@ def evidence(before, after, started, completed):
         return '请求完成；后续额度读取失败，周期起点未验证'
     old, new = before['primary']['resetsAt'], after['primary']['resetsAt']
     if abs(old - new) <= 5:
-        return '请求完成；重置时间未改变，不能证明启动了新周期'
+        return '本次请求并未导致下次额度刷新时间出现变化（相差≤5秒视为不变）'
     if old <= started and abs(new - started - WINDOW) <= 120:
         return '观察到新重置时间约等于发送时间 + 5 小时；支持首次请求锚定，但并发使用及固定窗口仍可能影响判断'
     return '观察到重置时间变化；尚不足以判定周期锚定规则'
