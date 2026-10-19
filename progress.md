@@ -7,4 +7,5 @@
 - 已提交推送77e35bd及v1.5.23 Tag，并发布Release：https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.5.23 。
 - Windows ZIP及SHA256SUMS.txt已放入D:\根目录，与Release资产SHA256一致。
 - 实际全页截图：C:/Users/CJZ/AppData/Local/Temp/quota-1.5.23-preview.png。
-- UI待用户明确确认，本次更新尚未视为完成。
+- 用户于2026-10-19明确确认验收无误，1.5.23交付完成。
+- 后续更新仍展示实际UI预览，完成必要验证和交付后直接结束，不再等待用户验收。
