@@ -1,6 +1,6 @@
 # 额度启程 · Quota Starter
 
-当前版本：1.5.17
+当前版本：1.5.18
 
 Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Work / Codex 共享额度，并在额度刷新后尝试发送一次简短请求。你也可以选择希望的刷新时间，由软件提前五小时安排请求。
 
@@ -128,7 +128,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Stop.ps1
 
 ## 项目信息
 
-当前版本：**v1.5.17**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
+当前版本：**v1.5.18**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
 
 - [版本更新记录](CHANGELOG.md)
 - [机制说明](MECHANISM.md)
@@ -140,3 +140,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Stop.ps1
 ### 完整日志文件
 
 点击“操作与连接日志”卡片右上角的“打开日志文件夹”可直接打开存储目录。日志固定保存在 `%LOCALAPPDATA%\Programs\QuotaStarter\data\logs`，按北京时间月份自动创建 `quota-starter-YYYY-MM.jsonl`，每行一条完整事件，包含检测、操作、连接和触发详情。旧月份文件保留，升级时补录数据库中仍保留的历史。使用自定义 `--data` 时保存在该目录的 `logs` 下。写入失败时保留数据库记录并自动重试；异常断电发生在写入和进度保存之间时，可能出现相同事件 ID 的重复行。
+
+定时刷新与运行状态采用等宽卡片；运行状态以环形进度显示五小时和周额度，并并列显示上次、下次检测时间。

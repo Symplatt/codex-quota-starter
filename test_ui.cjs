@@ -263,3 +263,14 @@ test('activity reads old schedule records and excludes routine checks',async()=>
  assert.equal(rows.length,2);assert.equal(rows[0][1],'取消定时请求，恢复自动');
  assert.equal(rows[1][1],'设置定时请求');assert.match(rows[1][2],/发送时间：.*\n预计刷新：/);
 });
+
+test('quota rings show live values, clamp percentages and handle missing weekly data',async()=>{
+ const p=setup(),s=status();s.current.secondary={usedPercent:68,windowDurationMins:10080};await p.respond(s);
+ assert.equal(p.e('weekly').textContent,'32%');
+ assert.equal(p.e('weekly-ring').attributes.style,'--progress:32');
+ assert.equal(p.e('weekly-copy').textContent,'近 7 天剩余额度占比');
+ p.run("renderQuota('weekly',null)");assert.equal(p.e('weekly').textContent,'—');
+ assert.equal(p.e('weekly-ring').attributes.style,'--progress:0');
+ p.run("renderQuota('remaining',{usedPercent:150})");assert.equal(p.e('remaining').textContent,'0%');
+ assert.equal(p.e('remaining-copy').textContent,'额度已用尽');
+});

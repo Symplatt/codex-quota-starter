@@ -119,10 +119,38 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 @media(max-width:620px){.timeline-label,.timeline-send .timeline-label{width:48%;padding:5px;grid-template-columns:1fr;gap:1px}.timeline-name{grid-row:1;font-size:10px;line-height:16px;gap:3px}.timeline-name small{font-size:9px}.timeline-date{grid-column:1;grid-row:2;text-align:left;font-size:10px;line-height:14px}.timeline-label .timeline-time{grid-column:1;grid-row:3;font-size:22px;line-height:26px;text-align:left}}
 @media(max-width:460px){.schedule-timeline{grid-row:3}}
 @media(max-width:360px){.timeline-time{font-size:22px}.schedule-timeline{padding:0 5px}.timeline-rail{left:5px;right:5px}.timeline-event{width:calc(100% - 10px)}.timeline-reset .timeline-label{left:-5px}}
+
+/* Reference dashboard: quota rings and aligned, equal-width panels. */
+.grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.schedule-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.schedule-row>.panel{grid-template-rows:40px minmax(260px,1fr) 46px;gap:24px;padding:22px;border-radius:20px}
+.schedule-row .section-head h2{font-size:26px}
+.schedule-row .schedule-buttons,.schedule-row .actions{gap:0}
+.schedule-row .schedule-buttons button,.schedule-row .actions button{font-size:14px;padding:0}
+.schedule-row .schedule-buttons button+button:before,.schedule-row .actions button+button:before{content:'|';margin:0 12px;color:#7e8e84;font-weight:400}
+.schedule-row .schedule-timeline{align-self:start;margin-top:4px}
+.schedule-row .quotas{grid-column:1/-1;grid-row:2;display:grid;grid-template-columns:1fr 1fr;align-items:center;margin:4px 0 0;min-width:0}
+.quota{display:flex;align-items:center;gap:14px;min-width:0}
+.quota+.quota{border-left:1px solid #e1e8de;padding-left:18px}
+.quota-ring{position:relative;width:100px;aspect-ratio:1;flex-shrink:0}
+.quota-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.quota-ring circle{fill:none;stroke-width:11}
+.ring-track{stroke:#e1e9e2}.ring-value{stroke:#315c43;stroke-dasharray:var(--progress,0) 100}
+.quota-ring>span{position:absolute;inset:0;display:grid;place-items:center;font-size:23px;font-weight:600;font-variant-numeric:tabular-nums}
+.quota-copy{font-size:14px}.quota-copy p{font-size:12px;color:#7e8e84;margin:10px 0 0}
+.schedule-row>.run-panel{grid-template-rows:40px 130px 106px 46px;row-gap:24px}
+.schedule-row .run-panel .panel-metrics{grid-row:3;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #e1e8de;padding:20px 0 0;align-content:start}
+.schedule-row .run-panel .metric{display:block;padding-left:7%}
+.schedule-row .run-panel .metric+.metric{border-top:0;border-left:1px solid #e1e8de;padding:0 0 0 17%}
+.schedule-row .run-panel .metric-label{font-size:16px}.run-panel .metric-label svg,.run-panel .metric-date{display:none}
+.schedule-row .run-panel .metric-value{text-align:left;font-size:30px;margin-top:8px}
+.schedule-row .run-panel .panel-footer{grid-row:4}
+.schedule-row .panel-footer{padding-top:18px;font-size:14px}
+@media(max-width:960px){.schedule-row{grid-template-columns:1fr}.quota-ring{width:108px}.schedule-row>.panel{grid-template-rows:40px 218px 46px}.schedule-row>.run-panel{grid-template-rows:40px 130px 106px 46px}.quota-copy{font-size:16px}}
+@media(max-width:520px){.schedule-row>.panel{grid-template-columns:1fr;grid-template-rows:32px 32px 218px 46px;gap:16px;padding:18px 14px}.schedule-row .time-panel #schedule-form,.schedule-row .run-panel>.actions{grid-column:1;grid-row:2}.schedule-row .schedule-timeline{grid-row:3}.schedule-row .time-panel>.panel-footer{grid-row:4}.schedule-row>.run-panel{grid-template-rows:32px 32px 186px 106px 46px}.schedule-row .quotas{grid-row:3}.quota{flex-direction:column;align-items:flex-start;gap:10px}.quota-ring{width:100px;align-self:center}.quota-copy{font-size:14px}.quota+.quota{padding-left:14px}.schedule-row .run-panel .panel-metrics{grid-row:4}.schedule-row .run-panel .panel-footer{grid-row:5}.schedule-row .run-panel .metric-value{font-size:28px}.schedule-row .section-head h2{font-size:26px}}
 </style></head><body><main>
 <header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button type="button" id="open-help" aria-label="帮助" title="帮助" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M8.5 8.2a3.5 3.5 0 0 1 7 .3c0 2.5-3.5 2.7-3.5 5.2"/><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"/></svg></button></div></header>
 <div class="grid">
-<section class="card"><div class="label">五小时剩余额度</div><div class="value" id="remaining">—</div><div class="small" id="weekly">每周额度：等待检测</div></section>
 <section class="card"><div class="label">服务器刷新时间</div><div class="value time-value" id="reset">—</div><div class="small">北京时间</div></section>
 <section class="card"><div class="label">上次发送请求</div><div class="value time-value" id="last">尚未发送</div><div class="small" id="result"></div></section>
 </div>
@@ -137,7 +165,7 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 <div class="panel-footer"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25"/><path d="M10 5.5V10l3 1.8"/></svg><span class="count-chip" id="countdown"></span></div>
 <dialog id="refresh-dialog" aria-labelledby="refresh-title" aria-describedby="refresh-description"><header class="refresh-header"><h2 id="refresh-title">选择时间</h2><button type="button" id="close-refresh" aria-label="关闭">×</button></header><p class="refresh-description" id="refresh-description">选择<strong>完成刷新</strong>的时间</p><div class="manual-date"><div class="manual-field"><label for="manual-year">年</label><input id="manual-year" type="text" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="输入年" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-month">月</label><input id="manual-month" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入月" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-day">日</label><input id="manual-day" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入日" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-hour">时</label><input id="manual-hour" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入时" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-minute">分</label><input id="manual-minute" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入分" aria-describedby="refresh-error"></div></div><div class="wheel-grid" id="wheel-grid"></div><div id="refresh-error" class="feedback" role="status"></div><footer class="refresh-footer"><button type="button" id="cancel-refresh">取消</button><button type="button" class="primary" id="save-time">确定</button></footer></dialog>
 </section>
-<section class="panel run-panel"><div class="section-head"><h2>运行状态</h2></div><div class="actions"><button class="primary" id="recheck" onclick="recheckQuota()">重新检测</button><button id="reconnect" onclick="action('reconnect')">重新连接</button><button id="pause" onclick="action(paused?'resume':'pause')">暂停</button></div><div class="panel-metrics"><div class="metric"><div class="metric-label"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25"/><path d="M10 5.5V10l3 1.8"/></svg>上次检测</div><div class="metric-date" id="checked-date">—</div><div class="metric-value" id="checked">—</div></div><div class="metric"><div class="metric-label"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M16.4 8A6.7 6.7 0 1 0 16 13M16.5 3.5V8H12"/></svg>下次检测</div><div class="metric-date" id="next-check-date">—</div><div class="metric-value" id="next-check">—</div></div></div><div class="panel-footer" aria-live="polite"><span class="footer-dot" aria-hidden="true"></span><span class="state-chip" id="status">连接中</span><span id="status-detail" hidden></span></div></section>
+<section class="panel run-panel"><div class="section-head"><h2>运行状态</h2></div><div class="actions"><button class="primary" id="recheck" onclick="recheckQuota()">重新检测</button><button id="reconnect" onclick="action('reconnect')">重新连接</button><button id="pause" onclick="action(paused?'resume':'pause')">暂停</button></div><div class="quotas"><div class="quota"><div class="quota-ring" id="remaining-ring" role="img" aria-label="五小时剩余额度：等待检测"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-track" cx="50" cy="50" r="44"/><circle class="ring-value" cx="50" cy="50" r="44" pathLength="100"/></svg><span id="remaining">—</span></div><div class="quota-copy"><div>五小时剩余额度</div><p id="remaining-copy">等待检测</p></div></div><div class="quota"><div class="quota-ring" id="weekly-ring" role="img" aria-label="周额度剩余：等待检测"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-track" cx="50" cy="50" r="44"/><circle class="ring-value" cx="50" cy="50" r="44" pathLength="100"/></svg><span id="weekly">—</span></div><div class="quota-copy"><div>周额度剩余</div><p id="weekly-copy">等待检测</p></div></div></div><div class="panel-metrics"><div class="metric"><div class="metric-label"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25"/><path d="M10 5.5V10l3 1.8"/></svg>上次检测</div><div class="metric-date" id="checked-date">—</div><div class="metric-value" id="checked">—</div></div><div class="metric"><div class="metric-label"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M16.4 8A6.7 6.7 0 1 0 16 13M16.5 3.5V8H12"/></svg>下次检测</div><div class="metric-date" id="next-check-date">—</div><div class="metric-value" id="next-check">—</div></div></div><div class="panel-footer" aria-live="polite"><span class="footer-dot" aria-hidden="true"></span><span class="state-chip" id="status">连接中</span><span id="status-detail" hidden></span></div></section>
 </div><section class="panel" id="history-panel"><h2><button type="button" class="panel-jump" id="history-jump">触发记录</button></h2><div class="tablewrap"><table><thead><tr><th>时间（北京时间）</th><th>结果</th><th>周期验证</th></tr></thead><tbody id="history"></tbody></table></div></section>
 <section class="panel" id="activity-panel"><div class="section-head" style="margin-bottom:18px;flex-wrap:wrap"><h2><button type="button" class="panel-jump" id="activity-jump">操作与连接日志</button></h2><button type="button" id="open-logs" onclick="action('logs/open')">打开日志文件夹</button></div><div class="tablewrap activity-table"><table><thead><tr><th>时间（北京时间）</th><th>操作 / 事件</th><th>详情</th></tr></thead><tbody id="activity"></tbody></table></div><details><summary>查看检测明细</summary><pre id="logs"></pre></details></section>
 <section class="panel"><h2>设置</h2><label style="display:flex;align-items:center;gap:12px"><input type="checkbox" id="autostart" disabled onchange="setAutostart(this.checked)"><span>开机自启动</span></label><div class="small" id="startup-error" role="status"></div></section>
@@ -157,6 +185,13 @@ const time=s=>s?new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',year:'
 const inputTime=s=>new Date(s*1000+8*3600000).toISOString().slice(0,19);
 const labels={completed:'已完成',failed:'失败',interrupted:'已中断',unknown:'结果未知',reserved:'待核实'};
 const clockTime=s=>s?time(s).split(' ')[1]:'—';
+function renderQuota(id,quota){
+ const value=quota?Math.max(0,Math.min(100,100-quota.usedPercent)):null;
+ $(id).textContent=value===null?'—':value+'%';
+ $(id+'-ring').setAttribute('style','--progress:'+(value??0));
+ $(id+'-ring').setAttribute('aria-label',(id==='remaining'?'五小时剩余额度':'周额度剩余')+'：'+(value===null?'未返回':value+'%'));
+ $(id+'-copy').textContent=value===null?'未返回额度':id==='weekly'?'近 '+Math.round(quota.windowDurationMins/1440)+' 天剩余额度占比':value>0?'当前可正常发送请求':'额度已用尽';
+}
 function cardTime(id,value){const target=$(id);target.textContent=time(value);if(!value)return;const date=document.createElement('span');date.className='card-date';date.textContent=time(value).split(' ')[0];target.replaceChildren(date,' '+clockTime(value));}
 function timeBlock(id,dateId,value){$(id).textContent=clockTime(value);$(dateId).textContent=value?time(value).split(' ')[0]:'—';}
 function shortStatus(s){
@@ -334,7 +369,7 @@ function renderStatus(s){
  $('pause').textContent=paused?'恢复运行':'暂停';
  $('status').textContent=shortStatus(s);$('status-detail').textContent=s.status;$('status').title=s.status;
  const c=s.current;
- if(c){$('remaining').textContent=(100-c.primary.usedPercent)+'%';$('weekly').textContent=c.secondary?'长周期（'+Math.round(c.secondary.windowDurationMins/1440)+' 天）剩余 '+(100-c.secondary.usedPercent)+'%':'长周期：未返回';cardTime('reset',c.primary.resetsAt);timeBlock('checked','checked-date',c.checkedAt);$('checked').title=time(c.checkedAt);}
+ if(c){renderQuota('remaining',c.primary);renderQuota('weekly',c.secondary);cardTime('reset',c.primary.resetsAt);timeBlock('checked','checked-date',c.checkedAt);$('checked').title=time(c.checkedAt);}
  timeBlock('next-check','next-check-date',s.nextPoll);$('next-check').title=time(s.nextPoll);
  renderTiming(s.timing);renderAutostart(s.autostart);
  const a=s.attempts[0];if(a){cardTime('last',a.started);$('result').textContent=labels[a.status]||a.status;}else{$('last').textContent='尚未发送';$('result').textContent='';}
