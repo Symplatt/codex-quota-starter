@@ -120,40 +120,42 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 @media(max-width:460px){.schedule-timeline{grid-row:3}}
 @media(max-width:360px){.timeline-time{font-size:22px}.schedule-timeline{padding:0 5px}.timeline-rail{left:5px;right:5px}.timeline-event{width:calc(100% - 10px)}.timeline-reset .timeline-label{left:-5px}}
 
-/* Reference dashboard: quota rings and aligned, equal-width panels. */
-.grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-.schedule-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.schedule-row>.panel{grid-template-rows:40px minmax(260px,1fr) 46px;gap:24px;padding:22px;border-radius:20px}
-.schedule-row .section-head h2{font-size:26px}
-.schedule-row .schedule-buttons,.schedule-row .actions{gap:0}
-.schedule-row .schedule-buttons button,.schedule-row .actions button{font-size:14px;padding:0}
-.schedule-row .schedule-buttons button+button:before,.schedule-row .actions button+button:before{content:'|';margin:0 12px;color:#7e8e84;font-weight:400}
-.schedule-row .schedule-timeline{align-self:start;margin-top:4px}
-.schedule-row .quotas{grid-column:1/-1;grid-row:2;display:grid;grid-template-columns:1fr 1fr;align-items:center;margin:4px 0 0;min-width:0}
-.quota{display:flex;align-items:center;gap:14px;min-width:0}
-.quota+.quota{border-left:1px solid #e1e8de;padding-left:18px}
-.quota-ring{position:relative;width:100px;aspect-ratio:1;flex-shrink:0}
-.quota-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
-.quota-ring circle{fill:none;stroke-width:11}
+/* Match the supplied two-panel reference at its 1024px content width. */
+:root{font-family:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;color:#203e35;background:#f4f6f2}
+.schedule-row{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:auto;gap:6px}
+.schedule-row>.panel{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:33px 203px 32px;gap:17px;padding:16px;border:1px solid #e1e8de;border-radius:10px;box-shadow:none}
+.schedule-row .section-head{min-height:33px}.schedule-row .section-head h2{font-size:22px;font-weight:700;line-height:33px;letter-spacing:0}
+.schedule-row .schedule-buttons,.schedule-row .actions{gap:0;flex-wrap:nowrap}
+.schedule-row .schedule-buttons button,.schedule-row .actions button{font-size:12px;font-weight:400;line-height:18px;height:24px;min-height:24px;padding:0;color:#7e8e84}
+.schedule-row #choose-time,.schedule-row #recheck{font-weight:400}.schedule-row #recheck{color:#7e8e84}
+.schedule-row .schedule-buttons button+button:before,.schedule-row .actions button+button:before{content:'';display:inline-block;height:12px;border-left:1px solid #7e8e84;margin:0 12px;vertical-align:-2px}
+.schedule-row .schedule-timeline{align-self:start;margin:0;height:203px;padding:0}
+.timeline-event{width:100%}.timeline-label{width:47.75%;padding:7px 10px 6px;border:1px solid #e1e8de;border-radius:7px;background:#f7f9f5;gap:0 8px}
+.timeline-name{font-size:13px;line-height:20px;font-weight:400;color:#203e35}.timeline-name small{font-size:10px;color:#7e8e84}.timeline-date{font-size:11px;line-height:20px;color:#7e8e84}
+.timeline-time{font-size:26px;line-height:36px;font-weight:600;letter-spacing:0;color:#203e35}
+.timeline-reset .timeline-label{left:0}.timeline-next .timeline-label{right:0}
+.timeline-rail{left:0;right:0;top:85px;background:#9bb39d}.timeline-event:before{top:69px;height:16px}.timeline-event:after{top:78px;width:14px;height:14px;border-color:#7e8e84}
+.timeline-reset:before,.timeline-reset:after{left:11.2%}.timeline-next:before,.timeline-next:after{left:87.6%}
+.timeline-send:before{top:85px;height:47px}.timeline-send:after{background:#315c43;border-color:#315c43}
+.timeline-send .timeline-label{top:132px;width:47%}.schedule-timeline[data-send-align=start] .timeline-send .timeline-label{transform:translateX(-7px)}
+.timeline-hour{top:17px;font-size:10px;line-height:14px}.timeline-tick.major{height:13px}
+.schedule-row .quotas{grid-column:1/-1;grid-row:2;display:grid;grid-template-columns:1fr 1fr;align-items:center;margin:9px 0 0;min-width:0}
+.quota{display:flex;align-items:center;gap:12px;min-width:0}.quota+.quota{border-left:1px solid #e1e8de;padding-left:10%}
+.quota-ring{position:relative;width:87px;aspect-ratio:1;flex-shrink:0}.quota-ring svg{display:block;width:100%;height:100%;transform:rotate(-90deg)}.quota-ring circle{fill:none;stroke-width:11}
 .ring-track{stroke:#e1e9e2}.ring-value{stroke:#315c43;stroke-dasharray:var(--progress,0) 100}
-.quota-ring>span{position:absolute;inset:0;display:grid;place-items:center;font-size:23px;font-weight:600;font-variant-numeric:tabular-nums}
-.quota-copy{font-size:14px}.quota-copy p{font-size:12px;color:#7e8e84;margin:10px 0 0}
-.schedule-row>.run-panel{grid-template-rows:40px 130px 106px 46px;row-gap:24px}
-.schedule-row .run-panel .panel-metrics{grid-row:3;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #e1e8de;padding:20px 0 0;align-content:start}
-.schedule-row .run-panel .metric{display:block;padding-left:7%}
-.schedule-row .run-panel .metric+.metric{border-top:0;border-left:1px solid #e1e8de;padding:0 0 0 17%}
-.schedule-row .run-panel .metric-label{font-size:16px}.run-panel .metric-label svg,.run-panel .metric-date{display:none}
-.schedule-row .run-panel .metric-value{text-align:left;font-size:30px;margin-top:8px}
-.schedule-row .run-panel .panel-footer{grid-row:4}
-.schedule-row .panel-footer{padding-top:18px;font-size:14px}
-@media(max-width:960px){.schedule-row{grid-template-columns:1fr}.quota-ring{width:108px}.schedule-row>.panel{grid-template-rows:40px 218px 46px}.schedule-row>.run-panel{grid-template-rows:40px 130px 106px 46px}.quota-copy{font-size:16px}}
-@media(max-width:520px){.schedule-row>.panel{grid-template-columns:1fr;grid-template-rows:32px 32px 218px 46px;gap:16px;padding:18px 14px}.schedule-row .time-panel #schedule-form,.schedule-row .run-panel>.actions{grid-column:1;grid-row:2}.schedule-row .schedule-timeline{grid-row:3}.schedule-row .time-panel>.panel-footer{grid-row:4}.schedule-row>.run-panel{grid-template-rows:32px 32px 186px 106px 46px}.schedule-row .quotas{grid-row:3}.quota{flex-direction:column;align-items:flex-start;gap:10px}.quota-ring{width:100px;align-self:center}.quota-copy{font-size:14px}.quota+.quota{padding-left:14px}.schedule-row .run-panel .panel-metrics{grid-row:4}.schedule-row .run-panel .panel-footer{grid-row:5}.schedule-row .run-panel .metric-value{font-size:28px}.schedule-row .section-head h2{font-size:26px}}
+.quota-ring>span{position:absolute;inset:0;display:grid;place-items:center;font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+.quota-copy{font-size:13px;white-space:nowrap}.quota-copy p{font-size:12px;line-height:18px;color:#7e8e84;margin:7px 0 0}
+.schedule-row>.run-panel{grid-template-rows:33px 99px 87px 32px;row-gap:17px}
+.schedule-row .run-panel .panel-metrics{grid-row:3;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #e1e8de;padding:16px 0 9px;align-content:start}
+.schedule-row .run-panel .metric{display:block;padding-left:9%}.schedule-row .run-panel .metric+.metric{border-top:0;border-left:1px solid #e1e8de;padding:0 0 0 17%}
+.schedule-row .run-panel .metric-label{font-size:14px;line-height:21px;color:#7e8e84}.run-panel .metric-label svg,.run-panel .metric-date{display:none}
+.schedule-row .run-panel .metric-value{text-align:left;font-size:26px;line-height:36px;margin-top:5px;color:#203e35;letter-spacing:0}
+.schedule-row .run-panel .panel-footer{grid-row:4}.schedule-row .panel-footer{padding-top:9px;min-height:32px;gap:9px;font-size:12px;line-height:18px;color:#7e8e84;border-color:#e1e8de}
+.schedule-row .time-glyph{width:17px;height:17px;stroke:#7e8e84}.schedule-row .footer-dot{width:7px;height:7px;margin:0 3px;background:#7e8e84}
+@media(max-width:1000px){.schedule-row{grid-template-columns:1fr}.schedule-row>.panel{max-width:600px;width:100%;justify-self:center}}
+@media(max-width:520px){.schedule-row>.panel{grid-template-columns:minmax(0,1fr);grid-template-rows:33px 24px 203px 32px;gap:14px;padding:14px}.schedule-row .time-panel #schedule-form,.schedule-row .run-panel>.actions{grid-column:1;grid-row:2}.schedule-row .schedule-timeline{grid-row:3}.schedule-row .time-panel>.panel-footer{grid-row:4}.schedule-row>.run-panel{grid-template-rows:33px 24px 99px 87px 32px}.schedule-row .quotas{grid-row:3}.schedule-row .run-panel .panel-metrics{grid-row:4}.schedule-row .run-panel .panel-footer{grid-row:5}.quota-ring{width:65px}.quota{gap:8px}.quota+.quota{padding-left:6%}.quota-copy{font-size:11px;white-space:normal}.quota-copy p{font-size:10px}.timeline-label{grid-template-columns:minmax(0,1fr) auto}.timeline-name{font-size:11px}.timeline-date{grid-column:2;grid-row:1;font-size:9px}.timeline-label .timeline-time{grid-column:1/-1;grid-row:2;font-size:24px;line-height:36px}}
 </style></head><body><main>
 <header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button type="button" id="open-help" aria-label="帮助" title="帮助" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M8.5 8.2a3.5 3.5 0 0 1 7 .3c0 2.5-3.5 2.7-3.5 5.2"/><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"/></svg></button></div></header>
-<div class="grid">
-<section class="card"><div class="label">服务器刷新时间</div><div class="value time-value" id="reset">—</div><div class="small">北京时间</div></section>
-<section class="card"><div class="label">上次发送请求</div><div class="value time-value" id="last">尚未发送</div><div class="small" id="result"></div></section>
-</div>
 <div class="schedule-row"><section class="panel time-panel"><div class="section-head"><h2>定时刷新</h2></div>
 <div id="schedule-form"><div class="schedule-buttons"><button id="choose-time" type="button" disabled>选择时间</button><button id="auto-time" type="button" onclick="window.action('schedule/clear','schedule-feedback')">恢复自动</button></div></div>
 <ol class="schedule-timeline" id="schedule-timeline" aria-label="额度刷新与请求时间轴">
@@ -192,7 +194,6 @@ function renderQuota(id,quota){
  $(id+'-ring').setAttribute('aria-label',(id==='remaining'?'五小时剩余额度':'周额度剩余')+'：'+(value===null?'未返回':value+'%'));
  $(id+'-copy').textContent=value===null?'未返回额度':id==='weekly'?'近 '+Math.round(quota.windowDurationMins/1440)+' 天剩余额度占比':value>0?'当前可正常发送请求':'额度已用尽';
 }
-function cardTime(id,value){const target=$(id);target.textContent=time(value);if(!value)return;const date=document.createElement('span');date.className='card-date';date.textContent=time(value).split(' ')[0];target.replaceChildren(date,' '+clockTime(value));}
 function timeBlock(id,dateId,value){$(id).textContent=clockTime(value);$(dateId).textContent=value?time(value).split(' ')[0]:'—';}
 function shortStatus(s){
  if(s.connection?.stopped)return '已断开，等待重新连接';
@@ -233,7 +234,7 @@ function renderTimeline(t){
  const compressed=known&&wait>cycle;
  // Cap the waiting segment at one cycle; keep nearly simultaneous markers legible.
  const shownWait=Math.min(wait,cycle);
- const position=known?10+.8*Math.max(3,100*shownWait/(shownWait+cycle)):50;
+ const position=known?10+.8*Math.max(5,100*shownWait/(shownWait+cycle)):50;
  const breakPosition=10+(position-10)/2;
  const timeline=$('schedule-timeline');
  timeline.setAttribute('style',`--send-position:${position}%;--break-position:${breakPosition}%`);
@@ -252,7 +253,7 @@ function renderTimeline(t){
    if(compressed&&Math.abs(percent-breakPosition)*width/100<16)continue;
    const tick=document.createElement('span'),major=at%3600===0;
    tick.className='timeline-tick'+(major?' major':'');tick.setAttribute('style',`left:${percent}%`);
-   if(major&&x>=18&&x<=width-18&&x-lastLabel>=42&&Math.abs(x-sendX)>=20&&(!compressed||Math.abs(percent-breakPosition)*width/100>=30)){
+   if(major&&x>=18&&x<=width-18&&x-lastLabel>=42&&Math.abs(x-sendX)>=10&&(!compressed||Math.abs(percent-breakPosition)*width/100>=30)){
     const label=document.createElement('span');label.className='timeline-hour';label.textContent=clockTime(at).slice(0,5);tick.append(label);lastLabel=x;
    }
    ticks.append(tick);
@@ -369,10 +370,9 @@ function renderStatus(s){
  $('pause').textContent=paused?'恢复运行':'暂停';
  $('status').textContent=shortStatus(s);$('status-detail').textContent=s.status;$('status').title=s.status;
  const c=s.current;
- if(c){renderQuota('remaining',c.primary);renderQuota('weekly',c.secondary);cardTime('reset',c.primary.resetsAt);timeBlock('checked','checked-date',c.checkedAt);$('checked').title=time(c.checkedAt);}
+ if(c){renderQuota('remaining',c.primary);renderQuota('weekly',c.secondary);timeBlock('checked','checked-date',c.checkedAt);$('checked').title=time(c.checkedAt);}
  timeBlock('next-check','next-check-date',s.nextPoll);$('next-check').title=time(s.nextPoll);
  renderTiming(s.timing);renderAutostart(s.autostart);
- const a=s.attempts[0];if(a){cardTime('last',a.started);$('result').textContent=labels[a.status]||a.status;}else{$('last').textContent='尚未发送';$('result').textContent='';}
  const body=$('history');body.replaceChildren();
  for(const a of s.attempts){const tr=document.createElement('tr');for(const text of [time(a.started),labels[a.status]||a.status,a.detail.evidence||'请求已预留，本周期不重复提交']){const td=document.createElement('td');td.textContent=text;tr.append(td);}body.append(tr);}
  if(!s.attempts.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='暂无记录';tr.append(td);body.append(tr);}
