@@ -154,8 +154,10 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 .schedule-row .time-glyph{width:17px;height:17px;stroke:#7e8e84}.schedule-row .footer-dot{width:7px;height:7px;margin:0 3px;background:#7e8e84}
 @media(max-width:1000px){.schedule-row{grid-template-columns:1fr}.schedule-row>.panel{max-width:600px;width:100%;justify-self:center}}
 @media(max-width:520px){.schedule-row>.panel{grid-template-columns:minmax(0,1fr);grid-template-rows:33px 24px 203px 32px;gap:14px;padding:14px 24px}.schedule-row .time-panel #schedule-form,.schedule-row .run-panel>.actions{grid-column:1;grid-row:2}.schedule-row .schedule-timeline{grid-row:3}.schedule-row .time-panel>.panel-footer{grid-row:4}.schedule-row>.run-panel{grid-template-rows:33px 24px 99px 87px 32px}.schedule-row .quotas{grid-row:3}.schedule-row .run-panel .panel-metrics{grid-row:4}.schedule-row .run-panel .panel-footer{grid-row:5}.quota-ring{width:65px}.quota{gap:8px}.quota+.quota{padding-left:6%}.quota-copy{font-size:11px;white-space:normal}.quota-copy p{font-size:10px}.timeline-label{grid-template-columns:minmax(0,1fr) auto}.timeline-name{font-size:11px}.timeline-date{grid-column:2;grid-row:1;font-size:9px}.timeline-label .timeline-time{grid-column:1/-1;grid-row:2;font-size:24px;line-height:36px}}
+.error-banner{margin-top:20px;padding:14px 18px;border:1px solid #e4c6ba;border-radius:12px;background:#fff3ee;color:#874b38;font-size:14px;line-height:1.8;overflow-wrap:anywhere;white-space:pre-wrap}.error-banner[hidden]{display:none}
 </style></head><body><main>
 <header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button type="button" id="open-help" aria-label="帮助" title="帮助" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M8.5 8.2a3.5 3.5 0 0 1 7 .3c0 2.5-3.5 2.7-3.5 5.2"/><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"/></svg></button></div></header>
+<div class="error-banner" id="error-banner" role="alert" hidden></div>
 <div class="schedule-row"><section class="panel time-panel"><div class="section-head"><h2 class="card-title">定时刷新</h2></div>
 <div id="schedule-form"><div class="schedule-buttons"><button id="choose-time" type="button" disabled>选择时间</button><span class="action-separator" aria-hidden="true"></span><button id="auto-time" type="button" onclick="window.action('schedule/clear','schedule-feedback')">恢复自动</button></div></div>
 <ol class="schedule-timeline" id="schedule-timeline" aria-label="额度刷新与请求时间轴">
@@ -181,6 +183,7 @@ helpDialog.addEventListener('pointerdown',e=>{const r=helpDialog.getBoundingClie
 helpDialog.addEventListener('click',e=>{const r=helpDialog.getBoundingClientRect();if(backdropDown&&(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom))helpDialog.close();backdropDown=false;});
 let token='__CSRF__';let paused=false,snapshot=null,startupBusy=false,refreshPromise=null,recheckBusy=false,connected=false;
 const cacheKey='quota-starter:last-status:v1';
+let operationError='';
 const pendingActions=new Set();
 const $=id=>document.getElementById(id);
 const time=s=>s?new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(s*1000)):'—';
@@ -195,7 +198,14 @@ function renderQuota(id,quota){
  $(id+'-copy').textContent=value===null?'未返回额度':id==='weekly'?'近 '+Math.round(quota.windowDurationMins/1440)+' 天剩余额度占比':value>0?'当前可正常发送请求':'额度已用尽';
 }
 function timeBlock(id,dateId,value){$(id).textContent=clockTime(value);$(dateId).textContent=value?time(value).split(' ')[0]:'—';}
+function setErrorBanner(message){
+ const banner=$('error-banner');banner.textContent=message||'';banner.hidden=!message;
+}
+function renderErrorBanner(s){
+ setErrorBanner(s.connection?.error||s.autostart?.error||operationError);
+}
 function shortStatus(s){
+ if(s.connection?.upgradeRequired)return 'Codex CLI 需要升级';
  if(s.connection?.stopped)return '已断开，等待重新连接';
  if(s.connection?.recoveryAt)return '等待自动重连';
  const phases={connecting:'正在连接',checking:'正在检测额度',preparing:'正在准备小额请求',sending:'正在发送小额请求',verifying:'正在核验请求结果'};
@@ -368,7 +378,7 @@ function renderStatus(s){
  $('version').textContent='v'+s.version;
  $('badge').textContent=s.connection?.stopped?'已断开':s.connection?.recoveryAt?'等待重连':s.linked?'后台运行':s.busy?'正在连接':paused?'已暂停':'后台运行';
  $('pause').textContent=paused?'恢复运行':'暂停';
- $('status').textContent=shortStatus(s);$('status-detail').textContent=s.status;$('status').title=s.status;
+ $('status').textContent=shortStatus(s);$('status-detail').textContent=s.status;$('status').title=s.status;renderErrorBanner(s);
  const c=s.current;
  if(c){renderQuota('remaining',c.primary);renderQuota('weekly',c.secondary);timeBlock('checked','checked-date',c.checkedAt);$('checked').title=time(c.checkedAt);}
  timeBlock('next-check','next-check-date',s.nextPoll);$('next-check').title=time(s.nextPoll);
@@ -380,7 +390,7 @@ function renderStatus(s){
  $('logs').textContent=s.events.map(e=>time(e.time)+' '+e.kind+' '+JSON.stringify(e.detail)).join('\n');
 }
 
-function showOffline(){connected=false; $('badge').textContent='连接中断';$('status').textContent='等待重连';$('status-detail').textContent=snapshot?'连接暂时中断，保留上次数据，正在自动重试。':'请通过桌面快捷方式启动。';$('status').title=$('status-detail').textContent;for(const id of ['reconnect','pause','recheck','save-time','auto-time','autostart','choose-time'])$(id).disabled=true;}
+function showOffline(){setErrorBanner('无法连接本机后台服务，请通过桌面快捷方式启动软件；若仍失败，请检查后台日志。');connected=false; $('badge').textContent='连接中断';$('status').textContent='等待重连';$('status-detail').textContent=snapshot?'连接暂时中断，保留上次数据，正在自动重试。':'请通过桌面快捷方式启动。';$('status').title=$('status-detail').textContent;for(const id of ['reconnect','pause','recheck','save-time','auto-time','autostart','choose-time'])$(id).disabled=true;}
 function completeStatus(s){
   return s?.service==='quota-starter'&&typeof s.status==='string'&&typeof s.paused==='boolean'
     &&s.timing&&Array.isArray(s.attempts)&&Array.isArray(s.events);
@@ -435,6 +445,7 @@ async function action(name,feedback='toast',body){
    if(typeof fresh.token!=='string'||!fresh.token)throw Error('invalid session');
    token=fresh.token;r=await send();d=await r.json();
   }
+  operationError=r.ok?'':(d.error||d.message||'操作失败，请检查日志');
   showFeedback(feedback,d.message||d.error,r.ok);
   if(refreshPromise)await refreshPromise;
   await refresh();return r.ok;

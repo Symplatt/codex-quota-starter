@@ -12,7 +12,7 @@ import threading
 import time
 import uuid
 
-from rpc import RPC
+from rpc import RPC, CodexCompatibilityError
 
 WINDOW = 18000
 POLL_INTERVAL = 60
@@ -307,7 +307,8 @@ class Engine:
             retry['recoveryInterval'] = RECOVERY_INTERVAL
             self.store.set('connection', retry)
         if retry.get('stopped'):
-            self.status = '已断开，请点击重新连接'
+            self.status = (retry.get('error') if retry.get('upgradeRequired')
+                           else '已断开，请点击重新连接')
             self.phase = 'stopped'
         elif retry:
             self.next_poll = retry.get('nextAt', 0)
@@ -372,6 +373,8 @@ class Engine:
         state = self.connection()
         state['stopped'] = not recoverable
         state['stopReason'] = 'network' if recoverable else 'manual_required'
+        if state.get('upgradeRequired'):
+            state['stopReason'] = 'cli_upgrade'
         state.pop('recoveryAt', None)
         if recoverable:
             state['recoveryAt'] = max(self.clock(), state.get('recoveryStartedAt', self.clock()) + RECOVERY_INTERVAL)
@@ -380,6 +383,7 @@ class Engine:
         self.store.set('connection', state)
         self.next_poll = state['recoveryAt'] if recoverable else 0
         self.status = ('连接暂时不可用，等待自动重连' if recoverable
+                       else state.get('error') if state.get('upgradeRequired')
                        else '已断开，请点击重新连接')
         self.read_requested = None
         self.phase = 'retry_wait' if recoverable else 'stopped'
@@ -397,6 +401,7 @@ class Engine:
         state['failures'] = state.get('failures', 0) + 1
         state['nextAt'] = min(now + RETRY_INTERVAL, state['startedAt'] + RETRY_BUDGET)
         state['error'] = str(error)[:1200]
+        state['upgradeRequired'] = isinstance(error, CodexCompatibilityError)
         state['recoverable'] = (transient_connection_error(error)
                                 and not self.store.get('sending', False))
         state['readOnlyRecovery'] = state['recoverable']
@@ -408,7 +413,8 @@ class Engine:
         self.close()
         self.store.log('connection_failure', {'error': state['error'], 'failures': state['failures'],
                                              'nextAt': state['nextAt'], 'diagnostics': diagnostics}, now)
-        if state.get('autoRecovery') or state['failures'] >= ATTEMPT_LIMIT or now >= state['startedAt'] + RETRY_BUDGET:
+        if (state['upgradeRequired'] or state.get('autoRecovery')
+                or state['failures'] >= ATTEMPT_LIMIT or now >= state['startedAt'] + RETRY_BUDGET):
             self.stop_connection(recoverable=state['recoverable'])
         else:
             self.next_poll = state['nextAt']

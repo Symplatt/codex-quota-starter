@@ -12,6 +12,10 @@ import tomllib
 from version import VERSION
 
 
+class CodexCompatibilityError(RuntimeError):
+    """The installed CLI rejected an interface required by this application."""
+
+
 def find_codex():
     override = os.environ.get('QUOTA_CODEX_EXE')
     if override:
@@ -46,7 +50,8 @@ class RPC:
         env = os.environ.copy()
         for key in ('OPENAI_API_KEY', 'CODEX_API_KEY', 'OPENAI_BASE_URL'):
             env.pop(key, None)
-        args = [find_codex(), 'app-server', '--listen', 'stdio://']
+        self.codex_exe = find_codex()
+        args = [self.codex_exe, 'app-server', '--listen', 'stdio://']
         overrides = ['model_provider="openai"', 'forced_login_method="chatgpt"',
                      'web_search="disabled"', 'project_doc_max_bytes=0',
                      'features.shell_tool=false', 'features.multi_agent=false',
@@ -139,6 +144,17 @@ class RPC:
             self._send({'id': seq, 'method': method, 'params': params or {}})
             result = waiting.get(timeout=timeout)
             if 'error' in result:
+                error = result['error']
+                # Older CLIs accept empty params but reject the new quota option.
+                # Detect the protocol response, not a guessed minimum version.
+                if (method == 'account/rateLimits/read' and isinstance(error, dict)
+                        and (error.get('code') == -32601 or
+                             (error.get('code') in (-32600, -32602) and any(
+                                 text in str(error.get('message', '')).lower()
+                                 for text in ('expected unit', 'excluderesetcreditdetails'))))):
+                    compatibility = self.compatibility_error()
+                    compatibility.rpc_server_error = error
+                    raise compatibility
                 raise RuntimeError(f'{method}：' + str(result['error'])[:1200])
             if 'result' not in result:
                 raise RuntimeError(f'{method}：服务器响应缺少结果')
@@ -154,10 +170,33 @@ class RPC:
             exc.rpc_diagnostics = {'method': method,
                                    'elapsedSeconds': round(time.monotonic() - started, 3),
                                    'processAlive': self.is_alive()}
+            if isinstance(exc, CodexCompatibilityError):
+                exc.rpc_diagnostics['serverError'] = exc.rpc_server_error
             raise
         finally:
             with self.lock:
                 self.pending.pop(seq, None)
+
+    def compatibility_error(self):
+        version = '无法读取'
+        try:
+            # Query the same executable as the server; PATH may contain several CLIs.
+            remaining = (self.deadline - time.time()) if self.deadline is not None else 3
+            if remaining > 0:
+                result = subprocess.run([self.codex_exe, '--version'], capture_output=True,
+                                        text=True, encoding='utf-8', timeout=min(3, remaining),
+                                        creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+                match = re.fullmatch(r'codex-cli ([0-9A-Za-z.+-]+)', result.stdout.strip())
+                if result.returncode == 0 and match:
+                    version = match.group(1)
+        except (OSError, subprocess.TimeoutExpired, UnicodeError):
+            pass
+        error = CodexCompatibilityError(
+            f'Codex CLI 版本过低或接口不兼容（当前版本：{version}），不支持本软件的额度读取接口或参数。'
+            '请在 PowerShell 运行 npm install -g @openai/codex@latest，'
+            '完成后点击“重新连接”。若仍提示，请确认升级的是下列程序。'
+            f'当前程序：{self.codex_exe}')
+        return error
 
     def account(self):
         account = self.call('account/read', {'refreshToken': False}).get('account')

@@ -12,6 +12,27 @@ function setup(storage={}){
   return {c,e:id=>elements.get(id),run:code=>vm.runInContext(code,c),respond:async s=>{response({ok:true,json:async()=>s});await vm.runInContext('refreshPromise',c);},requests:()=>requests,storage};
 }
 function status(){const at=Date.parse('2090-10-09T19:09:00+08:00')/1000;return {service:'quota-starter',version:'1.4.5',paused:false,busy:false,status:'等待重置时间',current:{primary:{usedPercent:20,resetsAt:at},checkedAt:at-3600},timing:{serverResetAt:at,minSendAt:at+1,minRefreshAt:at+18060,maxRefreshAt:at+366*86400,sendAt:at+2,estimatedResetAt:at+18002,schedule:null},nextPoll:at,attempts:[],events:[],autostart:{available:true,enabled:true}};}
+
+test('error banner shows current failures safely and disappears after recovery',async()=>{
+ const p=setup(),s=status();await p.respond(s);assert.equal(p.e('error-banner').hidden,true);
+ s.connection={stopped:true,upgradeRequired:true,error:'Codex CLI 版本过低（0.144.4） <script>test</script>'};
+ p.run('refresh()');await p.respond(s);
+ assert.equal(p.e('error-banner').hidden,false);assert.equal(p.e('error-banner').textContent,s.connection.error);
+ assert.equal(p.e('status').textContent,'Codex CLI 需要升级');
+ p.run('refresh()');await p.respond({...status(),events:[{kind:'connection_failure',detail:{error:'old'}}]});
+ assert.equal(p.e('error-banner').hidden,true);assert.equal(p.e('error-banner').textContent,'');
+ await p.run('fetch=async()=>{throw Error("offline")};refresh();');
+ assert.equal(p.e('error-banner').hidden,false);assert.match(p.e('error-banner').textContent,/本机后台/);
+});
+
+test('startup and operation errors use banner without showing normal pause as error',async()=>{
+ const p=setup(),s=status();s.paused=true;await p.respond(s);assert.equal(p.e('error-banner').hidden,true);
+ s.autostart.error='无法设置自启';p.run('refresh()');await p.respond(s);
+ assert.equal(p.e('error-banner').textContent,'无法设置自启');
+ p.run("operationError='操作失败';refresh()");await p.respond(status());
+ assert.equal(p.e('error-banner').textContent,'操作失败');
+ p.run("operationError='';refresh()");await p.respond(status());assert.equal(p.e('error-banner').hidden,true);
+});
 test('timeline places near-immediate sends visibly and keeps exact cross-day times',async()=>{
  const p=setup(),s=status();await p.respond(s);
  assert.equal(p.e('timeline-reset-at').textContent,'19:09:00');

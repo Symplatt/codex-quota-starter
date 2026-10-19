@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from core import Engine, normalize, RECOVERY_INTERVAL
-from rpc import RPC
+from rpc import RPC, CodexCompatibilityError
 import test_quota as fixtures
 from test_quota import FakeRPC, raw
 from windows_settings import Autostart
@@ -19,6 +19,26 @@ class AuditTests(unittest.TestCase):
     setUp = fixtures.QuotaTests.setUp
     tearDown = fixtures.QuotaTests.tearDown
     engine = fixtures.QuotaTests.engine
+
+    def test_cli_upgrade_stops_immediately_and_survives_restart_then_reconnects(self):
+        message = 'Codex CLI 版本过低或接口不兼容（当前版本：0.144.4）'
+        fake = FakeRPC([CodexCompatibilityError(message), raw(149)])
+        e = self.engine(fake, 100)
+        e.tick(check_only=True)
+        self.assertEqual(e.status, message)
+        self.assertEqual(e.connection()['stopReason'], 'cli_upgrade')
+        self.assertTrue(e.connection()['upgradeRequired'])
+        self.assertEqual(e.connection()['failures'], 1)
+        restarted = self.engine(fake, 900)
+        self.assertEqual(restarted.status, message)
+        restarted.tick()
+        self.assertEqual(fake.reads, 1)
+        self.assertEqual(fake.sent, 0)
+        restarted.reconnect()
+        restarted.tick()
+        self.assertTrue(restarted.linked)
+        self.assertFalse(restarted.connection().get('upgradeRequired'))
+        self.assertEqual(fake.sent, 0)
 
     def schedule(self, engine):
         self.store.set('current', {'primary': {'resetsAt': 100}})
@@ -505,6 +525,41 @@ class RecoveryTests(unittest.TestCase):
 
 
 class RPCTests(unittest.TestCase):
+    def test_quota_protocol_rejection_has_actual_cli_version_and_upgrade_command(self):
+        rpc = self.rpc()
+        rpc.codex_exe = r'C:\npm\codex.exe'
+        rpc.proc = Mock()
+        for code, message in [(-32600, 'Invalid request: invalid type: map, expected unit'),
+                              (-32602, 'unknown field excludeResetCreditDetails'),
+                              (-32601, 'Method not found')]:
+            rpc._send = lambda msg: rpc.pending[msg['id']].put({'error': {'code': code, 'message': message}})
+            with patch('rpc.subprocess.run', return_value=Mock(returncode=0, stdout='codex-cli 0.144.4\n')) as run:
+                with self.assertRaises(CodexCompatibilityError) as caught:
+                    rpc.limits()
+                self.assertIn('0.144.4', str(caught.exception))
+                self.assertIn('npm install -g @openai/codex@latest', str(caught.exception))
+                self.assertIn(rpc.codex_exe, str(caught.exception))
+                self.assertEqual(run.call_args.args[0][0], rpc.codex_exe)
+                self.assertEqual(caught.exception.rpc_diagnostics['method'], 'account/rateLimits/read')
+                self.assertEqual(caught.exception.rpc_diagnostics['serverError']['code'], code)
+
+    def test_other_rpc_errors_are_not_mislabeled_as_old_cli(self):
+        rpc = self.rpc()
+        rpc.proc = Mock()
+        for method, code, message in [('account/rateLimits/read', -32603, 'error sending request'),
+                                      ('account/rateLimits/read', -32600, 'unrelated invalid request'),
+                                      ('turn/start', -32602, 'expected unit')]:
+            rpc._send = lambda msg: rpc.pending[msg['id']].put({'error': {'code': code, 'message': message}})
+            with self.assertRaises(RuntimeError) as caught:
+                rpc.call(method)
+            self.assertNotIsInstance(caught.exception, CodexCompatibilityError)
+
+    def test_cli_version_failure_does_not_hide_upgrade_advice(self):
+        rpc = self.rpc()
+        rpc.codex_exe = r'C:\npm\codex.exe'
+        with patch('rpc.subprocess.run', side_effect=OSError('unavailable')):
+            self.assertIn('当前版本：无法读取', str(rpc.compatibility_error()))
+
     def rpc(self):
         rpc = object.__new__(RPC)
         rpc.lock = threading.Lock()
