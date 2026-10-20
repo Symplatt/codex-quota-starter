@@ -83,7 +83,7 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 @media(max-width:460px){.schedule-row>.panel{grid-template-columns:minmax(0,1fr);grid-template-rows:32px 40px minmax(108px,1fr) 41px}.schedule-row .section-head{min-height:32px}.schedule-row .time-panel #schedule-form,.run-panel>.actions{grid-column:1;grid-row:2}.schedule-row .panel-metrics{grid-row:3}.schedule-row .panel-footer{grid-row:4}}
 .refresh-description{margin:4px 0 32px;color:#8a8e8b;font-size:12px;line-height:1.7}.refresh-description strong{font-weight:600;color:inherit}
 @media(min-width:961px) and (max-width:1250px){.schedule-row{grid-template-columns:minmax(0,1fr)}}
-.card-date{color:#234b39}.panel{scroll-margin-top:24px}.panel-jump{font:inherit;color:inherit;border:0;padding:0;background:transparent;text-align:left}.panel-jump:focus-visible{outline:2px solid #73926f;outline-offset:5px}.activity-table{max-height:520px;overflow:auto}.activity-table th{position:sticky;top:0;background:#fff}.activity-table th:first-child{width:175px}.activity-table th:nth-child(2){width:145px}.activity-table td:first-child{font-variant-numeric:tabular-nums}.activity-table td:last-child{white-space:pre-line}
+.card-date{color:#234b39}.panel{scroll-margin-top:12px}.panel-jump{font:inherit;color:inherit;border:0;padding:0;background:transparent;text-align:left}.panel-jump:focus-visible{outline:2px solid #73926f;outline-offset:5px}.activity-table{max-height:520px;overflow:auto}.activity-table th{position:sticky;top:0;background:#fff}.activity-table th:first-child{width:175px}.activity-table th:nth-child(2){width:145px}.activity-table td:first-child{font-variant-numeric:tabular-nums}.activity-table td:last-child{white-space:pre-line}
 /* The rail never grows with elapsed time. Refresh events share its upper side. */
 .schedule-timeline{--send-position:50%;--break-position:25%;position:relative;grid-column:1/-1;grid-row:2;align-self:center;height:196px;min-width:0;margin:0;padding:0 10px;list-style:none}
 .timeline-rail{position:absolute;left:10px;right:10px;top:84px;height:1px;background:#b6c8b8}
@@ -155,6 +155,13 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 @media(max-width:1000px){.schedule-row{grid-template-columns:1fr}.schedule-row>.panel{max-width:600px;width:100%;justify-self:center}}
 @media(max-width:520px){.schedule-row>.panel{grid-template-columns:minmax(0,1fr);grid-template-rows:33px 24px 203px 32px;gap:14px;padding:14px 24px}.schedule-row .time-panel #schedule-form,.schedule-row .run-panel>.actions{grid-column:1;grid-row:2}.schedule-row .schedule-timeline{grid-row:3}.schedule-row .time-panel>.panel-footer{grid-row:4}.schedule-row>.run-panel{grid-template-rows:33px 24px 99px 87px 32px}.schedule-row .quotas{grid-row:3}.schedule-row .run-panel .panel-metrics{grid-row:4}.schedule-row .run-panel .panel-footer{grid-row:5}.quota-ring{width:65px}.quota{gap:8px}.quota+.quota{padding-left:6%}.quota-copy{font-size:11px;white-space:normal}.quota-copy p{font-size:10px}.timeline-label{grid-template-columns:minmax(0,1fr) auto}.timeline-name{font-size:11px}.timeline-date{grid-column:2;grid-row:1;font-size:9px}.timeline-label .timeline-time{grid-column:1/-1;grid-row:2;font-size:24px;line-height:36px}}
 .error-banner{margin-top:20px;padding:14px 18px;border:1px solid #e4c6ba;border-radius:12px;background:#fff3ee;color:#874b38;font-size:14px;line-height:1.8;overflow-wrap:anywhere;white-space:pre-wrap}.error-banner[hidden]{display:none}
+.schedule-row #recheck:not(:disabled),.schedule-row #reconnect:not(:disabled),.schedule-row #pause:not(:disabled){color:#54765f}
+.timeline-send:after{display:none}.timeline-handle{position:absolute;z-index:5;left:var(--send-position,50%);top:71px;transform:translateX(-50%);width:28px;height:28px;min-height:0;padding:0;border:0;border-radius:50%;background:transparent;touch-action:none;cursor:ew-resize}
+.timeline-handle:before{content:'';position:absolute;inset:7px;background:#315c43;border:2px solid #315c43;border-radius:50%}.timeline-handle:hover:not(:disabled):before,.timeline-handle:focus-visible:before{box-shadow:0 0 0 5px #315c431a}.timeline-handle:focus-visible{outline:2px solid #54765f;outline-offset:2px}.timeline-handle:disabled{cursor:default}.schedule-timeline[data-dragging=true]{user-select:none}
+.chart-head{flex-wrap:wrap;margin-bottom:8px}.chart-options{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.chart-options select{font-size:12px;padding:6px 8px}
+#quota-chart-panel{display:flex;flex-direction:column}#quota-chart-panel .chart-head,#quota-chart-panel .quota-chart{height:180px;min-height:40px;flex:1 1 auto;position:relative}.quota-chart svg{display:block;width:100%;height:100%;overflow:visible}.chart-grid{stroke:#e7ece4;stroke-width:1}.chart-axis{fill:#7e8e84;font:11px 'Segoe UI','Microsoft YaHei',sans-serif}.chart-line{stroke:#315c43;stroke-width:1.3;fill:none;stroke-linejoin:round;stroke-linecap:round}.chart-tick{stroke:#b9c8b7;stroke-width:1}.chart-hit{fill:transparent}.chart-empty{position:absolute;inset:0;display:grid;place-items:center;color:#7e8e84;font-size:13px;pointer-events:none}.chart-empty[hidden]{display:none}
+@media(max-width:520px){.quota-chart{height:180px}.chart-head{gap:10px}.chart-options{gap:8px}.chart-options select{max-width:135px}}
+#history-panel th:first-child{width:175px}#history-panel td:first-child,#activity-panel td:first-child{font-variant-numeric:tabular-nums;white-space:nowrap}#history-panel tbody tr:hover,#activity-panel tbody tr:hover{background:#edf3eb}
 </style></head><body><main>
 <header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button type="button" id="open-help" aria-label="帮助" title="帮助" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M8.5 8.2a3.5 3.5 0 0 1 7 .3c0 2.5-3.5 2.7-3.5 5.2"/><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"/></svg></button></div></header>
 <div class="error-banner" id="error-banner" role="alert" hidden></div>
@@ -163,6 +170,7 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 <ol class="schedule-timeline" id="schedule-timeline" aria-label="额度刷新与请求时间轴">
 <li class="timeline-event timeline-reset"><div class="timeline-label"><span class="timeline-name">额度刷新</span><span class="timeline-date" id="timeline-reset-date">—</span><span class="timeline-time" id="timeline-reset-at">—</span></div></li>
 <li class="timeline-event timeline-send"><div class="timeline-label"><span class="timeline-name">发送请求</span><span class="timeline-date" id="send-date">—</span><span class="timeline-time" id="send-at">—</span></div></li>
+<li role="presentation"><button type="button" id="timeline-handle" class="timeline-handle" role="slider" aria-label="拖动设置请求时间，十分钟一格" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" title="左右拖动设置时间；方向键每次调整十分钟" disabled></button></li>
 <li class="timeline-event timeline-next"><div class="timeline-label"><span class="timeline-name">额度再次刷新<small>预计</small></span><span class="timeline-date" id="reset-date">—</span><span class="timeline-time" id="estimated-reset">—</span></div></li>
 <li class="timeline-rail" id="timeline-rail" data-known="false" role="presentation"><span id="timeline-ticks" aria-hidden="true"></span><span class="timeline-break" id="timeline-break" hidden role="img" aria-label="较长等待区间已省略"><svg viewBox="0 0 27 17" aria-hidden="true"><path d="M9 15 14 2M16 15 21 2"/></svg></span></li>
 </ol>
@@ -170,7 +178,8 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 <dialog id="refresh-dialog" aria-labelledby="refresh-title" aria-describedby="refresh-description"><header class="refresh-header"><h2 id="refresh-title">选择时间</h2><button type="button" id="close-refresh" aria-label="关闭">×</button></header><p class="refresh-description" id="refresh-description">选择<strong>完成刷新</strong>的时间</p><div class="manual-date"><div class="manual-field"><label for="manual-year">年</label><input id="manual-year" type="text" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="输入年" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-month">月</label><input id="manual-month" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入月" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-day">日</label><input id="manual-day" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入日" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-hour">时</label><input id="manual-hour" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入时" aria-describedby="refresh-error"></div><div class="manual-field"><label for="manual-minute">分</label><input id="manual-minute" type="text" inputmode="numeric" maxlength="2" autocomplete="off" aria-label="输入分" aria-describedby="refresh-error"></div></div><div class="wheel-grid" id="wheel-grid"></div><div id="refresh-error" class="feedback" role="status"></div><footer class="refresh-footer"><button type="button" id="cancel-refresh">取消</button><button type="button" class="primary" id="save-time">确定</button></footer></dialog>
 </section>
 <section class="panel run-panel"><div class="section-head"><h2 class="card-title">运行状态</h2></div><div class="actions"><button class="primary" id="recheck" onclick="recheckQuota()">重新检测</button><span class="action-separator" aria-hidden="true"></span><button id="reconnect" onclick="action('reconnect')">重新连接</button><span class="action-separator" aria-hidden="true"></span><button id="pause" onclick="action(paused?'resume':'pause')">暂停</button></div><div class="quotas"><div class="quota"><div class="quota-ring" id="remaining-ring" role="img" aria-label="五小时额度：等待检测"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-track" cx="50" cy="50" r="44"/><circle class="ring-value" cx="50" cy="50" r="44" pathLength="100"/></svg><span id="remaining">—</span></div><div class="quota-copy"><div>五小时额度</div><p id="remaining-copy">等待检测</p></div></div><div class="quota"><div class="quota-ring" id="weekly-ring" role="img" aria-label="周额度：等待检测"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-track" cx="50" cy="50" r="44"/><circle class="ring-value" cx="50" cy="50" r="44" pathLength="100"/></svg><span id="weekly">—</span></div><div class="quota-copy"><div>周额度</div><p id="weekly-copy">等待检测</p></div></div></div><div class="panel-metrics"><div class="metric"><div class="metric-label"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25"/><path d="M10 5.5V10l3 1.8"/></svg>上次检测</div><div class="metric-date" id="checked-date">—</div><div class="metric-value" id="checked">—</div></div><div class="metric"><div class="metric-label"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M16.4 8A6.7 6.7 0 1 0 16 13M16.5 3.5V8H12"/></svg>下次检测</div><div class="metric-date" id="next-check-date">—</div><div class="metric-value" id="next-check">—</div></div></div><div class="panel-footer" aria-live="polite"><span class="footer-dot" aria-hidden="true"></span><span class="state-chip" id="status">连接中</span><span id="status-detail" hidden></span></div></section>
-</div><section class="panel" id="history-panel"><h2 class="card-title"><button type="button" class="panel-jump" id="history-jump">触发记录</button></h2><div class="tablewrap"><table><thead><tr><th>时间（北京时间）</th><th>结果</th><th>周期验证</th></tr></thead><tbody id="history"></tbody></table></div></section>
+</div><section class="panel" id="quota-chart-panel"><div class="section-head chart-head"><h2 class="card-title"><button type="button" class="panel-jump" id="quota-chart-jump">额度变化统计</button></h2><div class="chart-options"><select id="chart-window" aria-label="统计时间范围"><option value="60">最近一小时</option><option value="300" selected>最近五小时</option><option value="1440">最近二十四小时</option></select><select id="chart-quota" aria-label="统计额度类型"><option value="primaryRemaining">五小时额度</option><option value="secondaryRemaining">周额度</option></select></div></div><div class="quota-chart" id="quota-chart"><svg id="quota-chart-svg" role="img" aria-label="Codex每分钟额度变化，等待检测"></svg><div id="chart-empty" class="chart-empty">等待额度检测</div></div></section>
+<section class="panel" id="history-panel"><div class="section-head" style="margin-bottom:18px;flex-wrap:wrap"><h2 class="card-title"><button type="button" class="panel-jump" id="history-jump">触发记录</button></h2><button type="button" id="open-triggers" onclick="action('triggers/open')">打开文件夹</button></div><div class="tablewrap"><table><thead><tr><th>时间（北京时间）</th><th>结果</th><th>周期验证</th></tr></thead><tbody id="history"></tbody></table></div></section>
 <section class="panel" id="activity-panel"><div class="section-head" style="margin-bottom:18px;flex-wrap:wrap"><h2 class="card-title"><button type="button" class="panel-jump" id="activity-jump">操作与连接日志</button></h2><button type="button" id="open-logs" onclick="action('logs/open')">打开日志文件夹</button></div><div class="tablewrap activity-table"><table><thead><tr><th>时间（北京时间）</th><th>操作 / 事件</th><th>详情</th></tr></thead><tbody id="activity"></tbody></table></div><details><summary>查看检测明细</summary><pre id="logs"></pre></details></section>
 <section class="panel"><h2 class="card-title">设置</h2><label style="display:flex;align-items:center;gap:12px"><input type="checkbox" id="autostart" disabled onchange="setAutostart(this.checked)"><span>开机自启动</span></label><div class="small" id="startup-error" role="status"></div></section>
 <section class="panel"><h2 class="card-title">软件信息</h2><div class="info"><span>名称：额度启程</span><span>版本：<strong id="version">—</strong></span><span>版权所有 © 2026 Symplatt</span></div></section>
@@ -234,8 +243,11 @@ function updateControls(){
  $('auto-time').disabled=offline||busy||changing||!manualPlan;
  $('save-time').disabled=offline||busy||changing||manualDirty||!snapshot?.timing?.minRefreshAt;
  $('pause').disabled=offline||pendingActions.has('pause')||pendingActions.has('resume');
+ $('timeline-handle').disabled=$('choose-time').disabled||!snapshot?.timing?.sendAt;
 }
+let timelineGeometry=null,timelineDrag=null;
 function renderTimeline(t){
+ if(timelineDrag)return;
  timeBlock('timeline-reset-at','timeline-reset-date',t.serverResetAt);
  timeBlock('send-at','send-date',t.sendAt);timeBlock('estimated-reset','reset-date',t.estimatedResetAt);
  const known=[t.serverResetAt,t.sendAt,t.estimatedResetAt].every(v=>Number.isFinite(v)&&v>0);
@@ -257,6 +269,8 @@ function renderTimeline(t){
  const visibleSpan=shownWait+cycle,padding=visibleSpan/8,span=visibleSpan+2*padding;
  const segments=compressed?[[t.serverResetAt-padding,t.serverResetAt+cycle/2,0],[t.sendAt-cycle/2,t.estimatedResetAt+padding,padding+cycle/2]]:[[t.serverResetAt-padding,t.estimatedResetAt+padding,0]];
  const width=rail.clientWidth||560,sendX=Math.max(width*.1+12,position*width/100);let lastLabel=-Infinity;
+ timelineGeometry={span,width,position};
+ const handle=$('timeline-handle');handle.setAttribute('aria-valuemin',t.minSendAt||0);handle.setAttribute('aria-valuemax',(t.maxRefreshAt||18000)-18000);handle.setAttribute('aria-valuenow',t.sendAt);handle.setAttribute('aria-valuetext',time(t.sendAt)+'发送，'+time(t.estimatedResetAt)+'预计刷新');
  for(const [start,end,offset] of segments){
   for(let at=Math.ceil(start/600)*600;at<=end;at+=600){
    const percent=100*(at-start+offset)/span,x=percent*width/100;
@@ -270,6 +284,42 @@ function renderTimeline(t){
   }
  }
 }
+function dragSendTarget(initial,delta){
+ if(!delta)return initial;
+ const raw=delta>0?Math.floor(initial/600)*600+Math.ceil(delta/600)*600:Math.ceil(initial/600)*600+Math.floor(delta/600)*600;
+ const {min,max}=bounds();if(!min||!max)return null;
+ const lower=Math.ceil((min-18000)/600)*600,upper=Math.floor((max-18000)/600)*600;
+ return lower>upper?null:Math.max(lower,Math.min(upper,raw));
+}
+async function saveDraggedTime(sendAt){
+ if(!connected||!sendAt)return;
+ if(await action('schedule','schedule-feedback',{refreshAt:sendAt+18000}))showFeedback('schedule-feedback','已保存刷新时间',true);
+}
+const timelineHandle=$('timeline-handle');
+timelineHandle.addEventListener('pointerdown',e=>{
+ if(timelineHandle.disabled||e.button!==0||!timelineGeometry)return;
+ timelineDrag={pointer:e.pointerId,x:e.clientX,initial:snapshot.timing.sendAt,target:null,...timelineGeometry};
+ timelineHandle.setPointerCapture(e.pointerId);e.preventDefault();
+});
+timelineHandle.addEventListener('pointermove',e=>{
+ const d=timelineDrag;if(!d||e.pointerId!==d.pointer)return;
+ const pixels=e.clientX-d.x;if(Math.abs(pixels)<3&&!d.target)return;
+ const target=dragSendTarget(d.initial,pixels*d.span/d.width);if(target===null)return;d.target=target;
+ const position=d.position+(target-d.initial)/d.span*100;
+ $('schedule-timeline').setAttribute('style',`--send-position:${Math.max(2,Math.min(98,position))}%;--break-position:${10+(d.position-10)/2}%`);
+ $('schedule-timeline').setAttribute('data-dragging','true');
+ timeBlock('send-at','send-date',target);timeBlock('estimated-reset','reset-date',target+18000);
+ timelineHandle.setAttribute('aria-valuenow',target);timelineHandle.setAttribute('aria-valuetext',time(target)+'发送，'+time(target+18000)+'预计刷新');
+});
+function endTimelineDrag(e,save){
+ const d=timelineDrag;if(!d||e.pointerId!==d.pointer)return;
+ timelineDrag=null;$('schedule-timeline').setAttribute('data-dragging','false');renderTiming(snapshot.timing);
+ if(save&&d.target!==null&&d.target!==d.initial)saveDraggedTime(d.target);
+}
+timelineHandle.addEventListener('pointerup',e=>endTimelineDrag(e,true));
+timelineHandle.addEventListener('pointercancel',e=>endTimelineDrag(e,false));
+timelineHandle.addEventListener('lostpointercapture',e=>endTimelineDrag(e,false));
+timelineHandle.addEventListener('keydown',e=>{if(timelineHandle.disabled||!['ArrowLeft','ArrowRight'].includes(e.key))return;e.preventDefault();saveDraggedTime(dragSendTarget(snapshot.timing.sendAt,e.key==='ArrowLeft'?-1:1));});
 function renderTiming(t){if(!t)return;renderTimeline(t);updateControls();if(refreshDialog.open)renderWheels();countdown();}
 if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{if(snapshot?.timing)renderTimeline(snapshot.timing);}).observe($('schedule-timeline'));
 
@@ -337,7 +387,7 @@ function countdown(){const t=snapshot?.timing;if(!t)return;const left=t.sendAt-D
 function activityText(event){
  const d=event.detail||{},details=[];
  const names={service:'服务启动',schedule:'设置定时请求',schedule_cancelled:'自动取消定时请求',connection_failure:'连接检测失败',connection_recovery:'等待自动重连',connection_recovered:'连接已恢复',connection_stopped:'连接已停止',trigger:'发送小额请求',error:'运行异常'};
- const actions={open_logs:'打开日志文件夹',check:'重新检测',reconnect:'重新连接',pause:'暂停运行',resume:'恢复运行',trigger:'手动发送请求','autostart/enable':'开启开机自启动','autostart/disable':'关闭开机自启动'};
+ const actions={open_logs:'打开日志文件夹',open_triggers:'打开触发记录文件夹',check:'重新检测',reconnect:'重新连接',pause:'暂停运行',resume:'恢复运行',trigger:'手动发送请求','autostart/enable':'开启开机自启动','autostart/disable':'关闭开机自启动'};
  let name=names[event.kind]||event.kind;
  if(event.kind==='schedule'){
   name=d.action==='clear'||!event.detail?'取消定时请求，恢复自动':d.action==='update'?'修改定时请求':'设置定时请求';
@@ -363,20 +413,100 @@ function activityText(event){
  if(!details.length&&!names[event.kind]&&event.kind!=='control')details.push(typeof event.detail==='string'?event.detail:JSON.stringify(event.detail));
  return [name,details.filter(Boolean).join('\n')||'—'];
 }
-for(const name of ['history','activity'])$(name+'-jump').addEventListener('click',()=>$(name+'-panel').scrollIntoView({behavior:'smooth',block:'start'}));
+for(const name of ['quota-chart','history','activity'])$(name+'-jump').addEventListener('click',()=>$(name+'-panel').scrollIntoView({behavior:'smooth',block:'start'}));
 function renderActivity(s){
  const body=$('activity');body.replaceChildren();
  const events=(Array.isArray(s.activity)?s.activity:s.events).filter(e=>e.kind!=='check');
  for(const event of events){const tr=document.createElement('tr');for(const text of [time(event.time),...activityText(event)]){const td=document.createElement('td');td.textContent=text;tr.append(td);}body.append(tr);}
  if(!events.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='暂无操作记录';tr.append(td);body.append(tr);}
 }
+let chartSignature='';
+function svgPart(name,attributes={},text){
+ const node=document.createElementNS('http://www.w3.org/2000/svg',name);
+ for(const [key,value] of Object.entries(attributes))node.setAttribute(key,value);
+ if(text!==undefined)node.textContent=text;return node;
+}
+function chartData(history,start,end,key){
+ return history.filter(p=>p.minute>=start&&p.minute<=end&&Number.isFinite(p[key])).map((p,i,rows)=>{
+  const previous=rows[i-1],delta=previous&&p.minute-previous.minute===60?p[key]-previous[key]:null;
+  return {...p,value:p[key],delta};
+ });
+}
+function chartScale(points){
+ const values=points.map(p=>p.value),min=values.length?Math.min(...values):0,max=values.length?Math.max(...values):100;
+ const span=Math.max(20,max-min+6),step=span<=25?2:span<=50?5:10;
+ let low=Math.max(0,Math.floor((min-3)/step)*step),high=Math.min(100,Math.ceil((max+3)/step)*step);
+ if(high-low<20){low=Math.max(0,Math.min(low,high-20));high=Math.min(100,Math.max(high,low+20));}
+ return {low,high,step};
+}
+function chartSegments(points,x,y){
+ const segments=[];
+ // Monotone Hermite interpolation passes through every measurement. Opposing
+ // slopes flatten at the sample, so smoothing cannot invent overshoot or hide drops.
+ const slope=(a,b)=>(b.value-a.value)/(b.minute-a.minute);
+ const tangent=(i)=>{
+  const a=points[i-1],b=points[i],c=points[i+1];
+  const before=a&&b.minute-a.minute===60?slope(a,b):null,after=c&&c.minute-b.minute===60?slope(b,c):null;
+  if(before===null)return after||0;if(after===null)return before;
+  return before*after<=0?0:2*before*after/(before+after);
+ };
+ for(let i=1;i<points.length;i++){
+  const a=points[i-1],b=points[i];if(b.minute-a.minute!==60)continue;
+  const h=(b.minute-a.minute)/3,ax=x(a.minute),bx=x(b.minute);
+  segments.push({d:`M${ax} ${y(a.value)} C${ax+(bx-ax)/3} ${y(a.value+tangent(i-1)*h)},${bx-(bx-ax)/3} ${y(b.value-tangent(i)*h)},${bx} ${y(b.value)}`});
+ }
+ return segments;
+}
+function fitChartCard(){
+ if(typeof window==='undefined')return;
+ const card=$('quota-chart-panel'),top=card.getBoundingClientRect().top+window.scrollY;
+ const available=window.innerHeight-top-20;
+ // Fill only this card; the title, two existing panels and all gaps keep their
+ // actual dimensions. The next card begins at the viewport's lower boundary.
+ card.style.height=window.innerWidth>1000&&available>=140?available+'px':'';
+}
+function renderChart(){
+ fitChartCard();
+ const history=snapshot?.quotaHistory||[],key=$('chart-quota').value||'primaryRemaining';
+ const minutes=Number($('chart-window').value)||300,end=Math.floor(Date.now()/60000)*60,start=end-minutes*60;
+ const height=Math.max(60,$('quota-chart').clientHeight||180),width=Math.max(280,$('quota-chart').clientWidth||960),signature=JSON.stringify([history,key,minutes,end,width,height]);
+ if(signature===chartSignature)return;chartSignature=signature;
+ const points=chartData(history,start,end,key),svg=$('quota-chart-svg');svg.replaceChildren();
+ svg.setAttribute('viewBox',`0 0 ${width} ${height}`);svg.setAttribute('preserveAspectRatio','none');
+ const left=42,right=width-16,plot=right-left,{low,high,step:baseStep}=chartScale(points),bottom=height-25,plotHeight=height-37;
+ const step=baseStep*Math.max(1,Math.ceil((high-low)/baseStep*12/plotHeight));
+ const x=minute=>left+(minute-start)/(end-start)*plot,y=value=>bottom-(value-low)/(high-low)*plotHeight;
+ for(let value=low;value<=high;value+=step){svg.append(svgPart('line',{x1:left,x2:right,y1:y(value),y2:y(value),class:'chart-grid'}));svg.append(svgPart('text',{x:left-7,y:y(value)+4,'text-anchor':'end',class:'chart-axis'},value+'%'));}
+ const minor=(minutes<=60?1:minutes<=300?5:30)*60;
+ const major=(minutes<=60?(width<500?15:10):minutes<=300?(width<500?60:30):(width<500?240:120))*60;
+ for(let at=Math.ceil(start/minor)*minor;at<=end;at+=minor){
+  const majorTick=at%major===0;
+  svg.append(svgPart('line',{x1:x(at),x2:x(at),y1:bottom,y2:bottom+(majorTick?7:4),class:'chart-tick'}));
+  if(majorTick){svg.append(svgPart('line',{x1:x(at),x2:x(at),y1:12,y2:bottom,class:'chart-grid'}));svg.append(svgPart('text',{x:x(at),y:height-5,'text-anchor':x(at)-left<16?'start':right-x(at)<16?'end':'middle',class:'chart-axis'},clockTime(at).slice(0,5)));}
+ }
+ for(const segment of chartSegments(points,x,y))svg.append(svgPart('path',{d:segment.d,class:'chart-line'}));
+ let consumed=0,recovered=0;
+ for(const point of points){
+  if(point.delta<0)consumed-=point.delta;else if(point.delta>0)recovered+=point.delta;
+  svg.append(svgPart('circle',{cx:x(point.minute),cy:y(point.value),r:1,fill:'#315c43'}));
+  const hit=svgPart('rect',{x:Math.max(left,x(point.minute)-Math.max(4,plot/minutes/2)),y:8,width:Math.max(8,plot/minutes),height:plotHeight+6,class:'chart-hit'});
+  const change=point.delta===null?'无连续检测，变化未知':point.delta<0?'消耗 '+(-point.delta).toFixed(2)+' 个百分点':point.delta>0?'恢复 '+point.delta.toFixed(2)+' 个百分点':'无变化';
+  hit.append(svgPart('title',{},time(point.minute)+'\n剩余 '+point.value+'%\n'+change));svg.append(hit);
+ }
+ $('chart-empty').hidden=points.length>0;$('chart-empty').textContent=history.length?'所选范围暂无额度数据':'等待额度检测';
+ const description=points.length?`已记录 ${points.length} 分钟 · 消耗 ${Number(consumed.toFixed(2))} 个百分点 · 恢复 ${Number(recovered.toFixed(2))} 个百分点`:'每分钟记录一次；未检测时留空';
+ svg.setAttribute('aria-label','Codex'+(key==='primaryRemaining'?'五小时':'周')+'额度变化，'+description);
+}
+$('chart-window').addEventListener('change',renderChart);$('chart-quota').addEventListener('change',renderChart);
+if(typeof ResizeObserver!=='undefined')new ResizeObserver(renderChart).observe($('quota-chart'));
+if(typeof window!=='undefined')window.addEventListener('resize',renderChart);
 // Render synchronously: the browser paints only after the complete snapshot is applied.
 function renderStatus(s){
  connected=true;
  if(!s.current&&snapshot?.current)s={...s,current:snapshot.current,timing:snapshot.timing};
  snapshot=s;paused=s.paused;
  $('version').textContent='v'+s.version;
- $('badge').textContent=s.connection?.stopped?'已断开':s.connection?.recoveryAt?'等待重连':s.linked?'后台运行':s.busy?'正在连接':paused?'已暂停':'后台运行';
+ $('badge').textContent=paused?'停止运行':s.connection?.stopped?'已断开':s.connection?.recoveryAt||s.connection?.failures?'等待重连':s.linked?'后台运行':s.busy?'正在连接':'等待连接';
  $('pause').textContent=paused?'恢复运行':'暂停';
  $('status').textContent=shortStatus(s);$('status-detail').textContent=s.status;$('status').title=s.status;renderErrorBanner(s);
  const c=s.current;
@@ -384,8 +514,10 @@ function renderStatus(s){
  timeBlock('next-check','next-check-date',s.nextPoll);$('next-check').title=time(s.nextPoll);
  renderTiming(s.timing);renderAutostart(s.autostart);
  const body=$('history');body.replaceChildren();
- for(const a of s.attempts){const tr=document.createElement('tr');for(const text of [time(a.started),labels[a.status]||a.status,a.detail.evidence||'请求已预留，本周期不重复提交']){const td=document.createElement('td');td.textContent=text;tr.append(td);}body.append(tr);}
- if(!s.attempts.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='暂无记录';tr.append(td);body.append(tr);}
+ const triggers=(s.triggers||s.attempts).slice(0,15);
+ for(const a of triggers){const tr=document.createElement('tr');for(const text of [time(a.started),a.requestKind==='quota'?'已获取额度':labels[a.status]||a.status,a.detail.evidence||'请求已预留，本周期不重复提交']){const td=document.createElement('td');td.textContent=text;tr.append(td);}body.append(tr);}
+ if(!triggers.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='暂无记录';tr.append(td);body.append(tr);}
+ renderChart();
  renderActivity(s);
  $('logs').textContent=s.events.map(e=>time(e.time)+' '+e.kind+' '+JSON.stringify(e.detail)).join('\n');
 }

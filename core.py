@@ -3,6 +3,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -20,6 +21,7 @@ ATTEMPT_LIMIT = 5
 RETRY_INTERVAL = 10
 RETRY_BUDGET = 60
 RECOVERY_INTERVAL = 20 * 60
+BEIJING = timezone(timedelta(hours=8))
 
 
 def transient_connection_error(error):
@@ -91,16 +93,18 @@ def evidence(before, after, started, completed):
         return '请求完成；后续额度读取失败，周期起点未验证'
     old, new = before['primary']['resetsAt'], after['primary']['resetsAt']
     if abs(old - new) <= 5:
-        return '本次请求并未导致下次额度刷新时间出现变化（相差≤5秒视为不变）'
+        return '发送小额请求，该请求并未导致下次额度刷新时间出现变化（相差≤5秒视为不变）'
     if old <= started and abs(new - started - WINDOW) <= 120:
-        return '观察到新重置时间约等于发送时间 + 5 小时；支持首次请求锚定，但并发使用及固定窗口仍可能影响判断'
+        return '发送小额请求，ChatGPT将于5小时后刷新额度'
     return '观察到重置时间变化；尚不足以判定周期锚定规则'
 
 
 class Store:
-    def __init__(self, path):
+    def __init__(self, path, clock=time.time):
         self.path = Path(path)
+        self.clock = clock
         self.log_dir = self.path.parent / "logs"
+        self.trigger_dir = self.path.parent / "triggers"
         self._archive_lock = threading.Lock()
         self._archive_error = None
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -116,6 +120,10 @@ class Store:
                     PRIMARY KEY(account, cycle));
                 CREATE TABLE IF NOT EXISTS events (
                     id INTEGER PRIMARY KEY, time REAL NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS quota_samples (
+                    account TEXT NOT NULL, minute INTEGER NOT NULL, checked REAL NOT NULL,
+                    primary_used REAL NOT NULL, secondary_used REAL,
+                    PRIMARY KEY(account, minute));
             ''')
         self._archive_events()
 
@@ -133,35 +141,64 @@ class Store:
             db.close()
 
     def _archive_events(self):
-        # SQLite remains the retry source if the log directory is temporarily unwritable.
+        # Independent archive cursors keep SQLite as the retry source for each
+        # folder, including when migrating retained events into the trigger folder.
+        archives = ((self.log_dir, 'quota-starter', 'logArchiveId', False),
+                    (self.trigger_dir, 'quota-triggers', 'triggerArchiveId', True))
         with self._archive_lock:
             try:
-                self.log_dir.mkdir(parents=True, exist_ok=True)
+                for folder, *_ in archives:
+                    folder.mkdir(parents=True, exist_ok=True)
                 with closing(sqlite3.connect(self.path, timeout=15)) as archive_db:
-                    row = archive_db.execute("SELECT value FROM state WHERE key='logArchiveId'").fetchone()
-                    last_id = int(json.loads(row[0])) if row else 0
-                    while True:
-                        rows = archive_db.execute(
-                            'SELECT id,time,kind,detail FROM events WHERE id>? ORDER BY id LIMIT 1000',
-                            (last_id,)).fetchall()
-                        if not rows:
-                            break
-                        grouped = {}
-                        for event_id, stamp, kind, detail in rows:
-                            date = datetime.fromtimestamp(stamp, timezone(timedelta(hours=8)))
-                            record = {'id': event_id, 'time': date.isoformat(), 'kind': kind,
-                                      'detail': json.loads(detail)}
-                            grouped.setdefault(date.strftime('%Y-%m'), []).append(
-                                json.dumps(record, ensure_ascii=False) + '\n')
-                        for month, lines in grouped.items():
-                            with (self.log_dir / f'quota-starter-{month}.jsonl').open('a', encoding='utf-8') as output:
-                                output.writelines(lines)
-                                output.flush()
-                                os.fsync(output.fileno())
-                        last_id = rows[-1][0]
-                        archive_db.execute("INSERT OR REPLACE INTO state VALUES ('logArchiveId',?)",
-                                           (json.dumps(last_id),))
+                    today = datetime.fromtimestamp(self.clock(), BEIJING)
+                    month_number = today.year * 12 + today.month - 1 - 2
+                    year, month = divmod(month_number, 12)
+                    cutoff = f'{year:04d}-{month + 1:02d}'
+                    retention_month = today.strftime('%Y-%m')
+                    retention = archive_db.execute("SELECT value FROM state WHERE key='logRetentionMonth'").fetchone()
+                    if not retention or json.loads(retention[0]) != retention_month:
+                        # Delete only our exact monthly names. An offline month
+                        # boundary is caught at startup; failed deletions retry.
+                        for folder, prefix, *_ in archives:
+                            for path in folder.glob(prefix + '-*.jsonl'):
+                                match = re.fullmatch(re.escape(prefix) + r'-(\d{4}-(?:0[1-9]|1[0-2]))\.jsonl', path.name)
+                                if match and match[1] < cutoff:
+                                    path.unlink()
+                        cutoff_stamp = datetime(year, month + 1, 1, tzinfo=BEIJING).timestamp()
+                        archive_db.execute('DELETE FROM quota_samples WHERE minute < ?', (cutoff_stamp,))
+                        archive_db.execute("INSERT OR REPLACE INTO state VALUES ('logRetentionMonth',?)",
+                                           (json.dumps(retention_month),))
                         archive_db.commit()
+                    for folder, prefix, cursor_key, trigger_only in archives:
+                        row = archive_db.execute('SELECT value FROM state WHERE key=?', (cursor_key,)).fetchone()
+                        last_id = int(json.loads(row[0])) if row else 0
+                        while True:
+                            rows = archive_db.execute(
+                                'SELECT id,time,kind,detail FROM events WHERE id>? ORDER BY id LIMIT 1000',
+                                (last_id,)).fetchall()
+                            if not rows:
+                                break
+                            grouped = {}
+                            for event_id, stamp, kind, detail in rows:
+                                date = datetime.fromtimestamp(stamp, BEIJING)
+                                # Expired backlog must not recreate deleted files.
+                                if date.strftime('%Y-%m') < cutoff or (trigger_only and kind not in ('check', 'trigger')):
+                                    continue
+                                detail = json.loads(detail)
+                                record = {'id': event_id, 'time': date.isoformat(), 'kind': kind, 'detail': detail}
+                                if trigger_only:
+                                    record.update(requestKind='quota' if kind == 'check' else 'minimal',
+                                                  status='completed' if kind == 'check' else detail.get('status', 'unknown'),
+                                                  evidence='已发送请求获取当前额度信息' if kind == 'check' else detail.get('evidence'))
+                                grouped.setdefault(date.strftime('%Y-%m'), []).append(json.dumps(record, ensure_ascii=False) + '\n')
+                            for month, lines in grouped.items():
+                                with (folder / f'{prefix}-{month}.jsonl').open('a', encoding='utf-8') as output:
+                                    output.writelines(lines)
+                                    output.flush()
+                                    os.fsync(output.fileno())
+                            last_id = rows[-1][0]
+                            archive_db.execute('INSERT OR REPLACE INTO state VALUES (?,?)', (cursor_key, json.dumps(last_id)))
+                            archive_db.commit()
                 self._archive_error = None
             except (OSError, sqlite3.Error) as exc:
                 if str(exc) != self._archive_error:
@@ -183,7 +220,8 @@ class Store:
                        (time.time() if now is None else now, kind, json.dumps(detail, ensure_ascii=False)))
             # Roughly a month of normal polling; attempts and their evidence are retained.
             db.execute("DELETE FROM events WHERE id < (SELECT MAX(id)-60000 FROM events) "
-                       "AND id <= COALESCE((SELECT CAST(value AS INTEGER) FROM state WHERE key='logArchiveId'),0)")
+                       "AND id <= MIN(COALESCE((SELECT CAST(value AS INTEGER) FROM state WHERE key='logArchiveId'),0), "
+                       "COALESCE((SELECT CAST(value AS INTEGER) FROM state WHERE key='triggerArchiveId'),0))")
 
     def guard_until(self, db=None):
         if db is None:
@@ -272,6 +310,46 @@ class Store:
             rows = db.execute("SELECT * FROM events WHERE kind != 'check' ORDER BY id DESC LIMIT ?",
                               (limit,)).fetchall()
         return [{**dict(row), 'detail': json.loads(row['detail'])} for row in rows]
+
+    def sample(self, account, snapshot, now):
+        with self.connect() as db:
+            secondary = snapshot.get('secondary')
+            db.execute('INSERT INTO quota_samples VALUES (?,?,?,?,?) '
+                       'ON CONFLICT(account,minute) DO UPDATE SET checked=excluded.checked, '
+                       'primary_used=excluded.primary_used, secondary_used=excluded.secondary_used '
+                       'WHERE excluded.checked >= quota_samples.checked',
+                       (account, math.floor(now / 60) * 60, now,
+                        snapshot['primary']['usedPercent'], secondary['usedPercent'] if secondary else None))
+
+    def quota_history(self, now=None):
+        current = self.get('current')
+        if not current or not current.get('account'):
+            return []
+        now = self.clock() if now is None else now
+        with self.connect() as db:
+            rows = db.execute('SELECT minute,checked,primary_used,secondary_used FROM quota_samples '
+                              'WHERE account=? AND minute>=? AND minute<=? ORDER BY minute',
+                              (current['account'], math.floor(now / 60) * 60 - 86400, now)).fetchall()
+        return [{'minute': row['minute'], 'checkedAt': row['checked'],
+                 'primaryRemaining': 100 - row['primary_used'],
+                 'secondaryRemaining': None if row['secondary_used'] is None else 100 - row['secondary_used']}
+                for row in rows]
+
+    def trigger_history(self, limit=15):
+        with self.connect() as db:
+            rows = db.execute("SELECT started,status,detail,'minimal' AS requestKind FROM attempts "
+                              "UNION ALL SELECT time,'completed',detail,'quota' FROM events WHERE kind='check' "
+                              "ORDER BY 1 DESC LIMIT ?", (limit,)).fetchall()
+        result = []
+        for row in rows:
+            detail = json.loads(row['detail'])
+            if row['requestKind'] == 'quota':
+                detail = {'evidence': '已发送请求获取当前额度信息'}
+            elif detail.get('before') and detail.get('after'):
+                started = detail.get('submissions', [{}])[-1].get('startedAt', row['started'])
+                detail['evidence'] = evidence(detail['before'], detail['after'], started, row['status'] == 'completed')
+            result.append({**dict(row), 'detail': detail})
+        return result
 
 
 class Engine:
@@ -543,6 +621,7 @@ class Engine:
         now = self.clock()
         self.store.set('snapshot:' + account_key, snapshot)
         self.store.set('current', {'checkedAt': now, 'account': account_key, **snapshot})
+        self.store.sample(account_key, snapshot, now)
         cancelled = self.store.cancel_invalid_schedule(
             snapshot['primary']['resetsAt'], now, used_percent=snapshot['primary']['usedPercent'])
         return account_key, cancelled

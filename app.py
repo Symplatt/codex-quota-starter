@@ -73,6 +73,8 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                      'autostart': startup.apply('status'),
                      'timing': engine.timing(),
                      'attempts': engine.store.recent('attempts', 10),
+                     'triggers': engine.store.trigger_history(),
+                     'quotaHistory': engine.store.quota_history(),
                      'activity': engine.store.activity(),
                      'events': engine.store.recent('events', 30)})
             return self.send(404, {'error': 'Not found'})
@@ -82,16 +84,19 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                 return self.send(403, {'error': '请求来源校验失败，请从本机软件页面操作'})
             if not secrets.compare_digest(self.headers.get('X-Quota-Token', ''), csrf):
                 return self.send(403, {'code': 'stale_session', 'error': '页面连接凭据已过期，请刷新页面后重试'})
-            if self.path == '/api/logs/open':
-                folder = engine.store.log_dir.resolve()
+            if self.path in ('/api/logs/open', '/api/triggers/open'):
+                triggers = self.path == '/api/triggers/open'
+                folder = (engine.store.trigger_dir if triggers else engine.store.log_dir).resolve()
+                action_name = 'open_triggers' if triggers else 'open_logs'
+                label = '触发记录' if triggers else '日志'
                 try:
                     folder.mkdir(parents=True, exist_ok=True)
                     os.startfile(str(folder))
                 except OSError as exc:
-                    engine.store.log('control', {'action': 'open_logs', 'error': str(exc)})
-                    return self.send(500, {'error': '无法打开日志文件夹：' + str(exc)})
-                engine.store.log('control', {'action': 'open_logs', 'message': str(folder)})
-                return self.send(200, {'message': '已打开日志文件夹'})
+                    engine.store.log('control', {'action': action_name, 'error': str(exc)})
+                    return self.send(500, {'error': '无法打开' + label + '文件夹：' + str(exc)})
+                engine.store.log('control', {'action': action_name, 'message': str(folder)})
+                return self.send(200, {'message': '已打开' + label + '文件夹'})
             if self.path == '/api/reconnect':
                 try:
                     engine.reconnect()

@@ -230,16 +230,16 @@ class QuotaTests(unittest.TestCase):
 
     def test_delayed_reset_is_not_fabricated(self):
         e=evidence(normalize(raw()),normalize(raw()),20002,True)
-        self.assertEqual(e,'本次请求并未导致下次额度刷新时间出现变化（相差≤5秒视为不变）')
+        self.assertEqual(e,'发送小额请求，该请求并未导致下次额度刷新时间出现变化（相差≤5秒视为不变）')
 
     def test_one_second_jitter_is_not_new_cycle_evidence(self):
         e=evidence(normalize(raw()),normalize(raw(20001)),20002,True)
-        self.assertEqual(e,'本次请求并未导致下次额度刷新时间出现变化（相差≤5秒视为不变）')
+        self.assertEqual(e,'发送小额请求，该请求并未导致下次额度刷新时间出现变化（相差≤5秒视为不变）')
         self.assertEqual(candidate(normalize(raw(20001)),normalize(raw()),100)[1],'等待服务器重置时间')
 
-    def test_alignment_is_evidence_not_proof(self):
+    def test_completed_request_with_five_hour_countdown(self):
         e=evidence(normalize(raw()),normalize(raw(38002)),20002,True)
-        self.assertIn('支持',e); self.assertIn('仍可能',e)
+        self.assertEqual(e,'发送小额请求，ChatGPT将于5小时后刷新额度')
 
     def test_api_key_rejected(self):
         rpc=object.__new__(RPC)
@@ -401,6 +401,19 @@ class HTTPTests(unittest.TestCase):
         event = self.engine.store.recent('events', 1)[0]
         self.assertEqual(event['detail']['action'], 'open_logs')
         self.assertEqual(event['detail']['error'], 'failed')
+
+    def test_open_triggers_uses_fixed_directory_and_requires_valid_origin_and_token(self):
+        _, page = self.request('GET', '/')
+        token = re.search("(?:const|let) token='([^']+)'", page)[1]
+        headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
+        with patch('app.os.startfile', create=True) as open_folder:
+            self.assertEqual(self.request('POST', '/api/triggers/open')[0], 403)
+            open_folder.assert_not_called()
+            self.assertEqual(self.request('POST', '/api/triggers/open', headers)[0], 200)
+            open_folder.assert_called_once_with(str(self.engine.store.trigger_dir.resolve()))
+        with patch('app.os.startfile', side_effect=OSError('locked'), create=True):
+            self.assertEqual(self.request('POST', '/api/triggers/open', headers)[0], 500)
+        self.assertEqual(self.engine.store.recent('events', 1)[0]['detail']['action'], 'open_triggers')
 
     def test_status_and_no_secret(self):
         status,body=self.request('GET','/api/status')

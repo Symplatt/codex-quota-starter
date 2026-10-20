@@ -62,6 +62,7 @@ class AuditTests(unittest.TestCase):
 
     def test_monthly_logs_retry_after_directory_failure(self):
         from core import Store
+        self.store.clock = lambda: 100
         original = self.store.log_dir
         blocked = original.parent / 'blocked'
         blocked.write_text('occupied', encoding='utf-8')
@@ -69,7 +70,8 @@ class AuditTests(unittest.TestCase):
         self.store.log('control', {'action': 'pause'}, 100)
         self.assertEqual(len(self.store.recent('events')), 1)
         self.store.log_dir = original
-        Store(self.store.path)
+        # Restart at the same simulated date so retention does not expire the fixture.
+        Store(self.store.path, clock=lambda: 100)
         rows = (original / 'quota-starter-1970-01.jsonl').read_text(encoding='utf-8').splitlines()
         self.assertEqual(len(rows), 1)
         self.assertEqual(json.loads(rows[0])['kind'], 'control')

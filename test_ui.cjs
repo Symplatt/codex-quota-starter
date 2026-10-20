@@ -7,7 +7,7 @@ function setup(storage={}){
   const elements=new Map();
   function element(){return {value:'',textContent:'',disabled:false,children:[],options:[],attributes:{},setAttribute(key,value){this.attributes[key]=value;},querySelector(){return null;},addEventListener(){},append(child){this.children.push(child);this.options.push(child);if(!this.value)this.value=child.value;},replaceChildren(){this.children=[];},showModal(){},close(){}};}
   const intervals=[];let response,requests=0;
-  const c=vm.createContext({document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element},Intl,Date,JSON,AbortController,setTimeout,clearTimeout,setInterval(f){intervals.push(f);},sessionStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v},fetch:()=>{requests++;return new Promise(resolve=>response=resolve);}});
+  const c=vm.createContext({document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,createElementNS:element},Intl,Date,JSON,AbortController,setTimeout,clearTimeout,setInterval(f){intervals.push(f);},sessionStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v},fetch:()=>{requests++;return new Promise(resolve=>response=resolve);}});
   vm.runInContext(source,c);
   return {c,e:id=>elements.get(id),run:code=>vm.runInContext(code,c),respond:async s=>{response({ok:true,json:async()=>s});await vm.runInContext('refreshPromise',c);},requests:()=>requests,storage};
 }
@@ -23,6 +23,75 @@ test('error banner shows current failures safely and disappears after recovery',
  assert.equal(p.e('error-banner').hidden,true);assert.equal(p.e('error-banner').textContent,'');
  await p.run('fetch=async()=>{throw Error("offline")};refresh();');
  assert.equal(p.e('error-banner').hidden,false);assert.match(p.e('error-banner').textContent,/本机后台/);
+});
+
+test('drag snaps off-grid minutes in the movement direction and respects bounds',async()=>{
+ const p=setup(),s=status(),base=Math.floor(s.timing.minRefreshAt/600)*600+3600;
+ s.timing.minRefreshAt=base-1800;s.timing.maxRefreshAt=base+86400;await p.respond(s);
+ p.c.initial=base-18000+3*60;
+ assert.equal(p.run('dragSendTarget(initial,-1)'),base-18000);
+ assert.equal(p.run('dragSendTarget(initial,1)'),base-18000+600);
+ assert.equal(p.run('dragSendTarget(initial,601)'),base-18000+1200);
+ assert.equal(p.run('dragSendTarget(initial,-601)'),base-18000-600);
+ assert.equal(p.run('dragSendTarget(initial,0)'),p.c.initial);
+ assert.equal(p.run('dragSendTarget(initial,1e12)'),Math.floor((s.timing.maxRefreshAt-18000)/600)*600);
+ assert.equal(p.run('dragSendTarget(initial,-1e12)'),Math.ceil((s.timing.minRefreshAt-18000)/600)*600);
+});
+
+test('timeline handle follows live availability including stale sessions and pending saves',async()=>{
+ const p=setup(),s=status();await p.respond(s);assert.equal(p.e('timeline-handle').disabled,false);
+ p.run("pendingActions.add('schedule');updateControls()");assert.equal(p.e('timeline-handle').disabled,true);
+ p.run("pendingActions.clear();connected=false;updateControls()");assert.equal(p.e('timeline-handle').disabled,true);
+});
+
+test('minute chart keeps gaps unknown and reports consumption separately from recovery',async()=>{
+ const p=setup(),s=status();await p.respond(s);
+ p.c.points=[{minute:0,primaryRemaining:90},{minute:60,primaryRemaining:88},{minute:180,primaryRemaining:85},{minute:240,primaryRemaining:100}];
+ const values=JSON.parse(p.run("JSON.stringify(chartData(points,0,240,'primaryRemaining'))"));
+ assert.deepEqual(values.map(v=>v.delta),[null,-2,null,15]);
+ assert.equal(p.run("chartData(points,0,240,'secondaryRemaining').length"),0);
+ s.quotaHistory=[{minute:Math.floor(Date.now()/60000)*60,primaryRemaining:60,secondaryRemaining:null}];
+ p.run('refresh()');await p.respond(s);
+ assert.equal(p.e('chart-empty').hidden,true);assert.match(p.e('quota-chart-svg').attributes['aria-label'],/已记录 1 分钟/);
+ assert.ok(p.e('quota-chart-svg').children.some(c=>c.attributes.fill==='#315c43'));
+ p.e('chart-quota').value='secondaryRemaining';p.run('renderChart()');assert.equal(p.e('chart-empty').hidden,false);
+});
+
+test('smooth line preserves steep drops, extrema, and disconnect gaps',async()=>{
+ const p=setup();await p.respond(status());
+ p.c.points=[{minute:0,value:90,delta:null},{minute:60,value:89,delta:-1},{minute:120,value:60,delta:-29},{minute:180,value:61,delta:1},{minute:300,value:40,delta:null}];
+ const paths=JSON.parse(p.run('JSON.stringify(chartSegments(points,v=>v,v=>v))'));
+ assert.equal(paths.length,3);
+ assert.match(paths[1].d,/M60 89 C/);assert.ok(paths[1].d.endsWith(',120 60'));
+ // Every control stays between the true endpoints; there is no invented peak/trough.
+ for(let i=0;i<paths.length;i++){
+  const numbers=paths[i].d.match(/-?[\d.]+/g).map(Number),min=Math.min(p.c.points[i].value,p.c.points[i+1].value),max=Math.max(p.c.points[i].value,p.c.points[i+1].value);
+  assert.ok(numbers[3]>=min&&numbers[3]<=max);assert.ok(numbers[5]>=min&&numbers[5]<=max);
+ }
+ const scale=JSON.parse(p.run('JSON.stringify(chartScale(points))'));assert.ok(scale.low<=40&&scale.high>=90);
+ p.c.points=[{value:99},{value:98}];const close=JSON.parse(p.run('JSON.stringify(chartScale(points))'));
+ assert.ok(close.high-close.low>=20);assert.equal(close.high,100);assert.ok(close.step<=5);
+});
+
+test('trigger records distinguish read-only quota queries from minimal requests',async()=>{
+ const p=setup(),s=status();s.triggers=[{started:s.nextPoll,status:'completed',requestKind:'quota',detail:{evidence:'已发送请求获取当前额度信息'}},{started:s.nextPoll-1,status:'completed',requestKind:'minimal',detail:{evidence:'发送小额请求，ChatGPT将于5小时后刷新额度'}}];
+ await p.respond(s);const rows=p.e('history').children.map(r=>r.children.map(c=>c.textContent));
+ assert.equal(rows[0][1],'已获取额度');assert.equal(rows[0][2],'已发送请求获取当前额度信息');
+ assert.equal(rows[1][1],'已完成');assert.equal(rows[1][2],s.triggers[1].detail.evidence);
+});
+
+test('trigger card caps old service responses to fifteen newest rows',async()=>{
+ const p=setup(),s=status();s.triggers=Array.from({length:25},(_,i)=>({started:s.nextPoll-i,status:'completed',requestKind:'quota',detail:{evidence:String(i)}}));
+ await p.respond(s);assert.equal(p.e('history').children.length,15);assert.equal(p.e('history').children[14].children[2].textContent,'14');
+});
+
+test('paused badge never claims background running even when still connected',async()=>{
+ const p=setup(),s=status();s.linked=true;s.paused=true;await p.respond(s);
+ assert.equal(p.e('badge').textContent,'停止运行');
+ s.busy=true;p.run('refresh()');await p.respond(s);assert.equal(p.e('badge').textContent,'停止运行');
+ s.paused=false;s.busy=false;p.run('refresh()');await p.respond(s);assert.equal(p.e('badge').textContent,'后台运行');
+ s.connection={recoveryAt:Date.now()/1000+1200};p.run('refresh()');await p.respond(s);assert.equal(p.e('badge').textContent,'等待重连');
+ s.connection={stopped:true};p.run('refresh()');await p.respond(s);assert.equal(p.e('badge').textContent,'已断开');
 });
 
 test('startup and operation errors use banner without showing normal pause as error',async()=>{
