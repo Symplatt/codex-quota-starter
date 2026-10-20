@@ -28,6 +28,19 @@ def transient_connection_error(error):
     if isinstance(error, (TimeoutError, ConnectionError)):
         return True
     message = str(error).lower()
+    diagnostics = getattr(error, 'rpc_diagnostics', {})
+    read_method = (diagnostics.get('method') in ('account/read', 'account/rateLimits/read')
+                   or re.match(r'^account/(?:read|ratelimits/read)\s*[:：]', message))
+    if read_method:
+        # HTTP failures returned by the read-only API do not always contain a
+        # transport-error phrase. Keep authentication and other permanent HTTP
+        # errors out of recovery, including after restart from a stored message.
+        status = re.search(
+            r'\b(?:http(?:/\d(?:\.\d)?)?(?:\s+status)?'
+            r'(?:\s+(?:client|server))?(?:\s+error)?'
+            r'|status(?:\s+code)?)\s*[:=(]?\s*(\d{3})\b', message)
+        if status:
+            return int(status[1]) in (408, 425, 429, 500, 502, 503, 504)
     return any(text in message for text in (
         'workspace routing discovery', 'error sending request', 'timed out',
         'connection reset', 'connection refused', 'connection closed',
@@ -565,9 +578,11 @@ class Engine:
         self.store.set('connection', state)
         self.linked = False
         diagnostics = getattr(error, 'rpc_diagnostics', {})
-        # A returned HTTP error leaves stdio usable. Keep its warm routing once;
-        # local timeouts, broken pipes and repeated HTTP failures rebuild it.
-        keep_transport = (state['recoverable'] and state['failures'] == 1
+        # A completed read-only HTTP error leaves stdio usable. Keep the cached
+        # account routing throughout this bounded retry round; rebuilding it
+        # after a second 15-second HTTP failure can spend the final few seconds
+        # on discovery instead of a quota read. Exhaustion still closes it.
+        keep_transport = (state['recoverable']
                           and not isinstance(error, (TimeoutError, ConnectionError))
                           and diagnostics.get('method') in ('account/read', 'account/rateLimits/read')
                           and self.rpc and self.rpc.is_alive())

@@ -66,13 +66,13 @@ class PausedSamplingTests(unittest.TestCase):
 
 
 class ProxyTests(unittest.TestCase):
-    def test_returned_network_error_reuses_healthy_transport_once(self):
+    def test_returned_network_error_keeps_transport_until_retry_budget_exhausted(self):
         from unittest.mock import Mock
         import tempfile
         from pathlib import Path
         from core import Store
         with tempfile.TemporaryDirectory() as root:
-            engine = Engine(Store(Path(root) / 'db'), Path(root) / 'empty')
+            engine = Engine(Store(Path(root) / 'db'), Path(root) / 'empty', clock=lambda: 100)
             engine.rpc = Mock()
             engine.rpc.is_alive.return_value = True
             err = RuntimeError('error sending request')
@@ -81,8 +81,14 @@ class ProxyTests(unittest.TestCase):
             engine.rpc.close.assert_not_called()
             transport = engine.rpc
             engine.failed_connection(err)
+            transport.close.assert_not_called()
+            engine.failed_connection(err)
+            engine.failed_connection(err)
+            transport.close.assert_not_called()
+            engine.failed_connection(err)
             transport.close.assert_called_once()
             self.assertIsNone(engine.rpc)
+            self.assertEqual(engine.connection()['recoveryAt'], 1300)
 
     def test_windows_proxy_replaces_stale_environment_before_spawn(self):
         env = {'HTTPS_PROXY': 'http://127.0.0.1:9999', 'ALL_PROXY': 'http://127.0.0.1:9999', 'NO_PROXY': 'example.local'}
