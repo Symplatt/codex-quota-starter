@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>额度启程</title>
-<style>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"><style>
 :root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:#19352e;background:#f4f5ef}*{box-sizing:border-box}body{margin:0}main{max-width:1080px;margin:36px auto;padding:0 24px}header{display:flex;justify-content:space-between;align-items:center;gap:16px}h1{font-size:30px;margin:0}h2{font-size:17px;margin:0 0 18px}.badge{padding:8px 14px;background:#dbeadd;border-radius:24px;font-size:13px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px}.card,.panel{background:#fff;border:1px solid #dfe5da;border-radius:14px;padding:22px}.panel{margin-top:20px}.label,.small{color:#68796c;font-size:13px;line-height:1.8}.value{font-size:25px;font-weight:600;margin:12px 0 6px;font-variant-numeric:tabular-nums}.time-value{font-size:22px}.status{line-height:1.8;overflow-wrap:anywhere}.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}button,.link{font:inherit;font-size:14px;border:1px solid #ced8ca;background:white;border-radius:9px;padding:10px 18px;color:#234d3a;cursor:pointer;text-decoration:none}button.primary{background:#244f3d;color:white;border-color:#244f3d}button:disabled{opacity:.5;cursor:default}input[type=date],select{font:inherit;border:1px solid #c6d1c4;padding:9px 12px;border-radius:8px;color:#19352e;max-width:100%;background:#fff}input[type=checkbox]{width:18px;height:18px;accent-color:#244f3d}label{display:block}table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:12px 8px;border-bottom:1px solid #edf0e9;vertical-align:top}th{font-weight:500;color:#718074}td:last-child{line-height:1.7;overflow-wrap:anywhere}summary{cursor:pointer;font-size:13px;margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:280px;overflow:auto}.feedback{font-size:13px;line-height:1.8;color:#3d7358}.feedback:empty{display:none}.feedback:not(:empty){margin-top:12px}.timing{margin:0 0 22px}.timing .card{padding:0;border:0}.info{display:flex;gap:24px;flex-wrap:wrap;font-size:14px}@media(max-width:760px){main{margin:24px auto;padding:0 16px}.grid{grid-template-columns:1fr}.value{font-size:23px}h1{font-size:25px}header{flex-wrap:wrap}.tablewrap{overflow:auto}.timing{gap:18px}}
 .section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.section-head h2{margin:0}.time-pair{display:grid;grid-template-columns:1fr 1fr;margin:22px 0;gap:24px}.time-block+ .time-block{border-left:1px solid #e3e8df;padding-left:24px}.clock{font-size:32px;line-height:1.3;font-weight:600;letter-spacing:.5px;margin:10px 0 3px;font-variant-numeric:tabular-nums}.count-chip,.estimate-tag{display:inline-block;margin-left:8px;font-size:12px;font-weight:400}.count-chip{color:#315e46}.estimate-tag{color:#748174}.time-input{margin-top:8px}.time-hint{display:flex;gap:6px 18px;flex-wrap:wrap;margin-top:10px;font-size:12px;line-height:1.7;color:#526c5b}#time-range{font-variant-numeric:tabular-nums}.state-chip{font-size:13px;color:#315e46;background:#edf3eb;border-radius:6px;padding:6px 10px}.run-row{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:18px}.run-row .actions{margin:0}.checks{display:grid;gap:2px;font-size:12px;white-space:nowrap}.checks time{display:inline-block;margin-left:8px;font-variant-numeric:tabular-nums}.status-details summary{font-size:12px;color:#68796c;margin-top:14px}.status-details .status{margin-top:8px}@media(max-width:620px){.time-pair{gap:14px}.time-block+ .time-block{padding-left:14px}.clock{font-size:25px}.count-chip,.estimate-tag{display:block;margin:2px 0 0}.run-row{align-items:flex-start;flex-direction:column}.time-input input[type=date]{width:100%}}
 select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.picker select{padding:9px 8px}select:disabled,input:disabled{color:#929c95;background:#f1f2ef}
@@ -157,11 +157,15 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 .error-banner{margin-top:20px;padding:14px 18px;border:1px solid #e4c6ba;border-radius:12px;background:#fff3ee;color:#874b38;font-size:14px;line-height:1.8;overflow-wrap:anywhere;white-space:pre-wrap}.error-banner[hidden]{display:none}
 .schedule-row #recheck:not(:disabled),.schedule-row #reconnect:not(:disabled),.schedule-row #pause:not(:disabled){color:#54765f}
 .timeline-send:after{display:none}.timeline-handle{position:absolute;z-index:5;left:var(--send-position,50%);top:71px;transform:translateX(-50%);width:28px;height:28px;min-height:0;padding:0;border:0;border-radius:50%;background:transparent;touch-action:none;cursor:ew-resize}
-.timeline-handle:before{content:'';position:absolute;inset:7px;background:#315c43;border:2px solid #315c43;border-radius:50%}.timeline-handle:hover:not(:disabled):before,.timeline-handle:focus-visible:before{box-shadow:0 0 0 5px #315c431a}.timeline-handle:focus-visible{outline:2px solid #54765f;outline-offset:2px}.timeline-handle:disabled{cursor:default}.schedule-timeline[data-dragging=true]{user-select:none}
+.timeline-handle:before{content:'';position:absolute;inset:7px;background:#315c43;border:2px solid #315c43;border-radius:50%}.timeline-handle:hover:not(:disabled):before,.timeline-handle:focus-visible:before{box-shadow:0 0 0 5px #315c431a}.timeline-handle:focus-visible{outline:2px solid #54765f;outline-offset:2px}.timeline-handle:disabled{cursor:default;opacity:1}.schedule-timeline[data-dragging=true]{user-select:none}
 .chart-head{flex-wrap:wrap;margin-bottom:8px}.chart-options{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.chart-options select{font-size:12px;padding:6px 8px}
 #quota-chart-panel{display:flex;flex-direction:column}#quota-chart-panel .chart-head{height:auto;min-height:0;flex:0 0 auto}.quota-chart{height:180px;min-height:40px;flex:1 1 auto;position:relative}.quota-chart svg{display:block;width:100%;height:100%;overflow:visible}.chart-grid{stroke:#e7ece4;stroke-width:1}.chart-axis{fill:#7e8e84;font:11px 'Segoe UI','Microsoft YaHei',sans-serif}.chart-line{stroke:#315c43;stroke-width:1.3;fill:none;stroke-linejoin:round;stroke-linecap:round}.chart-tick{stroke:#b9c8b7;stroke-width:1}.chart-hit{fill:transparent}.chart-empty{position:absolute;inset:0;display:grid;place-items:center;color:#7e8e84;font-size:13px;pointer-events:none}.chart-empty[hidden]{display:none}
 @media(max-width:520px){.quota-chart{height:180px}.chart-head{gap:10px}.chart-options{gap:8px}.chart-options select{max-width:135px}}
-#history-panel th:first-child{width:175px}#history-panel td:first-child,#activity-panel td:first-child{font-variant-numeric:tabular-nums;white-space:nowrap}#history-panel tbody tr:hover,#activity-panel tbody tr:hover{background:#edf3eb}
+:root{--card-gap:20px;--scroll-thumb:#a4b5a3}html{scrollbar-gutter:stable}*{scrollbar-width:thin;scrollbar-color:var(--scroll-thumb) transparent}*::-webkit-scrollbar{width:6px;height:6px}*::-webkit-scrollbar-track{background:transparent}*::-webkit-scrollbar-thumb{background:var(--scroll-thumb);border-radius:8px}*::-webkit-scrollbar-thumb:hover{background:#7d977e}
+.panel{margin-top:var(--card-gap)}.schedule-row{gap:var(--card-gap);margin-top:var(--card-gap)}.schedule-row>.panel{margin-top:0}.section-head{align-items:center}.section-head .card-title{margin:0;line-height:33px}.section-head>button,.chart-options{align-self:center}
+#quota-chart-panel .chart-head{margin-bottom:24px}.chart-tooltip{position:fixed;z-index:30;max-width:calc(100vw - 24px);padding:9px 12px;border-radius:9px;background:#343b37;color:#fff;font-size:12px;line-height:1.65;pointer-events:none;box-shadow:0 4px 16px #17352e1a}.chart-tooltip[hidden]{display:none}.chart-tooltip time,.chart-tooltip span{display:block;white-space:nowrap}
+#activity-panel{height:calc(100vh - 2*var(--card-gap));height:calc(100dvh - 2*var(--card-gap));min-height:200px;display:flex;flex-direction:column;scroll-margin-top:var(--card-gap);overflow:hidden}#activity-panel .section-head{flex:0 0 auto;flex-wrap:wrap;gap:12px;margin-bottom:18px}.log-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.activity-table{min-height:0;max-height:none;flex:1 1 auto;overflow:auto;overscroll-behavior:contain}.activity-table th{z-index:1}.activity-table th,.activity-table td{line-height:1.7;padding:12px 8px;vertical-align:top}.activity-table th:first-child{width:175px}.activity-table th:nth-child(2){width:145px}#activity-panel td:first-child{font-variant-numeric:tabular-nums;white-space:nowrap}#activity-panel tbody tr:hover{background:#edf3eb}.settings-list{display:grid;gap:16px}.settings-list label{display:flex;align-items:center;gap:12px;font-size:14px}.settings-list input{flex:none;margin:0}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 </style></head><body><main>
 <header><h1>额度启程</h1><div style="display:flex;gap:12px;align-items:center"><span class="badge" id="badge">连接中</span><button type="button" id="open-help" aria-label="帮助" title="帮助" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M8.5 8.2a3.5 3.5 0 0 1 7 .3c0 2.5-3.5 2.7-3.5 5.2"/><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"/></svg></button></div></header>
 <div class="error-banner" id="error-banner" role="alert" hidden></div>
@@ -179,18 +183,17 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 </section>
 <section class="panel run-panel"><div class="section-head"><h2 class="card-title">运行状态</h2></div><div class="actions"><button class="primary" id="recheck" onclick="recheckQuota()">重新检测</button><span class="action-separator" aria-hidden="true"></span><button id="reconnect" onclick="action('reconnect')">重新连接</button><span class="action-separator" aria-hidden="true"></span><button id="pause" onclick="action(paused?'resume':'pause')">暂停</button></div><div class="quotas"><div class="quota"><div class="quota-ring" id="remaining-ring" role="img" aria-label="五小时额度：等待检测"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-track" cx="50" cy="50" r="44"/><circle class="ring-value" cx="50" cy="50" r="44" pathLength="100"/></svg><span id="remaining">—</span></div><div class="quota-copy"><div>五小时额度</div><p id="remaining-copy">等待检测</p></div></div><div class="quota"><div class="quota-ring" id="weekly-ring" role="img" aria-label="周额度：等待检测"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-track" cx="50" cy="50" r="44"/><circle class="ring-value" cx="50" cy="50" r="44" pathLength="100"/></svg><span id="weekly">—</span></div><div class="quota-copy"><div>周额度</div><p id="weekly-copy">等待检测</p></div></div></div><div class="panel-metrics"><div class="metric"><div class="metric-label"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25"/><path d="M10 5.5V10l3 1.8"/></svg>上次检测</div><div class="metric-date" id="checked-date">—</div><div class="metric-value" id="checked">—</div></div><div class="metric"><div class="metric-label"><svg class="time-glyph" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M16.4 8A6.7 6.7 0 1 0 16 13M16.5 3.5V8H12"/></svg>下次检测</div><div class="metric-date" id="next-check-date">—</div><div class="metric-value" id="next-check">—</div></div></div><div class="panel-footer" aria-live="polite"><span class="footer-dot" aria-hidden="true"></span><span class="state-chip" id="status">连接中</span><span id="status-detail" hidden></span></div></section>
 </div><section class="panel" id="quota-chart-panel"><div class="section-head chart-head"><h2 class="card-title"><button type="button" class="panel-jump" id="quota-chart-jump">额度变化统计</button></h2><div class="chart-options"><select id="chart-window" aria-label="统计时间范围"><option value="60">最近一小时</option><option value="300" selected>最近五小时</option><option value="1440">最近二十四小时</option></select><select id="chart-quota" aria-label="统计额度类型"><option value="primaryRemaining">五小时额度</option><option value="secondaryRemaining">周额度</option></select></div></div><div class="quota-chart" id="quota-chart"><svg id="quota-chart-svg" role="img" aria-label="Codex每分钟额度变化，等待检测"></svg><div id="chart-empty" class="chart-empty">等待额度检测</div></div></section>
-<section class="panel" id="history-panel"><div class="section-head" style="margin-bottom:18px;flex-wrap:wrap"><h2 class="card-title"><button type="button" class="panel-jump" id="history-jump">触发记录</button></h2><button type="button" id="open-triggers" onclick="action('triggers/open')">打开文件夹</button></div><div class="tablewrap"><table><thead><tr><th>时间（北京时间）</th><th>结果</th><th>周期验证</th></tr></thead><tbody id="history"></tbody></table></div></section>
-<section class="panel" id="activity-panel"><div class="section-head" style="margin-bottom:18px;flex-wrap:wrap"><h2 class="card-title"><button type="button" class="panel-jump" id="activity-jump">操作与连接日志</button></h2><button type="button" id="open-logs" onclick="action('logs/open')">打开日志文件夹</button></div><div class="tablewrap activity-table"><table><thead><tr><th>时间（北京时间）</th><th>操作 / 事件</th><th>详情</th></tr></thead><tbody id="activity"></tbody></table></div><details><summary>查看检测明细</summary><pre id="logs"></pre></details></section>
-<section class="panel"><h2 class="card-title">设置</h2><label style="display:flex;align-items:center;gap:12px"><input type="checkbox" id="autostart" disabled onchange="setAutostart(this.checked)"><span>开机自启动</span></label><div class="small" id="startup-error" role="status"></div></section>
+<section class="panel" id="activity-panel"><div class="section-head"><h2 class="card-title"><button type="button" class="panel-jump" id="activity-jump">日志</button></h2><div class="log-actions"><button type="button" id="open-logs" onclick="action('logs/open')">打开日志文件夹</button></div></div><div class="tablewrap activity-table" tabindex="0" aria-label="日志记录"><table><thead><tr><th>时间（北京时间）</th><th>操作 / 事件</th><th>详情</th></tr></thead><tbody id="activity"></tbody></table></div></section>
+<section class="panel"><h2 class="card-title">设置</h2><div class="settings-list"><label><input type="checkbox" id="autostart" disabled onchange="setAutostart(this.checked)"><span>开机自启动</span></label><label><input type="checkbox" id="poll-while-paused" disabled onchange="setPollWhilePaused(this.checked)"><span>关闭软件后依然每分钟检测额度变化</span></label></div><div class="small" id="startup-error" role="status"></div></section>
 <section class="panel"><h2 class="card-title">软件信息</h2><div class="info"><span>名称：额度启程</span><span>版本：<strong id="version">—</strong></span><span>版权所有 © 2026 Symplatt</span></div></section>
-</main><div class="feedback-stack"><div class="feedback" id="schedule-feedback" role="status"></div><div class="feedback" id="toast" role="status"></div></div><dialog id="help-dialog" aria-labelledby="help-title"><div class="help-header"><div><h2 id="help-title">使用帮助</h2><p>额度启程 · 常用操作说明</p></div><button id="close-help" type="button" aria-label="关闭帮助">×</button></div><div class="help-content">__HELP_CONTENT__</div></dialog><script>
+</main><div id="chart-tooltip" class="chart-tooltip" role="tooltip" hidden><time id="tooltip-time"></time><span id="tooltip-statistics"></span></div><div class="feedback-stack"><div class="feedback" id="schedule-feedback" role="status"></div><div class="feedback" id="toast" role="status"></div></div><dialog id="help-dialog" aria-labelledby="help-title"><div class="help-header"><div><h2 id="help-title">使用帮助</h2><p>额度启程 · 常用操作说明</p></div><button id="close-help" type="button" aria-label="关闭帮助">×</button></div><div class="help-content">__HELP_CONTENT__</div></dialog><script>
 const helpDialog=document.getElementById('help-dialog');
 document.getElementById('open-help').addEventListener('click',()=>helpDialog.showModal());
 document.getElementById('close-help').addEventListener('click',()=>helpDialog.close());
 let backdropDown=false;
 helpDialog.addEventListener('pointerdown',e=>{const r=helpDialog.getBoundingClientRect();backdropDown=e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom;});
 helpDialog.addEventListener('click',e=>{const r=helpDialog.getBoundingClientRect();if(backdropDown&&(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom))helpDialog.close();backdropDown=false;});
-let token='__CSRF__';let paused=false,snapshot=null,startupBusy=false,refreshPromise=null,recheckBusy=false,connected=false;
+let token='__CSRF__';let paused=false,snapshot=null,startupBusy=false,refreshPromise=null,recheckBusy=false,connected=false,pollSettingBusy=false;
 const cacheKey='quota-starter:last-status:v1';
 let operationError='';
 const pendingActions=new Set();
@@ -244,6 +247,7 @@ function updateControls(){
  $('save-time').disabled=offline||busy||changing||manualDirty||!snapshot?.timing?.minRefreshAt;
  $('pause').disabled=offline||pendingActions.has('pause')||pendingActions.has('resume');
  $('timeline-handle').disabled=$('choose-time').disabled||!snapshot?.timing?.sendAt;
+ $('poll-while-paused').disabled=offline||pollSettingBusy;
 }
 let timelineGeometry=null,timelineDrag=null;
 function renderTimeline(t){
@@ -387,7 +391,7 @@ function countdown(){const t=snapshot?.timing;if(!t)return;const left=t.sendAt-D
 function activityText(event){
  const d=event.detail||{},details=[];
  const names={service:'服务启动',schedule:'设置定时请求',schedule_cancelled:'自动取消定时请求',connection_failure:'连接检测失败',connection_recovery:'等待自动重连',connection_recovered:'连接已恢复',connection_stopped:'连接已停止',trigger:'发送小额请求',error:'运行异常'};
- const actions={open_logs:'打开日志文件夹',open_triggers:'打开触发记录文件夹',check:'重新检测',reconnect:'重新连接',pause:'暂停运行',resume:'恢复运行',trigger:'手动发送请求','autostart/enable':'开启开机自启动','autostart/disable':'关闭开机自启动'};
+ const actions={open_logs:'打开日志文件夹',open_triggers:'打开触发记录文件夹',check:'重新检测',reconnect:'重新连接',pause:'暂停运行',resume:'恢复运行',trigger:'手动发送请求',poll_while_paused:'暂停后额度检测','autostart/enable':'开启开机自启动','autostart/disable':'关闭开机自启动'};
  let name=names[event.kind]||event.kind;
  if(event.kind==='schedule'){
   name=d.action==='clear'||!event.detail?'取消定时请求，恢复自动':d.action==='update'?'修改定时请求':'设置定时请求';
@@ -400,9 +404,13 @@ function activityText(event){
   name=actions[d.action]||d.action||'操作';
   if(d.action==='check'||d.action==='reconnect')details.push('已提交，等待检测结果');
   if(d.result?.error)details.push('操作失败：'+d.result.error);
+  if(d.action==='poll_while_paused')details.push(d.enabled?'已开启':'已关闭');
  }else if(event.kind==='trigger'){
   details.push(labels[d.status]||d.status||'');
   if(d.evidence)details.push(d.evidence);
+  else details.push('请求已预留，本周期不重复提交');
+  if(d.stoppedReason)details.push(d.stoppedReason);
+  if(d.afterError)details.push('核验失败：'+d.afterError);
  }
  if(d.message)details.push(d.message);
  if(d.reason)details.push(d.reason);
@@ -413,12 +421,15 @@ function activityText(event){
  if(!details.length&&!names[event.kind]&&event.kind!=='control')details.push(typeof event.detail==='string'?event.detail:JSON.stringify(event.detail));
  return [name,details.filter(Boolean).join('\n')||'—'];
 }
-for(const name of ['quota-chart','history','activity'])$(name+'-jump').addEventListener('click',()=>$(name+'-panel').scrollIntoView({behavior:'smooth',block:'start'}));
+for(const name of ['quota-chart','activity'])$(name+'-jump').addEventListener('click',()=>$(name+'-panel').scrollIntoView({behavior:typeof window!=='undefined'&&window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'}));
+let activitySignature='';
 function renderActivity(s){
- const body=$('activity');body.replaceChildren();
  const events=(Array.isArray(s.activity)?s.activity:s.events).filter(e=>e.kind!=='check');
+ const signature=JSON.stringify(events);if(signature===activitySignature)return;activitySignature=signature;
+ const body=$('activity'),viewport=body.parentElement?.parentElement,scroll=viewport?.scrollTop||0;body.replaceChildren();
  for(const event of events){const tr=document.createElement('tr');for(const text of [time(event.time),...activityText(event)]){const td=document.createElement('td');td.textContent=text;tr.append(td);}body.append(tr);}
  if(!events.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='暂无操作记录';tr.append(td);body.append(tr);}
+ if(viewport)viewport.scrollTop=scroll;
 }
 let chartSignature='';
 const chartPreferencesKey='quota-starter:chart-preferences:v1';
@@ -473,17 +484,28 @@ function chartSegments(points,x,y){
 function fitChartCard(){
  if(typeof window==='undefined')return;
  const card=$('quota-chart-panel'),top=card.getBoundingClientRect().top+window.scrollY;
- const available=window.innerHeight-top-20;
+ const gap=parseFloat(getComputedStyle(card).getPropertyValue('--card-gap'))||20;
+ const available=window.innerHeight-top-gap;
  // Fill only this card; the title, two existing panels and all gaps keep their
  // actual dimensions. The next card begins at the viewport's lower boundary.
  card.style.height=window.innerWidth>1000&&available>=140?available+'px':'';
 }
+function hideChartTooltip(){$('chart-tooltip').hidden=true;}
+function showChartTooltip(event,minute,statistics,hit){
+ const tip=$('chart-tooltip');$('tooltip-time').textContent=time(minute);$('tooltip-statistics').textContent=statistics;
+ tip.hidden=false;
+ const rect=hit.getBoundingClientRect(),x=event.clientX??rect.left+rect.width/2,y=event.clientY??rect.top+rect.height/2;
+ const bounds=tip.getBoundingClientRect();
+ tip.style.left=Math.max(12,Math.min(x+12,window.innerWidth-bounds.width-12))+'px';
+ tip.style.top=Math.max(12,Math.min(y+16,window.innerHeight-bounds.height-12))+'px';
+}
+if(typeof window!=='undefined'){window.addEventListener('scroll',hideChartTooltip,{passive:true});window.addEventListener('resize',hideChartTooltip);}
 function renderChart(){
  fitChartCard();
  const history=snapshot?.quotaHistory||[],key=$('chart-quota').value||'primaryRemaining';
  const minutes=Number($('chart-window').value)||300,end=Math.floor(Date.now()/60000)*60,start=end-minutes*60;
  const height=Math.max(60,$('quota-chart').clientHeight||180),width=Math.max(280,$('quota-chart').clientWidth||960),signature=JSON.stringify([history,key,minutes,end,width,height]);
- if(signature===chartSignature)return;chartSignature=signature;
+ if(signature===chartSignature)return;chartSignature=signature;hideChartTooltip();
  const points=chartData(history,start,end,key),svg=$('quota-chart-svg');svg.replaceChildren();
  svg.setAttribute('viewBox',`0 0 ${width} ${height}`);svg.setAttribute('preserveAspectRatio','none');
  const left=42,right=width-16,plot=right-left,{low,high,step:baseStep}=chartScale(points),bottom=height-25,plotHeight=height-37;
@@ -503,11 +525,16 @@ function renderChart(){
   if(point.delta<0)consumed-=point.delta;else if(point.delta>0)recovered+=point.delta;
   svg.append(svgPart('circle',{cx:x(point.minute),cy:y(point.value),r:1,fill:'#315c43'}));
   const hit=svgPart('rect',{x:Math.max(left,x(point.minute)-Math.max(4,plot/minutes/2)),y:8,width:Math.max(8,plot/minutes),height:plotHeight+6,class:'chart-hit'});
-  const change=point.delta===null?'无连续检测，变化未知':point.delta<0?'消耗 '+(-point.delta).toFixed(2)+' 个百分点':point.delta>0?'恢复 '+point.delta.toFixed(2)+' 个百分点':'无变化';
-  hit.append(svgPart('title',{},time(point.minute)+'\n剩余 '+point.value+'%\n'+change));svg.append(hit);
+  const change=point.delta===null?'无连续检测，变化未知':point.delta<0?'消耗 '+(-point.delta).toFixed(0)+' 个百分点':point.delta>0?'恢复 '+point.delta.toFixed(0)+' 个百分点':'无变化';
+  const statistics='剩余 '+point.value+'% '+change;
+  hit.setAttribute('tabindex','0');hit.setAttribute('aria-label',time(point.minute)+' '+statistics);
+  const show=e=>showChartTooltip(e,point.minute,statistics,hit);
+  hit.addEventListener('pointerenter',show);hit.addEventListener('pointermove',show);hit.addEventListener('focus',show);
+  hit.addEventListener('pointerleave',hideChartTooltip);hit.addEventListener('blur',hideChartTooltip);
+  svg.append(hit);
  }
  $('chart-empty').hidden=points.length>0;$('chart-empty').textContent=history.length?'所选范围暂无额度数据':'等待额度检测';
- const description=points.length?`已记录 ${points.length} 分钟 · 消耗 ${Number(consumed.toFixed(2))} 个百分点 · 恢复 ${Number(recovered.toFixed(2))} 个百分点`:'每分钟记录一次；未检测时留空';
+ const description=points.length?`已记录 ${points.length} 分钟 · 消耗 ${Number(consumed.toFixed(0))} 个百分点 · 恢复 ${Number(recovered.toFixed(0))} 个百分点`:'每分钟记录一次；未检测时留空';
  svg.setAttribute('aria-label','Codex'+(key==='primaryRemaining'?'五小时':'周')+'额度变化，'+description);
 }
 $('chart-window').addEventListener('change',rememberChartPreferences);$('chart-quota').addEventListener('change',rememberChartPreferences);
@@ -526,16 +553,12 @@ function renderStatus(s){
  if(c){renderQuota('remaining',c.primary);renderQuota('weekly',c.secondary);timeBlock('checked','checked-date',c.checkedAt);$('checked').title=time(c.checkedAt);}
  timeBlock('next-check','next-check-date',s.nextPoll);$('next-check').title=time(s.nextPoll);
  renderTiming(s.timing);renderAutostart(s.autostart);
- const body=$('history');body.replaceChildren();
- const triggers=(s.triggers||s.attempts).slice(0,15);
- for(const a of triggers){const tr=document.createElement('tr');for(const text of [time(a.started),a.requestKind==='quota'?'已获取额度':labels[a.status]||a.status,a.detail.evidence||'请求已预留，本周期不重复提交']){const td=document.createElement('td');td.textContent=text;tr.append(td);}body.append(tr);}
- if(!triggers.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='暂无记录';tr.append(td);body.append(tr);}
+ if(!pollSettingBusy)$('poll-while-paused').checked=s.pollWhilePaused===true;
  renderChart();
  renderActivity(s);
- $('logs').textContent=s.events.map(e=>time(e.time)+' '+e.kind+' '+JSON.stringify(e.detail)).join('\n');
 }
 
-function showOffline(){setErrorBanner('无法连接本机后台服务，请通过桌面快捷方式启动软件；若仍失败，请检查后台日志。');connected=false; $('badge').textContent='连接中断';$('status').textContent='等待重连';$('status-detail').textContent=snapshot?'连接暂时中断，保留上次数据，正在自动重试。':'请通过桌面快捷方式启动。';$('status').title=$('status-detail').textContent;for(const id of ['reconnect','pause','recheck','save-time','auto-time','autostart','choose-time'])$(id).disabled=true;}
+function showOffline(){setErrorBanner('无法连接本机后台服务，请通过桌面快捷方式启动软件；若仍失败，请检查后台日志。');connected=false; $('badge').textContent='连接中断';$('status').textContent='等待重连';$('status-detail').textContent=snapshot?'连接暂时中断，保留上次数据，正在自动重试。':'请通过桌面快捷方式启动。';$('status').title=$('status-detail').textContent;for(const id of ['reconnect','pause','recheck','save-time','auto-time','autostart','choose-time','poll-while-paused'])$(id).disabled=true;}
 function completeStatus(s){
   return s?.service==='quota-starter'&&typeof s.status==='string'&&typeof s.paused==='boolean'
     &&s.timing&&Array.isArray(s.attempts)&&Array.isArray(s.events);
@@ -545,7 +568,7 @@ function restoreStatus(){
     renderStatus(s);
     connected=false;
     // Cached values are for display only until the live service answers.
-    for(const id of ['reconnect','pause','recheck','save-time','auto-time','autostart','choose-time'])$(id).disabled=true;
+    for(const id of ['reconnect','pause','recheck','save-time','auto-time','autostart','choose-time','poll-while-paused'])$(id).disabled=true;
   }}catch(e){/* Storage may be disabled or contain an obsolete snapshot. */}
 }
 async function refresh(){
@@ -602,5 +625,6 @@ async function saveTime(){if(!applyManualDate())return;const {min,max}=bounds();
 $('save-time').addEventListener('click',saveTime);
 function renderAutostart(a){if(startupBusy||!a)return;$('autostart').disabled=!a.available;if(a.enabled!==null)$('autostart').checked=a.enabled===true;$('startup-error').textContent=a.error||'';}
 async function setAutostart(enabled){startupBusy=true;$('autostart').disabled=true;await action('autostart/'+(enabled?'enable':'disable'));startupBusy=false;await refresh();}
+async function setPollWhilePaused(enabled){pollSettingBusy=true;updateControls();try{await action('settings/poll-while-paused','toast',{enabled});}finally{pollSettingBusy=false;await refresh();updateControls();}}
 restoreStatus();setInterval(countdown,1000);setInterval(refresh,3000);refresh();
 </script></body></html>

@@ -296,7 +296,7 @@ class PollIntervalTests(unittest.TestCase):
                 fake = FakeRPC([value])
                 e = self.engine(fake, 110)
                 e.tick()
-                self.assertEqual(e.next_poll, 170)
+                self.assertEqual(e.next_poll, 0 if paused else 170)
                 self.assertEqual(fake.sent, 0)
 
     def test_schedule_changes_preserve_poll_and_due_plan_waits_for_it(self):

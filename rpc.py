@@ -9,11 +9,41 @@ import subprocess
 import threading
 import time
 import tomllib
+import urllib.request
+from urllib.parse import urlsplit
 from version import VERSION
 
 
 class CodexCompatibilityError(RuntimeError):
     """The installed CLI rejected an interface required by this application."""
+
+
+def configure_proxy(env):
+    """Resolve the active Windows proxy before spawning any Codex HTTP client."""
+    override = env.get('QUOTA_HTTP_PROXY')
+    system = (urllib.request.getproxies_registry() if os.name == 'nt' else {})
+    source = 'override' if override else 'windows' if system else 'environment'
+    proxies = ({'http': override, 'https': override} if override else system)
+    if proxies:
+        # Explorer/autostart can inherit old or missing shell variables. Use the
+        # currently enabled Windows proxy consistently, including on reconnect.
+        for key in list(env):
+            if key.lower() in ('http_proxy', 'https_proxy', 'all_proxy'):
+                env.pop(key)
+        for scheme in ('http', 'https'):
+            value = proxies.get(scheme)
+            if value:
+                env[scheme.upper() + '_PROXY'] = value
+    bypass = next((v for k, v in env.items() if k.lower() == 'no_proxy'), '')
+    for key in list(env):
+        if key.lower() == 'no_proxy':
+            env.pop(key)
+    env['NO_PROXY'] = ','.join(dict.fromkeys(filter(None, [*bypass.split(','), 'localhost', '127.0.0.1', '::1'])))
+    value = env.get('HTTPS_PROXY') or env.get('https_proxy') or env.get('ALL_PROXY') or env.get('all_proxy')
+    parsed = urlsplit(value if value and '://' in value else 'http://' + value) if value else None
+    # Only log routing information; proxy credentials never enter diagnostics.
+    return {'source': source, 'proxy': (f'{parsed.scheme}://{parsed.hostname}:{parsed.port or 80}'
+                                       if parsed and parsed.hostname else 'system/default')}
 
 
 def find_codex():
@@ -23,9 +53,8 @@ def find_codex():
         if p.is_file() and p.suffix.lower() == '.exe':
             return str(p)
         raise RuntimeError('QUOTA_CODEX_EXE 必须指向官方 codex.exe')
-    direct = shutil.which('codex.exe')
-    if direct:
-        return direct
+    # The desktop app prepends its preview CLI to PATH. Prefer the npm CLI
+    # users install/upgrade for this tool, unless an explicit override is set.
     roots = [Path(os.environ.get('APPDATA', '')) / 'npm/node_modules/@openai/codex']
     shim = shutil.which('codex') or shutil.which('codex.cmd')
     if shim:
@@ -34,6 +63,9 @@ def find_codex():
         matches = list(root.glob('node_modules/@openai/codex-win32-*/vendor/*/bin/codex.exe'))
         if matches:
             return str(matches[0])
+    direct = shutil.which('codex.exe')
+    if direct:
+        return direct
     raise RuntimeError('未找到 Codex CLI。请安装官方 @openai/codex 后使用 codex login 登录 ChatGPT。')
 
 
@@ -50,6 +82,7 @@ class RPC:
         env = os.environ.copy()
         for key in ('OPENAI_API_KEY', 'CODEX_API_KEY', 'OPENAI_BASE_URL'):
             env.pop(key, None)
+        self.transport = configure_proxy(env)
         self.codex_exe = find_codex()
         args = [self.codex_exe, 'app-server', '--listen', 'stdio://']
         overrides = ['model_provider="openai"', 'forced_login_method="chatgpt"',
@@ -57,8 +90,12 @@ class RPC:
                      'features.shell_tool=false', 'features.multi_agent=false',
                      'features.apps=false', 'features.plugins=false',
                      'features.memories=false', 'features.hooks=false',
-                     'features.respect_system_proxy=true',
+                     'features.respect_system_proxy=false',
                      'skills.max_context_tokens=1', 'service_tier="default"']
+        if self.transport['proxy'] != 'system/default':
+            # The proxy is already resolved explicitly. Bootstrap's five-second
+            # fallback would repeat WinHTTP/PAC discovery after slow responses.
+            overrides.append('features.system_proxy_fallback=false')
         # Disable user-configured MCP tools without exposing their configuration.
         home = Path(env.get('CODEX_HOME', str(Path.home() / '.codex')))
         config_path = home / 'config.toml'
@@ -164,12 +201,14 @@ class RPC:
             exc = TimeoutError(f'{method} 超时{suffix}')
             exc.rpc_diagnostics = {'method': method,
                                    'elapsedSeconds': round(time.monotonic() - started, 3),
-                                   'processAlive': self.is_alive()}
+                                   'processAlive': self.is_alive(),
+                                   'transport': getattr(self, 'transport', {})}
             raise exc from None
         except Exception as exc:
             exc.rpc_diagnostics = {'method': method,
                                    'elapsedSeconds': round(time.monotonic() - started, 3),
-                                   'processAlive': self.is_alive()}
+                                   'processAlive': self.is_alive(),
+                                   'transport': getattr(self, 'transport', {})}
             if isinstance(exc, CodexCompatibilityError):
                 exc.rpc_diagnostics['serverError'] = exc.rpc_server_error
             raise

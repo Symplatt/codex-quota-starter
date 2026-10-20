@@ -197,7 +197,7 @@ class QuotaTests(unittest.TestCase):
                 self.assertEqual(fake.reads, 1)
                 fake.prepare.assert_not_called()
                 self.assertEqual(fake.sent, 0)
-                self.assertEqual(e.next_poll, now + 60)
+                self.assertEqual(e.next_poll, 0 if paused else now + 60)
                 self.assertEqual(self.store.get('current')['primary']['usedPercent'], used)
                 self.assertEqual(self.store.get('current')['checkedAt'], now)
                 self.assertEqual(self.store.get('schedule')['status'], 'pending') if schedule else self.assertIsNone(self.store.get('schedule'))
@@ -476,7 +476,7 @@ class HTTPTests(unittest.TestCase):
         self.engine.store.set('paused', True)
         code, _ = self.request('POST', '/api/reconnect', headers)
         self.assertEqual(code, 200)
-        self.assertFalse(self.engine.connection())
+        self.assertEqual(self.engine.connection().get('failures', 0), 0)
         self.assertTrue(self.engine.store.get('paused'))
         with self.engine.lock:
             self.assertEqual(self.request('POST', '/api/reconnect', headers)[0], 409)

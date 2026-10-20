@@ -125,7 +125,7 @@ class StatisticsTests(unittest.TestCase):
         rows = self.store.trigger_history()
         self.assertEqual(len(rows), 15)
         self.assertEqual([r['started'] for r in rows], [self.now[0]+i for i in range(39, 24, -1)])
-        archived = self.store.trigger_dir / 'quota-triggers-2026-10.jsonl'
+        archived = self.store.log_dir / 'quota-starter-2026-10.jsonl'
         self.assertEqual(len(archived.read_text(encoding='utf-8').splitlines()), 40)
 
     def test_trigger_archive_contains_both_request_types_and_restarts_without_duplicates(self):
@@ -133,39 +133,82 @@ class StatisticsTests(unittest.TestCase):
         self.store.log('trigger', {'status': 'completed', 'evidence': 'result'}, self.now[0]+1)
         self.store.log('control', {'action': 'pause'}, self.now[0]+2)
         Store(self.path, clock=lambda: self.now[0])
-        rows = [json.loads(line) for line in (self.store.trigger_dir / 'quota-triggers-2026-10.jsonl').read_text(encoding='utf-8').splitlines()]
-        self.assertEqual([r['requestKind'] for r in rows], ['quota', 'minimal'])
-        self.assertEqual(rows[0]['evidence'], '已发送请求获取当前额度信息')
-        self.assertEqual(rows[1]['evidence'], 'result')
+        rows = [json.loads(line) for line in (self.store.log_dir / 'quota-starter-2026-10.jsonl').read_text(encoding='utf-8').splitlines()]
+        self.assertEqual([r['kind'] for r in rows], ['check', 'trigger', 'control'])
+        self.assertEqual(rows[0]['detail']['primary']['usedPercent'], 20)
+        self.assertEqual(rows[1]['detail']['evidence'], 'result')
+        self.assertFalse((self.path.parent / 'triggers').exists())
 
     def test_trigger_archive_retention_catches_up_and_does_not_recreate_expired_files(self):
         self.store.log('check', {}, stamp(2026, 8))
         self.store.log('check', {}, stamp(2026, 9))
         self.now[0] = stamp(2026, 11, 5)
         self.store.log('check', {}, self.now[0])
-        self.assertFalse((self.store.trigger_dir / 'quota-triggers-2026-08.jsonl').exists())
-        self.assertTrue((self.store.trigger_dir / 'quota-triggers-2026-09.jsonl').exists())
+        self.assertFalse((self.store.log_dir / 'quota-starter-2026-08.jsonl').exists())
+        self.assertTrue((self.store.log_dir / 'quota-starter-2026-09.jsonl').exists())
         self.store.log('check', {}, stamp(2026, 8))
-        self.assertFalse((self.store.trigger_dir / 'quota-triggers-2026-08.jsonl').exists())
+        self.assertFalse((self.store.log_dir / 'quota-starter-2026-08.jsonl').exists())
 
-    def test_trigger_archive_backfills_existing_database_and_retries_unwritable_folder(self):
+    def test_legacy_trigger_archive_merges_without_duplicate_ids_and_keeps_backup(self):
         self.store.log('check', {}, self.now[0])
-        blocked = self.path.parent / 'blocked-triggers'
-        blocked.write_text('occupied')
-        folder = self.store.trigger_dir
-        self.store.trigger_dir = blocked
-        self.store.log('check', {}, self.now[0]+1)
-        self.store.trigger_dir = folder
-        # Simulate an upgrade from a database that only had the general log archive.
-        with self.store.connect() as db:
-            db.execute("DELETE FROM state WHERE key='triggerArchiveId'")
-        # Replayed events may append to an existing file after an interrupted cursor
-        # save, but a fresh trigger archive reconstructs all retained database events.
-        fresh = self.path.parent / 'fresh-triggers'
-        self.store.trigger_dir = fresh
-        with self.store.connect() as db:
-            db.execute("DELETE FROM state WHERE key='triggerArchiveId'")
-        self.assertEqual(len((fresh / 'quota-triggers-2026-10.jsonl').read_text(encoding='utf-8').splitlines()), 2)
+        legacy = self.path.parent / 'triggers'
+        legacy.mkdir()
+        current = (self.store.log_dir / 'quota-starter-2026-10.jsonl').read_text(encoding='utf-8')
+        record = json.loads(current)
+        record.update(requestKind='quota', evidence='旧检测证据')
+        extra = dict(record, id=900, kind='trigger', detail={'evidence':'完整旧结果'})
+        original = json.dumps(record, ensure_ascii=False)+'\n'+json.dumps(extra, ensure_ascii=False)+'\n'
+        source = legacy / 'quota-triggers-2026-10.jsonl'
+        source.write_text(original,encoding='utf-8')
+        Store(self.path, clock=lambda:self.now[0])
+        Store(self.path, clock=lambda:self.now[0])
+        rows = [json.loads(line) for line in (self.store.log_dir/'quota-starter-2026-10.jsonl').read_text(encoding='utf-8').splitlines()]
+        self.assertEqual([r['id'] for r in rows], [1,900])
+        self.assertEqual(rows[0]['evidence'],'旧检测证据')
+        self.assertEqual(rows[1]['detail']['evidence'],'完整旧结果')
+        self.assertFalse(source.exists())
+        backups = list((self.path.parent/'legacy-archive-backups').glob('*.bak'))
+        self.assertEqual(len(backups),1)
+        self.assertEqual(backups[0].read_text(encoding='utf-8'),original)
+
+    def test_invalid_legacy_archive_keeps_source_and_retry_succeeds(self):
+        legacy = self.path.parent/'triggers'
+        legacy.mkdir()
+        source = legacy/'quota-triggers-2026-10.jsonl'
+        source.write_text('invalid',encoding='utf-8')
+        self.store.log('check',{},self.now[0])
+        self.assertTrue(source.exists())
+        self.assertIsNotNone(self.store._archive_error)
+        source.write_text('',encoding='utf-8')
+        self.store.log('control',{'action':'pause'},self.now[0]+1)
+        self.assertFalse(source.exists())
+        self.assertIsNone(self.store._archive_error)
+
+    def test_conflicting_event_id_preserves_both_files(self):
+        self.store.log('check',{},self.now[0])
+        target=self.store.log_dir/'quota-starter-2026-10.jsonl'
+        record=json.loads(target.read_text(encoding='utf-8'))
+        record['detail']={'evidence':'conflict'}
+        legacy=self.path.parent/'triggers';legacy.mkdir()
+        source=legacy/'quota-triggers-2026-10.jsonl'
+        source.write_text(json.dumps(record)+'\n',encoding='utf-8')
+        before=target.read_bytes()
+        Store(self.path,clock=lambda:self.now[0])
+        self.assertTrue(source.exists())
+        self.assertEqual(target.read_bytes(),before)
+
+    def test_failed_atomic_merge_keeps_original_and_retries(self):
+        self.store.log('check',{},self.now[0])
+        target=self.store.log_dir/'quota-starter-2026-10.jsonl'
+        legacy=self.path.parent/'triggers';legacy.mkdir()
+        source=legacy/'quota-triggers-2026-10.jsonl'
+        source.write_bytes(target.read_bytes())
+        with patch.object(Path,'replace',side_effect=PermissionError('locked')):
+            Store(self.path,clock=lambda:self.now[0])
+        self.assertTrue(source.exists())
+        Store(self.path,clock=lambda:self.now[0])
+        self.assertFalse(source.exists())
+        self.assertEqual(len(target.read_text(encoding='utf-8').splitlines()),1)
 
     def test_reset_change_must_match_countdown_before_claiming_success(self):
         self.assertEqual(evidence(normalize(raw(20000)), normalize(raw(38002)), 20002, True),

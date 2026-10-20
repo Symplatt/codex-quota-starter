@@ -73,16 +73,17 @@ test('smooth line preserves steep drops, extrema, and disconnect gaps',async()=>
  assert.ok(close.high-close.low>=20);assert.equal(close.high,100);assert.ok(close.step<=5);
 });
 
-test('trigger records distinguish read-only quota queries from minimal requests',async()=>{
- const p=setup(),s=status();s.triggers=[{started:s.nextPoll,status:'completed',requestKind:'quota',detail:{evidence:'已发送请求获取当前额度信息'}},{started:s.nextPoll-1,status:'completed',requestKind:'minimal',detail:{evidence:'发送小额请求，ChatGPT将于5小时后刷新额度'}}];
- await p.respond(s);const rows=p.e('history').children.map(r=>r.children.map(c=>c.textContent));
- assert.equal(rows[0][1],'已获取额度');assert.equal(rows[0][2],'已发送请求获取当前额度信息');
- assert.equal(rows[1][1],'已完成');assert.equal(rows[1][2],s.triggers[1].detail.evidence);
+test('consolidated log omits routine reads and preserves small request evidence',async()=>{
+ const p=setup(),s=status();s.activity=[{time:s.nextPoll,kind:'check',detail:{}},{time:s.nextPoll-1,kind:'trigger',detail:{status:'completed',evidence:'周期已核验'}},{time:s.nextPoll-2,kind:'trigger',detail:{status:'reserved'}}];
+ await p.respond(s);const rows=p.e('activity').children.map(r=>r.children.map(c=>c.textContent));
+ assert.equal(rows.length,2);assert.equal(rows[0][1],'发送小额请求');assert.match(rows[0][2],/已完成\n周期已核验/);assert.match(rows[1][2],/待核实/);
+ assert.equal(p.e('history'),undefined);
 });
 
-test('trigger card caps old service responses to fifteen newest rows',async()=>{
- const p=setup(),s=status();s.triggers=Array.from({length:25},(_,i)=>({started:s.nextPoll-i,status:'completed',requestKind:'quota',detail:{evidence:String(i)}}));
- await p.respond(s);assert.equal(p.e('history').children.length,15);assert.equal(p.e('history').children[14].children[2].textContent,'14');
+test('paused sampling setting reflects server state and locks offline controls',async()=>{
+ const p=setup(),s=status();await p.respond(s);assert.equal(p.e('poll-while-paused').checked,false);
+ s.pollWhilePaused=true;p.run('refresh()');await p.respond(s);assert.equal(p.e('poll-while-paused').checked,true);
+ p.run('showOffline()');assert.equal(p.e('poll-while-paused').disabled,true);
 });
 
 test('paused badge never claims background running even when still connected',async()=>{
@@ -357,8 +358,8 @@ test('persistent activity shows schedule changes and connection events alongside
  assert.equal(rows[2][1],'重新检测');assert.match(rows[3][2],/操作失败：无法写入设置/);
  assert.match(rows[4][2],/错误：读取超时\n失败次数：1\n下次尝试：/);
  assert.equal(rows[5][1],'连接已恢复');assert.equal(rows[5][2],'耗时：12 秒');
- assert.equal(p.e('history').children[0].children[2].textContent,'周期已核验');
- assert.match(p.e('logs').textContent,/check/);
+ assert.equal(p.e('history'),undefined);
+ assert.equal(p.e('logs'),undefined);
 });
 
 test('activity reads old schedule records and excludes routine checks',async()=>{
