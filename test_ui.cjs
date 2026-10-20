@@ -3,11 +3,11 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 const source=fs.readFileSync(__dirname+'/ui.html','utf8').split('<script>')[1].split('</script>')[0];
-function setup(storage={}){
+function setup(storage={},preferences={}){
   const elements=new Map();
   function element(){return {value:'',textContent:'',disabled:false,children:[],options:[],attributes:{},setAttribute(key,value){this.attributes[key]=value;},querySelector(){return null;},addEventListener(){},append(child){this.children.push(child);this.options.push(child);if(!this.value)this.value=child.value;},replaceChildren(){this.children=[];},showModal(){},close(){}};}
   const intervals=[];let response,requests=0;
-  const c=vm.createContext({document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,createElementNS:element},Intl,Date,JSON,AbortController,setTimeout,clearTimeout,setInterval(f){intervals.push(f);},sessionStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v},fetch:()=>{requests++;return new Promise(resolve=>response=resolve);}});
+  const c=vm.createContext({document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,createElementNS:element},Intl,Date,JSON,AbortController,setTimeout,clearTimeout,setInterval(f){intervals.push(f);},sessionStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v},localStorage:{getItem:k=>preferences[k]||null,setItem:(k,v)=>preferences[k]=v},fetch:()=>{requests++;return new Promise(resolve=>response=resolve);}});
   vm.runInContext(source,c);
   return {c,e:id=>elements.get(id),run:code=>vm.runInContext(code,c),respond:async s=>{response({ok:true,json:async()=>s});await vm.runInContext('refreshPromise',c);},requests:()=>requests,storage};
 }
@@ -92,6 +92,22 @@ test('paused badge never claims background running even when still connected',as
  s.paused=false;s.busy=false;p.run('refresh()');await p.respond(s);assert.equal(p.e('badge').textContent,'后台运行');
  s.connection={recoveryAt:Date.now()/1000+1200};p.run('refresh()');await p.respond(s);assert.equal(p.e('badge').textContent,'等待重连');
  s.connection={stopped:true};p.run('refresh()');await p.respond(s);assert.equal(p.e('badge').textContent,'已断开');
+});
+
+test('chart selections survive reload and a new browser session',async()=>{
+ const preferences={},p=setup({},preferences);await p.respond(status());
+ p.e('chart-window').value='1440';p.e('chart-quota').value='secondaryRemaining';p.run('rememberChartPreferences()');
+ const reopened=setup({},preferences);await reopened.respond(status());
+ assert.equal(reopened.e('chart-window').value,'1440');assert.equal(reopened.e('chart-quota').value,'secondaryRemaining');
+ reopened.e('chart-window').value='60';reopened.run('rememberChartPreferences()');
+ const again=setup({},preferences);await again.respond(status());assert.equal(again.e('chart-window').value,'60');assert.equal(again.e('chart-quota').value,'secondaryRemaining');
+});
+
+test('invalid or unavailable chart storage never breaks the dashboard',async()=>{
+ const preferences={'quota-starter:chart-preferences:v1':'{"window":"invalid","quota":"invalid"}'},p=setup({},preferences);await p.respond(status());
+ assert.notEqual(p.e('chart-window').value,'invalid');assert.notEqual(p.e('chart-quota').value,'invalid');
+ p.run('localStorage.setItem=()=>{throw Error("blocked")};rememberChartPreferences()');assert.ok(p.e('quota-chart-svg').children.length>0);
+ const corrupt=setup({},{'quota-starter:chart-preferences:v1':'{broken'});await corrupt.respond(status());assert.equal(corrupt.e('version').textContent,'v1.4.5');
 });
 
 test('startup and operation errors use banner without showing normal pause as error',async()=>{

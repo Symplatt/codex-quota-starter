@@ -159,7 +159,7 @@ select option:disabled{color:#a2aaa4;background:#f1f2ef}.picker{display:flex;ali
 .timeline-send:after{display:none}.timeline-handle{position:absolute;z-index:5;left:var(--send-position,50%);top:71px;transform:translateX(-50%);width:28px;height:28px;min-height:0;padding:0;border:0;border-radius:50%;background:transparent;touch-action:none;cursor:ew-resize}
 .timeline-handle:before{content:'';position:absolute;inset:7px;background:#315c43;border:2px solid #315c43;border-radius:50%}.timeline-handle:hover:not(:disabled):before,.timeline-handle:focus-visible:before{box-shadow:0 0 0 5px #315c431a}.timeline-handle:focus-visible{outline:2px solid #54765f;outline-offset:2px}.timeline-handle:disabled{cursor:default}.schedule-timeline[data-dragging=true]{user-select:none}
 .chart-head{flex-wrap:wrap;margin-bottom:8px}.chart-options{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.chart-options select{font-size:12px;padding:6px 8px}
-#quota-chart-panel{display:flex;flex-direction:column}#quota-chart-panel .chart-head,#quota-chart-panel .quota-chart{height:180px;min-height:40px;flex:1 1 auto;position:relative}.quota-chart svg{display:block;width:100%;height:100%;overflow:visible}.chart-grid{stroke:#e7ece4;stroke-width:1}.chart-axis{fill:#7e8e84;font:11px 'Segoe UI','Microsoft YaHei',sans-serif}.chart-line{stroke:#315c43;stroke-width:1.3;fill:none;stroke-linejoin:round;stroke-linecap:round}.chart-tick{stroke:#b9c8b7;stroke-width:1}.chart-hit{fill:transparent}.chart-empty{position:absolute;inset:0;display:grid;place-items:center;color:#7e8e84;font-size:13px;pointer-events:none}.chart-empty[hidden]{display:none}
+#quota-chart-panel{display:flex;flex-direction:column}#quota-chart-panel .chart-head{height:auto;min-height:0;flex:0 0 auto}.quota-chart{height:180px;min-height:40px;flex:1 1 auto;position:relative}.quota-chart svg{display:block;width:100%;height:100%;overflow:visible}.chart-grid{stroke:#e7ece4;stroke-width:1}.chart-axis{fill:#7e8e84;font:11px 'Segoe UI','Microsoft YaHei',sans-serif}.chart-line{stroke:#315c43;stroke-width:1.3;fill:none;stroke-linejoin:round;stroke-linecap:round}.chart-tick{stroke:#b9c8b7;stroke-width:1}.chart-hit{fill:transparent}.chart-empty{position:absolute;inset:0;display:grid;place-items:center;color:#7e8e84;font-size:13px;pointer-events:none}.chart-empty[hidden]{display:none}
 @media(max-width:520px){.quota-chart{height:180px}.chart-head{gap:10px}.chart-options{gap:8px}.chart-options select{max-width:135px}}
 #history-panel th:first-child{width:175px}#history-panel td:first-child,#activity-panel td:first-child{font-variant-numeric:tabular-nums;white-space:nowrap}#history-panel tbody tr:hover,#activity-panel tbody tr:hover{background:#edf3eb}
 </style></head><body><main>
@@ -421,6 +421,19 @@ function renderActivity(s){
  if(!events.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='暂无操作记录';tr.append(td);body.append(tr);}
 }
 let chartSignature='';
+const chartPreferencesKey='quota-starter:chart-preferences:v1';
+function restoreChartPreferences(){
+ try{
+  const saved=JSON.parse(localStorage.getItem(chartPreferencesKey));
+  if(saved&&['60','300','1440'].includes(saved.window))$('chart-window').value=saved.window;
+  if(saved&&['primaryRemaining','secondaryRemaining'].includes(saved.quota))$('chart-quota').value=saved.quota;
+ }catch{}
+}
+function rememberChartPreferences(){
+ try{localStorage.setItem(chartPreferencesKey,JSON.stringify({window:$('chart-window').value,quota:$('chart-quota').value}));}catch{}
+ renderChart();
+}
+restoreChartPreferences();
 function svgPart(name,attributes={},text){
  const node=document.createElementNS('http://www.w3.org/2000/svg',name);
  for(const [key,value] of Object.entries(attributes))node.setAttribute(key,value);
@@ -497,7 +510,7 @@ function renderChart(){
  const description=points.length?`已记录 ${points.length} 分钟 · 消耗 ${Number(consumed.toFixed(2))} 个百分点 · 恢复 ${Number(recovered.toFixed(2))} 个百分点`:'每分钟记录一次；未检测时留空';
  svg.setAttribute('aria-label','Codex'+(key==='primaryRemaining'?'五小时':'周')+'额度变化，'+description);
 }
-$('chart-window').addEventListener('change',renderChart);$('chart-quota').addEventListener('change',renderChart);
+$('chart-window').addEventListener('change',rememberChartPreferences);$('chart-quota').addEventListener('change',rememberChartPreferences);
 if(typeof ResizeObserver!=='undefined')new ResizeObserver(renderChart).observe($('quota-chart'));
 if(typeof window!=='undefined')window.addEventListener('resize',renderChart);
 // Render synchronously: the browser paints only after the complete snapshot is applied.

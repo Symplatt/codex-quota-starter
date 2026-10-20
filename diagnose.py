@@ -13,7 +13,7 @@ def main():
     parser.add_argument('--send-once', action='store_true', help='Ask the running service to submit one bounded request round')
     args = parser.parse_args()
     if args.send_once:
-        origin = 'http://127.0.0.1:8769'
+        origin = 'http://127.0.0.1:8770'
         req = urllib.request.Request(origin + '/api/session', headers={'X-Quota-Session': 'refresh'})
         with urllib.request.urlopen(req, timeout=10) as response:
             token = json.load(response)['token']

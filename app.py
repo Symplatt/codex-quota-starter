@@ -16,7 +16,7 @@ from version import VERSION
 ROOT = Path(__file__).resolve().parent
 
 
-def create_server(engine, host='127.0.0.1', port=8769, startup=None):
+def create_server(engine, host='127.0.0.1', port=8770, startup=None):
     csrf = secrets.token_urlsafe(32)
     startup = startup or Autostart(ROOT)
     origin = f'http://127.0.0.1:{port}'
