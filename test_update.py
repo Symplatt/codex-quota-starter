@@ -66,6 +66,22 @@ class PausedSamplingTests(unittest.TestCase):
 
 
 class ProxyTests(unittest.TestCase):
+    def test_local_timeout_closes_live_transport_before_retry(self):
+        from unittest.mock import Mock
+        import tempfile
+        from pathlib import Path
+        from core import Store
+        with tempfile.TemporaryDirectory() as root:
+            engine = Engine(Store(Path(root) / 'db'), Path(root) / 'empty', clock=lambda: 100)
+            transport = engine.rpc = Mock()
+            transport.is_alive.return_value = True
+            error = TimeoutError('account/rateLimits/read 超时')
+            error.rpc_diagnostics = {'method': 'account/rateLimits/read', 'processAlive': True}
+            engine.failed_connection(error)
+            transport.close.assert_called_once()
+            self.assertIsNone(engine.rpc)
+            self.assertEqual(engine.next_poll, 110)
+
     def test_returned_network_error_keeps_transport_until_retry_budget_exhausted(self):
         from unittest.mock import Mock
         import tempfile
