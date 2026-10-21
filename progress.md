@@ -1,5 +1,15 @@
 # 待解决问题
 
+## 1.7.0 远程发布完成（2026-10-21）
+
+- 用户已明确批准“Push and release”；代码提交`7e056740d26d959d64af2849edfdb78e4e809da6`已推送至origin/main，v1.7.0 Tag指向同一发布代码。
+- 正式Release：https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.0；非草稿、非预发布，内容与CHANGELOG一致，包含Windows ZIP及SHA256SUMS.txt。
+- main与v1.7.0的Windows CI均成功：39551328081、39551328329，Python/Node回归及构建通过。
+- 发布资产重新下载核验成功；ZIP SHA256为`dbdf6e48584df306d44edb79d65a97177a7ce11e43504a2cde83a6ffbfea37f5`，与本地dist一致，25个已安装文件与该ZIP一致；安装版1.7.0，数据库完整性ok，当前真实连接正常。
+- 本次更新日志与UI自行调整说明在D盘；ZIP未放D盘。代理间歇超时仍保留此前验证限制，不将发布完成等同于已根治所有网络故障。
+- 下文审核/未发布说明是发布前的历史记录；本节为最新交付状态。本发布记录单独提交，不修改发布代码、Tag或资产。
+
+
 ## 1.7.0 本地更新与审核状态
 
 - 最新状态（2026-10-21 13:41，北京时间）：追加断联处理已覆盖安装到1.7.0，真实读取恢复；165项Python、40项Node回归通过。暂不宣称间歇断联已经根治，见文末本次安装结论。Push与Release仍等待审核。
