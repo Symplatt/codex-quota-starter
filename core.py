@@ -3,6 +3,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -20,6 +21,7 @@ ATTEMPT_LIMIT = 5
 RETRY_INTERVAL = 10
 RETRY_BUDGET = 60
 RECOVERY_INTERVAL = 20 * 60
+BEIJING = timezone(timedelta(hours=8))
 
 
 def transient_connection_error(error):
@@ -91,16 +93,18 @@ def evidence(before, after, started, completed):
         return '请求完成；后续额度读取失败，周期起点未验证'
     old, new = before['primary']['resetsAt'], after['primary']['resetsAt']
     if abs(old - new) <= 5:
-        return '本次请求并未导致下次额度刷新时间出现变化（相差≤5秒视为不变）'
+        return '发送小额请求，该请求并未导致下次额度刷新时间出现变化（相差≤5秒视为不变）'
     if old <= started and abs(new - started - WINDOW) <= 120:
-        return '观察到新重置时间约等于发送时间 + 5 小时；支持首次请求锚定，但并发使用及固定窗口仍可能影响判断'
+        return '发送小额请求，ChatGPT将于5小时后刷新额度'
     return '观察到重置时间变化；尚不足以判定周期锚定规则'
 
 
 class Store:
-    def __init__(self, path):
+    def __init__(self, path, clock=time.time):
         self.path = Path(path)
+        self.clock = clock
         self.log_dir = self.path.parent / "logs"
+        self.trigger_dir = self.log_dir  # Compatibility alias; one active archive.
         self._archive_lock = threading.Lock()
         self._archive_error = None
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -116,6 +120,10 @@ class Store:
                     PRIMARY KEY(account, cycle));
                 CREATE TABLE IF NOT EXISTS events (
                     id INTEGER PRIMARY KEY, time REAL NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS quota_samples (
+                    account TEXT NOT NULL, minute INTEGER NOT NULL, checked REAL NOT NULL,
+                    primary_used REAL NOT NULL, secondary_used REAL,
+                    PRIMARY KEY(account, minute));
             ''')
         self._archive_events()
 
@@ -133,40 +141,121 @@ class Store:
             db.close()
 
     def _archive_events(self):
-        # SQLite remains the retry source if the log directory is temporarily unwritable.
+        # All events, including routine quota reads and model-request evidence,
+        # share the same monthly JSONL; SQLite remains the retry source.
+        archives = ((self.log_dir, 'quota-starter', 'logArchiveId'),)
         with self._archive_lock:
             try:
-                self.log_dir.mkdir(parents=True, exist_ok=True)
+                for folder, *_ in archives:
+                    folder.mkdir(parents=True, exist_ok=True)
                 with closing(sqlite3.connect(self.path, timeout=15)) as archive_db:
-                    row = archive_db.execute("SELECT value FROM state WHERE key='logArchiveId'").fetchone()
-                    last_id = int(json.loads(row[0])) if row else 0
-                    while True:
-                        rows = archive_db.execute(
-                            'SELECT id,time,kind,detail FROM events WHERE id>? ORDER BY id LIMIT 1000',
-                            (last_id,)).fetchall()
-                        if not rows:
-                            break
-                        grouped = {}
-                        for event_id, stamp, kind, detail in rows:
-                            date = datetime.fromtimestamp(stamp, timezone(timedelta(hours=8)))
-                            record = {'id': event_id, 'time': date.isoformat(), 'kind': kind,
-                                      'detail': json.loads(detail)}
-                            grouped.setdefault(date.strftime('%Y-%m'), []).append(
-                                json.dumps(record, ensure_ascii=False) + '\n')
-                        for month, lines in grouped.items():
-                            with (self.log_dir / f'quota-starter-{month}.jsonl').open('a', encoding='utf-8') as output:
-                                output.writelines(lines)
-                                output.flush()
-                                os.fsync(output.fileno())
-                        last_id = rows[-1][0]
-                        archive_db.execute("INSERT OR REPLACE INTO state VALUES ('logArchiveId',?)",
-                                           (json.dumps(last_id),))
+                    today = datetime.fromtimestamp(self.clock(), BEIJING)
+                    month_number = today.year * 12 + today.month - 1 - 2
+                    year, month = divmod(month_number, 12)
+                    cutoff = f'{year:04d}-{month + 1:02d}'
+                    retention_month = today.strftime('%Y-%m')
+                    retention = archive_db.execute("SELECT value FROM state WHERE key='logRetentionMonth'").fetchone()
+                    if not retention or json.loads(retention[0]) != retention_month:
+                        # Delete only our exact monthly names. An offline month
+                        # boundary is caught at startup; failed deletions retry.
+                        for folder, prefix, *_ in archives:
+                            for path in folder.glob(prefix + '-*.jsonl'):
+                                match = re.fullmatch(re.escape(prefix) + r'-(\d{4}-(?:0[1-9]|1[0-2]))\.jsonl', path.name)
+                                if match and match[1] < cutoff:
+                                    path.unlink()
+                        cutoff_stamp = datetime(year, month + 1, 1, tzinfo=BEIJING).timestamp()
+                        archive_db.execute('DELETE FROM quota_samples WHERE minute < ?', (cutoff_stamp,))
+                        archive_db.execute("INSERT OR REPLACE INTO state VALUES ('logRetentionMonth',?)",
+                                           (json.dumps(retention_month),))
                         archive_db.commit()
+                    for folder, prefix, cursor_key in archives:
+                        row = archive_db.execute('SELECT value FROM state WHERE key=?', (cursor_key,)).fetchone()
+                        last_id = int(json.loads(row[0])) if row else 0
+                        while True:
+                            rows = archive_db.execute(
+                                'SELECT id,time,kind,detail FROM events WHERE id>? ORDER BY id LIMIT 1000',
+                                (last_id,)).fetchall()
+                            if not rows:
+                                break
+                            grouped = {}
+                            for event_id, stamp, kind, detail in rows:
+                                date = datetime.fromtimestamp(stamp, BEIJING)
+                                # Expired backlog must not recreate deleted files.
+                                if date.strftime('%Y-%m') < cutoff:
+                                    continue
+                                detail = json.loads(detail)
+                                record = {'id': event_id, 'time': date.isoformat(), 'kind': kind, 'detail': detail}
+                                grouped.setdefault(date.strftime('%Y-%m'), []).append(json.dumps(record, ensure_ascii=False) + '\n')
+                            for month, lines in grouped.items():
+                                with (folder / f'{prefix}-{month}.jsonl').open('a', encoding='utf-8') as output:
+                                    output.writelines(lines)
+                                    output.flush()
+                                    os.fsync(output.fileno())
+                            last_id = rows[-1][0]
+                            archive_db.execute('INSERT OR REPLACE INTO state VALUES (?,?)', (cursor_key, json.dumps(last_id)))
+                            archive_db.commit()
+                # Flush the database backlog/cursor first so merging legacy IDs
+                # cannot be followed by re-appending those same database events.
+                self._merge_legacy_triggers(cutoff)
                 self._archive_error = None
-            except (OSError, sqlite3.Error) as exc:
+            except (OSError, sqlite3.Error, ValueError) as exc:
                 if str(exc) != self._archive_error:
                     print(f'日志归档暂时失败，将在下次写入时重试：{exc}', file=sys.stderr)
                     self._archive_error = str(exc)
+
+    def _merge_legacy_triggers(self, cutoff):
+        legacy = self.path.parent / 'triggers'
+        if not legacy.is_dir():
+            return
+        for source in legacy.glob('quota-triggers-*.jsonl'):
+            match = re.fullmatch(r'quota-triggers-(\d{4}-(?:0[1-9]|1[0-2]))\.jsonl', source.name)
+            if not match:
+                continue
+            if match[1] < cutoff:
+                source.unlink()  # Same existing calendar retention policy.
+                continue
+            original = source.read_bytes()
+            target = self.log_dir / f'quota-starter-{match[1]}.jsonl'
+            merged = {}
+            # Legacy metadata is retained; existing general-log fields win only
+            # after checking the authoritative event content matches.
+            texts = [original.decode('utf-8-sig')]
+            if target.exists():
+                texts.append(target.read_text(encoding='utf-8-sig'))
+            for content in texts:
+                for line in content.splitlines():
+                    if not line.strip():
+                        continue
+                    record = json.loads(line)
+                    if not isinstance(record, dict) or not all(k in record for k in ('time', 'kind', 'detail')):
+                        raise ValueError('旧归档格式无效，保留原文件：' + source.name)
+                    key = ('id', record['id']) if isinstance(record.get('id'), int) else ('raw', line)
+                    previous = merged.get(key)
+                    if previous and any(previous.get(k) != record.get(k) for k in ('time', 'kind', 'detail')):
+                        raise ValueError('旧归档事件编号冲突，保留原文件：' + source.name)
+                    merged[key] = {**(previous or {}), **record}
+            backup_dir = self.path.parent / 'legacy-archive-backups'
+            backup_dir.mkdir(exist_ok=True)
+            backup = backup_dir / (source.name + '.' + hashlib.sha256(original).hexdigest()[:12] + '.bak')
+            if not backup.exists():
+                with backup.open('xb') as output:
+                    output.write(original)
+                    output.flush()
+                    os.fsync(output.fileno())
+            if backup.read_bytes() != original:
+                raise OSError('旧归档备份校验失败，保留原文件：' + source.name)
+            temporary = target.with_suffix('.merge.tmp')
+            with temporary.open('w', encoding='utf-8') as output:
+                for record in sorted(merged.values(), key=lambda r: (str(r['time']),
+                                     r['id'] if isinstance(r.get('id'), int) else 0)):
+                    output.write(json.dumps(record, ensure_ascii=False) + '\n')
+                output.flush()
+                os.fsync(output.fileno())
+            temporary.replace(target)
+            source.unlink()
+        # Keep unrelated user files; only remove the directory when empty.
+        if not any(legacy.iterdir()):
+            legacy.rmdir()
 
     def get(self, key, default=None):
         with self.connect() as db:
@@ -220,12 +309,13 @@ class Store:
             db.execute('INSERT OR REPLACE INTO state VALUES (?,?)', ('sending', 'true'))
             return attempt
 
-    def cancel_invalid_schedule(self, reset_at, now, *, used_percent=None):
+    def cancel_invalid_schedule(self, reset_at, now, *, used_percent=None, reconnected=False):
         # An idle window can report a rolling reset of now + five hours before
         # any request. That timestamp alone must not discard the user's plan.
         # Legacy snapshots without usage wait for a fresh read before cancelling.
-        if (isinstance(used_percent, bool) or not isinstance(used_percent, (int, float))
-                or not math.isfinite(used_percent) or not 0 < used_percent <= 100):
+        active_window = (not isinstance(used_percent, bool) and isinstance(used_percent, (int, float))
+                         and math.isfinite(used_percent) and 0 < used_percent <= 100)
+        if not active_window and not reconnected:
             return False
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -233,11 +323,19 @@ class Store:
             schedule = json.loads(row[0]) if row else None
             if not schedule or schedule['status'] != 'pending' or schedule['sendAt'] > reset_at:
                 return False
+            # A fresh reconnect supersedes the idle-window exception only when
+            # the planned send is strictly behind the newly reported reset.
+            if not active_window and schedule['sendAt'] == reset_at:
+                return False
             schedule.update(status='cancelled', cancelledAt=now, serverResetAt=reset_at,
                             reason='服务器刷新时间已达到或超过计划发送时间')
             db.execute("UPDATE state SET value=? WHERE key='schedule'", (json.dumps(schedule),))
             db.execute('INSERT INTO events(time,kind,detail) VALUES (?,?,?)',
                        (now, 'schedule_cancelled', json.dumps(schedule, ensure_ascii=False)))
+            notice = {'id': schedule.get('id') or uuid.uuid4().hex, 'time': now,
+                      'message': '定时计划已失效，已恢复自动'}
+            db.execute('INSERT OR REPLACE INTO state VALUES (?,?)',
+                       ('scheduleNotice', json.dumps(notice, ensure_ascii=False)))
             return True
 
     def record_submission(self, attempt, account, detail, now):
@@ -271,7 +369,61 @@ class Store:
         with self.connect() as db:
             rows = db.execute("SELECT * FROM events WHERE kind != 'check' ORDER BY id DESC LIMIT ?",
                               (limit,)).fetchall()
-        return [{**dict(row), 'detail': json.loads(row['detail'])} for row in rows]
+        events = [{**dict(row), 'detail': json.loads(row['detail'])} for row in rows]
+        # Attempts remain the authoritative evidence even if a crash prevented
+        # writing the final trigger event. Merge by attempt ID to avoid duplicates.
+        recorded = {e['detail'].get('attempt') for e in events if e['kind'] == 'trigger'}
+        for attempt in self.recent('attempts', limit):
+            if attempt['id'] in recorded:
+                continue
+            detail = dict(attempt['detail'])
+            if detail.get('before') and detail.get('after'):
+                start = detail.get('submissions', [{}])[-1].get('startedAt', attempt['started'])
+                detail['evidence'] = evidence(detail['before'], detail['after'], start, attempt['status'] == 'completed')
+            detail.update(attempt=attempt['id'], status=attempt['status'])
+            events.append({'id': 'attempt:' + str(attempt['id']), 'time': attempt['started'],
+                           'kind': 'trigger', 'detail': detail})
+        return sorted(events, key=lambda e: e['time'], reverse=True)[:limit]
+
+    def sample(self, account, snapshot, now):
+        with self.connect() as db:
+            secondary = snapshot.get('secondary')
+            db.execute('INSERT INTO quota_samples VALUES (?,?,?,?,?) '
+                       'ON CONFLICT(account,minute) DO UPDATE SET checked=excluded.checked, '
+                       'primary_used=excluded.primary_used, secondary_used=excluded.secondary_used '
+                       'WHERE excluded.checked >= quota_samples.checked',
+                       (account, math.floor(now / 60) * 60, now,
+                        snapshot['primary']['usedPercent'], secondary['usedPercent'] if secondary else None))
+
+    def quota_history(self, now=None):
+        current = self.get('current')
+        if not current or not current.get('account'):
+            return []
+        now = self.clock() if now is None else now
+        with self.connect() as db:
+            rows = db.execute('SELECT minute,checked,primary_used,secondary_used FROM quota_samples '
+                              'WHERE account=? AND minute>=? AND minute<=? ORDER BY minute',
+                              (current['account'], math.floor(now / 60) * 60 - 86400, now)).fetchall()
+        return [{'minute': row['minute'], 'checkedAt': row['checked'],
+                 'primaryRemaining': 100 - row['primary_used'],
+                 'secondaryRemaining': None if row['secondary_used'] is None else 100 - row['secondary_used']}
+                for row in rows]
+
+    def trigger_history(self, limit=15):
+        with self.connect() as db:
+            rows = db.execute("SELECT started,status,detail,'minimal' AS requestKind FROM attempts "
+                              "UNION ALL SELECT time,'completed',detail,'quota' FROM events WHERE kind='check' "
+                              "ORDER BY 1 DESC LIMIT ?", (limit,)).fetchall()
+        result = []
+        for row in rows:
+            detail = json.loads(row['detail'])
+            if row['requestKind'] == 'quota':
+                detail = {'evidence': '已发送请求获取当前额度信息'}
+            elif detail.get('before') and detail.get('after'):
+                started = detail.get('submissions', [{}])[-1].get('startedAt', row['started'])
+                detail['evidence'] = evidence(detail['before'], detail['after'], started, row['status'] == 'completed')
+            result.append({**dict(row), 'detail': detail})
+        return result
 
 
 class Engine:
@@ -349,6 +501,18 @@ class Engine:
         else:
             self.pause_event.clear()
         self.store.log('control', {'action': 'pause' if paused else 'resume'})
+
+    def set_poll_while_paused(self, enabled):
+        if not isinstance(enabled, bool):
+            raise ValueError('检测开关必须是布尔值')
+        self.store.set('pollWhilePaused', enabled)
+        self.store.log('control', {'action': 'poll_while_paused', 'enabled': enabled}, self.clock())
+        if enabled and self.store.get('paused', False):
+            self.next_poll = 0
+
+    def polling_enabled(self):
+        return (not self.store.get('paused', False)
+                or self.store.get('pollWhilePaused', False))
 
     def reconnect(self):
         if not self.lock.acquire(blocking=False):
@@ -532,13 +696,26 @@ class Engine:
         self.linked = True
         return (identity, raw.get('accountId')), snapshot
 
-    def _publish(self, identity, snapshot):
+    def _publish(self, identity, snapshot, *, reconnected=False):
         account_key = hashlib.sha256(identity[0].encode()).hexdigest()[:24]
         now = self.clock()
+        previous = self.store.get('snapshot:' + account_key)
+        weekly_key = 'weekly-reset:' + account_key
+        weekly = self.store.get(weekly_key)
+        # Cache only at the full-quota boundary, including the first full read
+        # after upgrade. Routine polling must not move the displayed estimate.
+        if snapshot['primary']['usedPercent'] == 0 and (
+                weekly is None or previous is None or previous['primary']['usedPercent'] != 0):
+            weekly = {'resetsAt': (snapshot.get('secondary') or {}).get('resetsAt'),
+                      'checkedAt': now}
+            self.store.set(weekly_key, weekly)
         self.store.set('snapshot:' + account_key, snapshot)
-        self.store.set('current', {'checkedAt': now, 'account': account_key, **snapshot})
+        self.store.set('current', {'checkedAt': now, 'account': account_key, **snapshot,
+                                  'weeklyResetAt': (weekly or {}).get('resetsAt')})
+        self.store.sample(account_key, snapshot, now)
         cancelled = self.store.cancel_invalid_schedule(
-            snapshot['primary']['resetsAt'], now, used_percent=snapshot['primary']['usedPercent'])
+            snapshot['primary']['resetsAt'], now, used_percent=snapshot['primary']['usedPercent'],
+            reconnected=reconnected)
         return account_key, cancelled
 
     def _wait_retry(self):
@@ -621,6 +798,9 @@ class Engine:
         attempt = None
         detail = {}
         try:
+            if not self.polling_enabled() and not (manual or check_only or self.read_requested):
+                self.status = '已暂停，自动额度检测已关闭'
+                return self.status
             now = self.clock()
             retry = self.connection()
             if retry.get('stopped'):
@@ -649,7 +829,8 @@ class Engine:
             identity, snap = self._read()
             account_key = hashlib.sha256(identity[0].encode()).hexdigest()[:24]
             previous = self.store.get('snapshot:' + account_key)
-            _, cancelled = self._publish(identity, snap)
+            reconnected = requested == 'reconnect' or bool(retry.get('readOnlyRecovery'))
+            _, cancelled = self._publish(identity, snap, reconnected=reconnected)
             now = self.clock()
             self.store.log('check', {**snap, 'durationSeconds': round(now - started, 3)}, now)
             if requested or check_only:
@@ -663,7 +844,7 @@ class Engine:
             if cancelled:
                 return self._ok('计划已取消：服务器刷新时间已达到或超过计划发送时间')
             if self.store.get('paused', False):
-                return self._ok('已暂停自动及手动发送（继续读取额度）')
+                return self._ok('已暂停发送，继续检测额度')
             cycle, reason, schedule_id = self.select_candidate(snap, previous, now, manual)
             if not cycle:
                 return self._ok(reason)

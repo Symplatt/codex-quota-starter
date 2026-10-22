@@ -57,6 +57,8 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                 return self.send(200, page, 'text/html; charset=utf-8')
             if self.path == '/help':
                 return self.send(200, help_page, 'text/html; charset=utf-8')
+            if self.path == '/favicon.svg':
+                return self.send(200, (ROOT / 'favicon.svg').read_text(encoding='utf-8'), 'image/svg+xml')
             if self.path == '/api/session':
                 if (self.headers.get('X-Quota-Session') != 'refresh'
                         or self.headers.get('Origin') not in (None, origin)
@@ -68,11 +70,15 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                      'status': engine.status, 'busy': engine.lock.locked() or bool(engine.read_requested),
                      'phase': engine.phase, 'linked': engine.linked,
                      'paused': engine.store.get('paused', False),
+                     'pollWhilePaused': engine.store.get('pollWhilePaused', False),
                      'connection': engine.connection(),
-                     'current': engine.store.get('current'), 'nextPoll': None if engine.connection().get('stopped') else engine.next_poll,
+                     'scheduleNotice': engine.store.get('scheduleNotice'),
+                     'current': engine.store.get('current'), 'nextPoll': (engine.next_poll if engine.polling_enabled() and not engine.connection().get('stopped') else None),
                      'autostart': startup.apply('status'),
                      'timing': engine.timing(),
                      'attempts': engine.store.recent('attempts', 10),
+                     'triggers': engine.store.trigger_history(),
+                     'quotaHistory': engine.store.quota_history(),
                      'activity': engine.store.activity(),
                      'events': engine.store.recent('events', 30)})
             return self.send(404, {'error': 'Not found'})
@@ -82,16 +88,19 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
                 return self.send(403, {'error': '请求来源校验失败，请从本机软件页面操作'})
             if not secrets.compare_digest(self.headers.get('X-Quota-Token', ''), csrf):
                 return self.send(403, {'code': 'stale_session', 'error': '页面连接凭据已过期，请刷新页面后重试'})
-            if self.path == '/api/logs/open':
+            if self.path in ('/api/logs/open', '/api/triggers/open'):
+                triggers = self.path == '/api/triggers/open'
                 folder = engine.store.log_dir.resolve()
+                action_name = 'open_triggers' if triggers else 'open_logs'
+                label = '日志'
                 try:
                     folder.mkdir(parents=True, exist_ok=True)
                     os.startfile(str(folder))
                 except OSError as exc:
-                    engine.store.log('control', {'action': 'open_logs', 'error': str(exc)})
-                    return self.send(500, {'error': '无法打开日志文件夹：' + str(exc)})
-                engine.store.log('control', {'action': 'open_logs', 'message': str(folder)})
-                return self.send(200, {'message': '已打开日志文件夹'})
+                    engine.store.log('control', {'action': action_name, 'error': str(exc)})
+                    return self.send(500, {'error': '无法打开' + label + '文件夹：' + str(exc)})
+                engine.store.log('control', {'action': action_name, 'message': str(folder)})
+                return self.send(200, {'message': '已打开' + label + '文件夹'})
             if self.path == '/api/reconnect':
                 try:
                     engine.reconnect()
@@ -120,6 +129,18 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None):
             if self.path == '/api/pause':
                 engine.set_paused(True)
                 return self.send(200, {'message': '已暂停；已提交的请求可能仍会完成'})
+            if self.path == '/api/settings/poll-while-paused':
+                try:
+                    length = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < length <= 1024:
+                        raise ValueError('设置数据无效')
+                    body = json.loads(self.rfile.read(length))
+                    if not isinstance(body, dict) or not isinstance(body.get('enabled'), bool):
+                        raise ValueError('检测开关必须是布尔值')
+                    engine.set_poll_while_paused(body['enabled'])
+                    return self.send(200, {'message': '已开启暂停后额度检测' if body['enabled'] else '已关闭暂停后额度检测'})
+                except (ValueError, TypeError, UnicodeError) as exc:
+                    return self.send(400, {'error': str(exc)})
             if self.path == '/api/resume':
                 engine.set_paused(False)
                 if engine.connection().get('stopped'):
@@ -171,7 +192,8 @@ def main():
     stop = threading.Event()
     def run():
         while not stop.is_set():
-            if not engine.connection().get('stopped') and time.time() >= engine.next_poll:
+            if ((engine.polling_enabled() or engine.read_requested) and
+                    not engine.connection().get('stopped') and time.time() >= engine.next_poll):
                 engine.tick()
             stop.wait(0.5)
     threading.Thread(target=run, daemon=True).start()

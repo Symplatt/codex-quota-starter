@@ -1,0 +1,43 @@
+{
+  "baseTag": "v1.5.23",
+  "baseCommit": "77e35bd7f71f260b468fb0e8bdfae7a699af93a2",
+  "files": {
+    "rpc.py": "b7d91acd6e436b706f6196ce379b2f0404e71df0e68d0728f1c98f52bb82dcb7",
+    "supervisor.py": "5c0bbb1abce9df16f5081b9c65a0788c84e37ea32f28686b4d25270faddeba90",
+    "windows_settings.py": "f37c3b093e316b22be71aa94dba98058184d69f25be014bf9f7049a6a90454c4",
+    "Start.ps1": "d8439c6e5e9fafb2067ed4c38f870620e99702f84e21c969e0911e00ad37e1b8",
+    "Start.cmd": "33702d471928452b5f0515ba9607ccdcee4351cc3ea862293ae78b74c895d654",
+    "Stop.ps1": "6a6a0a81fe7cf3a27f589686e98d3ced49b19c8354234a663cbebd0c9daf1a45",
+    "diagnose.py": "294d8ae8c03bbb3603f3b2823d7b27aa437da9b4b9a63ab7353fe41aae309d94",
+    "Autostart-Control.ps1": "79cd27b6ad8117cb982494d412946fe9c41fb8899c43b368d4d571a3dbb7199e",
+    "Install-Autostart.ps1": "be77b5fc551f047e1c2f3ffb7fb724f523c48f74f46c24b23ec6428d6764b1aa",
+    "Install-Autostart.cmd": "5db892ffb9b05e679be67feb75d0727a238ee39f80b0aa6a052f519ab62c7bea",
+    "Uninstall-Autostart.ps1": "3b24d762777d350a9905ca6b354d985abf2fa62b9a53d126b2c2c298ffefaa1a",
+    "Uninstall.ps1": "be201293c9d70f8d0915e24e7a29d4a1d8619f183180d15b6f59728ab710ffea"
+  },
+  "methods": {
+    "transient_connection_error": "0a0b2e75cd2d297c2725fdb7eefdc20c1b20c20a31eea244be42b891a2eed38b",
+    "Engine.__init__": "cde23bb7522c76edc2419b0369df3d9a27b9a93f2fefa2b8e5fd2748b1ada8ac",
+    "Engine.connection": "ba5c77f31651d8bc5c17a1446de3f3a79cd5d62afac5eacfaf8822a9a4c675c0",
+    "Engine.request_check": "9cf27ad0561be682f7c76e4adc4064c956b4c1cd9456125a25a981e24942af26",
+    "Engine.set_paused": "5d85886d3acc2d4d64eb3a114cf37d0ef2be8f860cad987c016e394c74744002",
+    "Engine.reconnect": "2515ea04700b2b54b0c847d81b7027c78641dfab707fd29b422ca8ecc23d8504",
+    "Engine.stop_connection": "c1fd8f8a8e72a99cddc98648491cb65bceeabf29076986d3ac745ca5e7f9d41f",
+    "Engine.failed_connection": "fc46ed95322feccf8aa7c364528a03dfc5e2869f814edb91ff810c0cd64ce805",
+    "Engine.connect": "f29280b3a0a48b4fee459dfb4d77bc63832c05cb7ff6f61e52864f3e78068246",
+    "Engine.close": "921a11d0948e3101ebacabefeef233e7f517ddc31623f3c158d16aaface49393",
+    "Engine._ok": "6ba8d6d9e6fdfc9bc90fa9805ce2097f3f89cd31c00efce9f7b718d3566826de",
+    "Engine._read": "47f1135ad8bf4b2cfa8b69e16d105e65b70fcc8affebb493eacbac1167afbd54",
+    "Engine._wait_retry": "f48e96cf76eb5c4a5680a5bbf5276cd2046b5e8bdea4505ca8b17c7417e1f834",
+    "Engine._send_reserved": "47baeaff50ead9d375a010bd790089954eb71bd25de26b51a6b5fc2d89a1a567"
+  },
+  "constants": {
+    "WINDOW": "Constant(value=18000)",
+    "POLL_INTERVAL": "Constant(value=60)",
+    "ATTEMPT_LIMIT": "Constant(value=5)",
+    "RETRY_INTERVAL": "Constant(value=10)",
+    "RETRY_BUDGET": "Constant(value=60)",
+    "RECOVERY_INTERVAL": "BinOp(left=Constant(value=20), op=Mult(), right=Constant(value=60))"
+  },
+  "tickRetryBlock": "17672e997392117949b9f2ae697f54e53fd102e233eb2cadf174b2435a37791a"
+}

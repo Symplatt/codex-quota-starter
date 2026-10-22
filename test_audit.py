@@ -20,6 +20,7 @@ class AuditTests(unittest.TestCase):
     tearDown = fixtures.QuotaTests.tearDown
     engine = fixtures.QuotaTests.engine
 
+
     def schedule(self, engine):
         self.store.set('current', {'primary': {'resetsAt': 100}})
         engine.set_schedule(200)
@@ -42,6 +43,7 @@ class AuditTests(unittest.TestCase):
 
     def test_monthly_logs_retry_after_directory_failure(self):
         from core import Store
+        self.store.clock = lambda: 100
         original = self.store.log_dir
         blocked = original.parent / 'blocked'
         blocked.write_text('occupied', encoding='utf-8')
@@ -49,7 +51,8 @@ class AuditTests(unittest.TestCase):
         self.store.log('control', {'action': 'pause'}, 100)
         self.assertEqual(len(self.store.recent('events')), 1)
         self.store.log_dir = original
-        Store(self.store.path)
+        # Restart at the same simulated date so retention does not expire the fixture.
+        Store(self.store.path, clock=lambda: 100)
         rows = (original / 'quota-starter-1970-01.jsonl').read_text(encoding='utf-8').splitlines()
         self.assertEqual(len(rows), 1)
         self.assertEqual(json.loads(rows[0])['kind'], 'control')
@@ -114,10 +117,14 @@ class AuditTests(unittest.TestCase):
             e.stop_connection()
             e.reconnect()
         e.tick()
-        self.assertEqual(self.store.get('schedule')['status'], 'pending')
+        self.assertEqual(self.store.get('schedule')['status'], 'cancelled' if action == 'reconnect' else 'pending')
         self.assertEqual(fake.reads, 1)
         self.assertEqual(fake.sent, 0)
         self.assertEqual(e.next_poll, 260)
+        if action == 'reconnect':
+            self.assertEqual(e.timing()['mode'], 'auto')
+            self.assertIn('恢复自动', self.store.get('scheduleNotice')['message'])
+            return
         e.sleeper(60)
         e.tick()
         self.assertEqual(fake.sent, 1)
@@ -127,7 +134,7 @@ class AuditTests(unittest.TestCase):
     def test_due_empty_schedule_survives_manual_read(self):
         self.assert_due_empty_schedule_survives_read_only('check')
 
-    def test_due_empty_schedule_survives_reconnect(self):
+    def test_due_empty_schedule_restores_auto_after_reconnect(self):
         self.assert_due_empty_schedule_survives_read_only('reconnect')
 
     def test_final_preflight_keeps_schedule_when_empty_reset_moves(self):
@@ -274,7 +281,7 @@ class PollIntervalTests(unittest.TestCase):
                 fake = FakeRPC([value])
                 e = self.engine(fake, 110)
                 e.tick()
-                self.assertEqual(e.next_poll, 170)
+                self.assertEqual(e.next_poll, 0 if paused else 170)
                 self.assertEqual(fake.sent, 0)
 
     def test_schedule_changes_preserve_poll_and_due_plan_waits_for_it(self):
@@ -505,6 +512,9 @@ class RecoveryTests(unittest.TestCase):
 
 
 class RPCTests(unittest.TestCase):
+
+
+
     def rpc(self):
         rpc = object.__new__(RPC)
         rpc.lock = threading.Lock()
