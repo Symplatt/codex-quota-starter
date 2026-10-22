@@ -1,0 +1,44 @@
+{
+  "version": "1.6.0-pre.1",
+  "releaseUrl": "https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.6.0-pre.1",
+  "prerelease": true,
+  "draft": false,
+  "latestFormal": "v1.5.23",
+  "withdrawnReleases": [
+    "v1.5.24",
+    "v1.6.2",
+    "v1.7.0"
+  ],
+  "oldTagsKept": true,
+  "releaseBranch": "release/1.6.0",
+  "releaseCommit": "0434fb1b28d6c487cbe0d3c44c8a48693d3e8abd",
+  "directParent": "77e35bd7f71f260b468fb0e8bdfae7a699af93a2",
+  "archiveBranch": "archive/1.7.0-plus",
+  "archiveCommit": "46b922abfcb11c744b6ee1501e8d3bf4df913a9c",
+  "mainUnchanged": true,
+  "zipSHA256": "20e4957c3cfa1a0bca1895b2eb3c175383afc8fabcaf112da88b55d6a4d64022",
+  "matchingPackageSourceFiles": 40,
+  "installedVersion": "1.6.0-pre.1",
+  "installedLinked": true,
+  "installationPreservation": "25 files verified; integrity ok; 30 attempts and 54 claims and settings unchanged immediately after installation; later manual schedule operations preserved",
+  "ciRuns": [
+    {
+      "conclusion": "success",
+      "databaseId": 39850488987,
+      "event": "push",
+      "headBranch": "v1.6.0-pre.1",
+      "headSha": "0434fb1b28d6c487cbe0d3c44c8a48693d3e8abd",
+      "status": "completed",
+      "url": "https://github.com/Symplatt/codex-quota-starter/actions/runs/39850488987"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 39850489985,
+      "event": "push",
+      "headBranch": "release/1.6.0",
+      "headSha": "0434fb1b28d6c487cbe0d3c44c8a48693d3e8abd",
+      "status": "completed",
+      "url": "https://github.com/Symplatt/codex-quota-starter/actions/runs/39850489985"
+    }
+  ]
+}

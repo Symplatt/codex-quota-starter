@@ -19,3 +19,5 @@
 - [文件校验值](comparison-1.5.23-remote-20261023/SHA256.md)、[Python/DOM/CSS复核](comparison-1.5.23-remote-20261023/semantic-audit.json)、[JavaScript复核](comparison-1.5.23-remote-20261023/javascript-audit.json)。
 
 `all-files.diff`中的中间历史、调查记录和仓库聚合文本不是独立产品功能；净功能结论以完整说明中标明的触发条件和代码分支为准。原始HTML中的会话占位符保持原样，直接打开源码文件不等于运行后台。
+
+2026-10-23已发布1.6.0-pre.1：[发布分支说明](1.6.0/发布分支说明.md)、[预发布更新日志](1.6.0/1.6.0-pre.1-更新日志.md)、[远程与安装核验](1.6.0/预发布核验.json)。正式Latest保持1.5.23。

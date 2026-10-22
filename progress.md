@@ -1,12 +1,17 @@
 # 待解决问题
 
-## 1.6.0-pre.1 用户已批准预发布与分支拆分（2026-10-23）
+## 1.6.0-pre.1 预发布与分支拆分完成（2026-10-23）
 
 - 已确认撤下范围：v1.5.24、v1.6.2、v1.7.0 Release；保留旧Tag与提交历史。旧Release说明及附件已备份到项目外tmp/quota-release-withdrawal-20261023。
 - release/1.6.0直接从v1.5.23分出；archive/1.7.0-plus保留远程main的46b922a代码，main不重写。采用新Tag v1.6.0-pre.1，保留原v1.6.0 Tag。正式Latest仍为v1.5.23。
 - 已同步版本、README及CHANGELOG；旧CHANGELOG条目归档到差异文档/1.6.0/撤下版本历史.md。
 - 已完成：40文件白名单ZIP构建/校验；新分支163项Python及42项前端回归、ZIP内5项连接指纹校验；备份并覆盖安装，真实读取成功、25个安装文件一致、数据库完整性ok，30条attempts和54条claims及设置保留，桌面快捷方式验证启动。
-- 待执行：同步最终说明到安装文件和D盘日志、提交Push、新Tag及预发布、撤下旧Release、远程资产和Latest最终核对。
+- 已完成：发布代码0434fb1b28d6c487cbe0d3c44c8a48693d3e8abd、release/1.6.0分支和v1.6.0-pre.1 Tag已推送；该发布代码直接以77e35bd7f71f260b468fb0e8bdfae7a699af93a2为父提交。archive/1.7.0-plus已推送并与原main的46b922abfcb11c744b6ee1501e8d3bf4df913a9c一致；main和旧Tag未变。
+- 预发布：https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.6.0-pre.1，prerelease=true、draft=false。v1.5.24/v1.6.2/v1.7.0 Release及附件已撤下，其他Release保留，Latest仍为v1.5.23且原资产未变。
+- 预发布分支及Tag的Windows CI均成功（39850489985、39850488987）；公开ZIP重新下载后与本地及Tag的40个源码文件逐字节一致。ZIP SHA256为20e4957c3cfa1a0bca1895b2eb3c175383afc8fabcaf112da88b55d6a4d64022。
+- 安装后再次真实读取成功。后续检测到用户通过页面新建/修改手动计划，相应schedule操作事件晚于升级核验，保留该新计划，不用安装前空计划覆盖。请求/防重复记录未变。
+- D盘复选框日志已按实际结果更新；远程、分支、Tag及下载核验结果见差异文档/1.6.0/预发布核验.json。本完成记录为文档提交，不移动发布Tag或重打发布包。
+- 剩余验证限制：真实五小时/周自然恢复边界长时观察尚未完成。
 
 ## 1.6.0 开发与审核准备完成（2026-10-23，替代上一轮1.7.1审核方案）
 
