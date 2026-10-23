@@ -7,7 +7,7 @@ function setup(storage={},preferences={}){
   const elements=new Map();
   function element(){return {value:'',textContent:'',disabled:false,children:[],options:[],attributes:{},setAttribute(key,value){this.attributes[key]=value;},querySelector(){return null;},addEventListener(){},append(child){this.children.push(child);this.options.push(child);if(!this.value)this.value=child.value;},replaceChildren(){this.children=[];},showModal(){},close(){}};}
   const intervals=[];let response,requests=0;
-  const c=vm.createContext({document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,createElementNS:element},Intl,Date,JSON,AbortController,setTimeout,clearTimeout,setInterval(f){intervals.push(f);},sessionStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v},localStorage:{getItem:k=>preferences[k]||null,setItem:(k,v)=>preferences[k]=v},fetch:()=>{requests++;return new Promise(resolve=>response=resolve);}});
+  const c=vm.createContext({document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,createElementNS:element},Intl,Date:class extends Date {},JSON,AbortController,setTimeout,clearTimeout,setInterval(f){intervals.push(f);},sessionStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v},localStorage:{getItem:k=>preferences[k]||null,setItem:(k,v)=>preferences[k]=v},fetch:()=>{requests++;return new Promise(resolve=>response=resolve);}});
   vm.runInContext(source,c);
   return {c,e:id=>elements.get(id),run:code=>vm.runInContext(code,c),respond:async s=>{response({ok:true,json:async()=>s});await vm.runInContext('refreshPromise',c);},requests:()=>requests,storage};
 }
@@ -68,9 +68,17 @@ test('smooth line preserves steep drops, extrema, and disconnect gaps',async()=>
   const numbers=paths[i].d.match(/-?[\d.]+/g).map(Number),min=Math.min(p.c.points[i].value,p.c.points[i+1].value),max=Math.max(p.c.points[i].value,p.c.points[i+1].value);
   assert.ok(numbers[3]>=min&&numbers[3]<=max);assert.ok(numbers[5]>=min&&numbers[5]<=max);
  }
- const scale=JSON.parse(p.run('JSON.stringify(chartScale(points))'));assert.ok(scale.low<=40&&scale.high>=90);
- p.c.points=[{value:99},{value:98}];const close=JSON.parse(p.run('JSON.stringify(chartScale(points))'));
- assert.ok(close.high-close.low>=20);assert.equal(close.high,100);assert.ok(close.step<=5);
+});
+
+test('chart fixes zero-to-hundred bounds and switches tick density below 200px plot height',async()=>{
+ const p=setup(),s=status(),end=Math.floor(Date.now()/60000)*60;await p.respond(s);
+ for(const height of [60,180,236,237,238,600])for(const quota of ['primaryRemaining','secondaryRemaining'])for(const range of ['60','300','1440'])for(const values of [[],[98,99],[0,100],[40,90]]){
+  const step=height-37<200?20:10,expected=Array.from({length:100/step+1},(_,i)=>i*step+'%');
+  p.e('quota-chart').clientHeight=height;p.e('chart-quota').value=quota;p.e('chart-window').value=range;
+  p.c.history=values.map((value,i)=>({minute:end-(values.length-1-i)*60,[quota]:value}));
+  p.run('snapshot.quotaHistory=history;renderChart()');
+  assert.deepEqual(p.e('quota-chart-svg').children.filter(n=>String(n.textContent).endsWith('%')).map(n=>n.textContent),expected);
+ }
 });
 
 test('consolidated log omits routine reads and preserves small request evidence',async()=>{
@@ -378,11 +386,26 @@ test('quota rings show live values, clamp percentages and handle missing weekly 
  assert.equal(p.e('weekly-copy').textContent,'预计更新待检测');
  s.current.weeklyResetAt=s.current.primary.resetsAt;
  p.run('refresh()');await p.respond(s);
- assert.equal(p.e('weekly-copy').textContent,'预计更新：'+p.run('time(snapshot.current.weeklyResetAt)'));
+ assert.equal(p.e('weekly-copy').textContent,p.run('time(snapshot.current.weeklyResetAt).split(" ")[0]'));
+ assert.equal(p.e('weekly-copy').title,'预计更新：'+p.run('time(snapshot.current.weeklyResetAt)'));
  p.run("renderQuota('weekly',null)");assert.equal(p.e('weekly').textContent,'—');
  assert.equal(p.e('weekly-ring').attributes.style,'--progress:0');
  p.run("renderQuota('remaining',{usedPercent:150})");assert.equal(p.e('remaining').textContent,'0%');
  assert.equal(p.e('remaining-copy').textContent,'额度已用尽');
+});
+
+test('weekly update label switches from date to Beijing clock below 24 hours',async()=>{
+ const p=setup();await p.respond(status());
+ const now=Date.parse('2026-10-23T23:30:00+08:00')/1000;p.c.labelNow=now;
+ for(const offset of [7*86400,86401,86400,86399,3600,1,0,-1]){
+  p.c.labelAt=now+offset;
+  assert.equal(p.run('weeklyResetText(labelAt,labelNow)'),p.run(offset>=86400?'time(labelAt).split(" ")[0]':'clockTime(labelAt)'));
+ }
+ assert.equal(p.run('weeklyResetText(labelNow+3600,labelNow)'),'00:30:00');
+ p.run('renderQuota("weekly",{usedPercent:20},Date.now()/1000+3600)');
+ assert.match(p.e('weekly-copy').textContent,/^\d{2}:\d{2}:\d{2}$/);
+ p.run('renderQuota("weekly",{usedPercent:20},null)');assert.equal(p.e('weekly-copy').textContent,'预计更新待检测');assert.equal(p.e('weekly-copy').title,'');
+ p.run('renderQuota("weekly",null,labelAt)');assert.equal(p.e('weekly-copy').textContent,'未返回额度');assert.equal(p.e('weekly-copy').title,'');
 });
 
 test('schedule auto recovery notice appears once and ignores stale notices',async()=>{

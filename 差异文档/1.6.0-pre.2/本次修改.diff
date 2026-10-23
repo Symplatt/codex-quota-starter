@@ -1,0 +1,245 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index da696cf..b7f7ef9 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,12 @@
+ # 更新记录
+ 
++## [1.6.0-pre.2] - 2026-10-23
++
++### Changed
++- 额度变化统计纵轴范围固定为0%至100%；绘图区高度不足200px时每20%一个刻度，达到200px时每10%一个刻度。
++- 时间轴三个圆点外径统一为14像素；两个刷新节点保留原灰绿色空心样式，发送请求节点保留墨绿色实心样式与拖动操作。
++- 周额度下方单行显示预计更新时间：距离更新不少于24小时仅显示日期，不足24小时仅显示时分秒；悬停可查看完整北京时间。
++
+ ## [1.6.0-pre.1] - 2026-10-23
+ 
+ 本版本为1.6.0预发布，正式版仍为1.5.23。连接、CLI选择、代理、RPC参数、超时、重试与恢复实现保持1.5.23原样，默认端口8769。
+diff --git a/README.md b/README.md
+index 4a8c5a4..4841f97 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,6 @@
+ # 额度启程 · Quota Starter
+ 
+-当前预发布版本：1.6.0-pre.1；最新正式版：1.5.23
++当前预发布版本：1.6.0-pre.2；最新正式版：1.5.23
+ 
+ Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Work / Codex 共享额度，并在额度刷新后尝试发送一次简短请求。你也可以选择希望的刷新时间，由软件提前五小时安排请求。
+ 
+@@ -27,7 +27,7 @@ Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Wor
+ 
+ ### 2. 下载并安装
+ 
+-1. 测试本次更新请打开 [1.6.0预发布下载页](https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.6.0-pre.1)；[最新正式版下载页](https://github.com/Symplatt/codex-quota-starter/releases/latest)仍提供1.5.23。
++1. 测试本次更新请打开 [1.6.0预发布下载页](https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.6.0-pre.2)；[最新正式版下载页](https://github.com/Symplatt/codex-quota-starter/releases/latest)仍提供1.5.23。
+ 2. 在 **Assets** 中下载 `quota-starter-版本号-windows.zip`，不要选择 `Source code`。
+ 3. 右键 ZIP，选择 **全部解压**。
+ 4. 打开解压后的 `quota-starter` 文件夹，双击 **Install.cmd**，等待安装完成。不要直接从压缩包窗口运行。
+@@ -59,7 +59,7 @@ Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Wor
+ | 关闭软件后依然每分钟检测额度变化 | 默认关闭；开启后，暂停期间仍在每轮完成60秒后只读检测额度并更新折线图，不发送小额请求 |
+ | 开机自启动 | 在页面下方设置登录 Windows 后是否启动；关闭此开关不会停止当前后台 |
+ 
+-定时刷新与运行状态卡片统一在标题右侧显示操作按钮；标题字号较大，窄窗口自动将按钮换到标题下方。并排时卡片等高，底部分隔线对齐。两张卡片的五个操作采用无底色、无常驻边框的文字按钮，悬停时显示下划线；运行状态按钮从左到右为“重新检测”、“重新连接”和“暂停 / 恢复运行”。定时刷新使用固定长度的横向时间轴，上方显示额度刷新与预计再次刷新，下方显示发送请求，每个事件保留北京时间和日期；等待超过五小时时以断轴符号省略部分距离，短间隔按比例显示，相邻事件保留最小可见间距。时间轴三个事件采用统一信息块，首个额度刷新节点卡与“定时刷新”标题左对齐，发送请求节点通过竖线连接信息卡，两端延伸刻度范围，刷新节点向内收，留出左右余量。时间轴带尺子式长短刻度，整点用灰色小字标注；断轴省略中间时段，窄窗口自动减少整点标注以避免重叠。两张卡片等宽等高；运行状态并列显示上次和下次检测时间，悬停时可查看完整日期；底部保留简要状态，鼠标悬停可查看完整原因，操作结果显示在页面右下方，成功提示3.5秒后关闭，错误提示7秒后关闭。窄窗口自动上下排列，并按内容收紧卡片高度。
++定时刷新与运行状态卡片统一在标题右侧显示操作按钮；标题字号较大，窄窗口自动将按钮换到标题下方。并排时卡片等高，底部分隔线对齐。两张卡片的五个操作采用无底色、无常驻边框的文字按钮，悬停时显示下划线；运行状态按钮从左到右为“重新检测”、“重新连接”和“暂停 / 恢复运行”。定时刷新使用固定长度的横向时间轴，上方显示额度刷新与预计再次刷新，下方显示发送请求，每个事件保留北京时间和日期；等待超过五小时时以断轴符号省略部分距离，短间隔按比例显示，相邻事件保留最小可见间距。时间轴三个事件的圆点外径均为14像素，两个刷新节点保留原灰绿色空心样式，发送请求节点保留墨绿色实心样式和拖动操作；三个事件采用统一信息块，首个额度刷新节点卡与“定时刷新”标题左对齐，发送请求节点通过竖线连接信息卡，两端延伸刻度范围，刷新节点向内收，留出左右余量。时间轴带尺子式长短刻度，整点用灰色小字标注；断轴省略中间时段，窄窗口自动减少整点标注以避免重叠。两张卡片等宽等高；运行状态并列显示上次和下次检测时间，悬停时可查看完整日期；底部保留简要状态，鼠标悬停可查看完整原因，操作结果显示在页面右下方，成功提示3.5秒后关闭，错误提示7秒后关闭。窄窗口自动上下排列，并按内容收紧卡片高度。
+ 
+ “重新检测”、“重新连接”、“暂停 / 恢复运行”的可用文字为灰绿色；不可用时仍灰淡显示。
+ 
+@@ -85,13 +85,13 @@ Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Wor
+ 
+ ### 周额度预计更新时间
+ 
+-周额度下方显示“预计更新”及北京时间；首次检测已是五小时剩余额度100%时记录一次，之后仅在该账户五小时剩余额度从不足100%恢复到100%时，从同一份额度响应记录周刷新时间。连续100%、普通检测、刷新网页或重启均不滚动更新已记录时间。各账户分别保存；尚未达到记录条件或该次响应未返回周时间时显示“预计更新待检测”。响应未返回周额度时仍显示“未返回额度”。本功能不新增额度接口调用或小额请求，周额度百分比继续使用当前读数。
++周额度下方仅用一行显示预计更新的北京时间：距离更新不少于24小时显示日期（YYYY/MM/DD），不足24小时显示时分秒（HH:mm:ss），悬停可查看完整预计更新时间；首次检测已是五小时剩余额度100%时记录一次，之后仅在该账户五小时剩余额度从不足100%恢复到100%时，从同一份额度响应记录周刷新时间。连续100%、普通检测、刷新网页或重启均不滚动更新已记录时间。各账户分别保存；尚未达到记录条件或该次响应未返回周时间时显示“预计更新待检测”。响应未返回周额度时仍显示“未返回额度”。本功能不新增额度接口调用或小额请求，周额度百分比继续使用当前读数。
+ 
+ ### 额度变化统计
+ 
+ 统计卡位于两张概览卡片下方、日志上方。以默认最大化的电脑浏览器网页可视高度（不含浏览器工具栏和系统任务栏）为100vh；软件标题、定时刷新卡、运行状态卡及留白均保持既定尺寸，只调整额度变化统计卡高度，使统计卡底部加20px留白与100vh对齐，日志从首屏下方开始。高度较小时统计卡继续缩小，不再因剩余高度不足140px而变高；若窄屏上下排列的固定内容本身已超出可视高度，则保留滚动，不压缩这些固定内容。
+ 
+-细折线显示每分钟剩余额度；可切换五小时或周额度，以及最近一小时、五小时、二十四小时。横轴细刻度随范围变化，纵轴根据当前数据取值调整范围并增加刻度密度；曲线穿过每个真实采样点，平滑连接不产生超出采样的峰谷，曲线始终为墨绿色，快速消耗直接体现为陡降，不显示图例或变色，缺测不连线。标题与图表之间保留24像素留白；悬浮标签固定两行，第一行是日期时间，第二行是剩余额度和分钟变化，消耗和恢复的百分点按整数显示。两个选框会在当前浏览器中长期保存上次选择，刷新或重新打开页面时自动恢复。
++细折线显示每分钟剩余额度；可切换五小时或周额度，以及最近一小时、五小时、二十四小时。横轴细刻度随范围变化，纵轴范围固定为0%至100%，不随采样值变化；绘图区高度不足200px时每20%一个刻度，达到200px时每10%一个刻度；曲线穿过每个真实采样点，平滑连接不产生超出采样的峰谷，曲线始终为墨绿色，快速消耗直接体现为陡降，不显示图例或变色，缺测不连线。标题与图表之间保留24像素留白；悬浮标签固定两行，第一行是日期时间，第二行是剩余额度和分钟变化，消耗和恢复的百分点按整数显示。两个选框会在当前浏览器中长期保存上次选择，刷新或重新打开页面时自动恢复。
+ 
+ 统计复用现有检测，不额外发送模型请求；同一分钟以最后一次读取为准，关闭网页或重启后台保留采样。休眠、断网或未检测的分钟留空，跨缺口不计算变化；只显示当前账户的采样，升级前未采样的历史不补造。变化按服务器返回的百分比计算，单位为百分点，不代表精确 Token 数；检测仍在每轮完成后间隔60秒。
+ 
+@@ -153,7 +153,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Stop.ps1
+ 
+ ## 项目信息
+ 
+-当前预发布版本：**v1.6.0-pre.1**；最新正式版：**v1.5.23**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
++当前预发布版本：**v1.6.0-pre.2**；最新正式版：**v1.5.23**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
+ 
+ - [版本更新记录](CHANGELOG.md)
+ - [机制说明](MECHANISM.md)
+diff --git a/help.html b/help.html
+index f16f864..dc8c201 100644
+--- a/help.html
++++ b/help.html
+@@ -12,8 +12,8 @@
+ <h2>错误提示</h2><p>标题下方仅在当前存在连接、自启或操作错误时显示横幅，恢复后隐藏。横幅仅展示已有错误，连接与失败重试沿用既有规则。</p>
+ <h2>运行状态</h2><p>卡片并列显示上次、下次检测时间，悬停可查看完整日期；卡片底部显示简要状态，鼠标悬停可查看完整状态或错误原因。</p>
+ <h2>日志</h2><p>汇总最近50条操作、连接及小额请求记录，显示发送结果与周期验证，包含尚待核实的预留请求；不显示每分钟额度读取。日志卡片与上下各20像素留白占满一屏，点击标题平滑定位，记录区独立滚动。标题右侧可打开完整统一日志文件夹。每分钟额度读取在页面隐藏，仍写入同月 JSONL；旧触发归档去重合并，原文件另存 .bak 备份。</p>
+-<h2>周额度预计更新时间</h2><p>周额度下方显示预计更新的北京时间。首次五小时剩余额度为100%时记录一次，之后仅在从不足100%恢复100%时更新；各账户分别保存，连续100%、普通检测与重启不滚动改变。尚未达到条件或未返回周刷新时间时显示待检测；周百分比继续显示当前读数。复用同一份额度响应，不增加额度查询或小额请求。</p>
+-<h2>额度变化统计</h2><p>默认最大化浏览器下，标题、定时刷新卡、运行状态卡和留白保持既定尺寸；仅统计卡高度随网页可视高度调整，统计卡底部加20像素留白对齐100vh，日志从下一屏开始。窄屏固定内容本身超出可视高度时保留滚动。细折线显示每分钟剩余额度，点击统计卡标题可平滑滚动到卡片顶部。可切换五小时或周额度、最近一小时/五小时/二十四小时，两个选框会长期记住上次选择，刷新和重新打开页面后自动恢复；悬浮标签第一行为日期时间，第二行为剩余额度与变化。刻度按范围和数据调整密度，曲线穿过每个真实采样点，曲线始终为墨绿色，快速消耗保留真实陡降，不显示图例或变色。统计复用额度检测，同一分钟以最后一次为准，断网或休眠时留空；重启保留记录。</p>
++<h2>周额度预计更新时间</h2><p>周额度下方单行显示预计更新的北京时间：不少于24小时仅显示日期，不足24小时仅显示时分秒，悬停可查看完整日期时间。首次五小时剩余额度为100%时记录一次，之后仅在从不足100%恢复100%时更新；各账户分别保存，连续100%、普通检测与重启不滚动改变。尚未达到条件或未返回周刷新时间时显示待检测；周百分比继续显示当前读数。复用同一份额度响应，不增加额度查询或小额请求。</p>
++<h2>额度变化统计</h2><p>默认最大化浏览器下，标题、定时刷新卡、运行状态卡和留白保持既定尺寸；仅统计卡高度随网页可视高度调整，统计卡底部加20像素留白对齐100vh，日志从下一屏开始。窄屏固定内容本身超出可视高度时保留滚动。细折线显示每分钟剩余额度，点击统计卡标题可平滑滚动到卡片顶部。可切换五小时或周额度、最近一小时/五小时/二十四小时，两个选框会长期记住上次选择，刷新和重新打开页面后自动恢复；悬浮标签第一行为日期时间，第二行为剩余额度与变化。横轴刻度按时间范围调整密度，纵轴范围固定为0%至100%；绘图区高度不足200px时每20%一个刻度，达到200px时每10%一个刻度，曲线穿过每个真实采样点，曲线始终为墨绿色，快速消耗保留真实陡降，不显示图例或变色。统计复用额度检测，同一分钟以最后一次为准，断网或休眠时留空；重启保留记录。</p>
+ <h2>日志保留</h2><p>每月1日按北京时间删除三个月前及更早的月度日志，只保留本月、上月、上上月。月初未运行则在下次运行补清理；失败自动重试。</p>
+ <h2>帮助</h2><p>在主页打开居中说明弹窗。点击右上角 ×、弹窗外空白处或按 Esc 关闭；后台运行和倒计时不受影响。</p>
+ </section><section><h2>时间如何理解</h2><p>时间轴上方显示服务器额度刷新和预计再次刷新，下方显示发送请求；预计再次刷新按发送时间加五小时计算。时间轴长度固定，等待超过五小时时显示断轴符号，日期和时刻仍完整保留。整点刻度用灰色小字显示，窄窗口自动减少标注。预计再次刷新仅为估计，实际刷新仍以服务器返回为准。断开时保留最后已知时间；临时网络故障自动重连，恢复后按最新额度核验计划。</p></section><footer>额度启程 v__VERSION__</footer></main></body></html>
+diff --git a/test_ui.cjs b/test_ui.cjs
+index a85b7a1..a927c87 100644
+--- a/test_ui.cjs
++++ b/test_ui.cjs
+@@ -7,7 +7,7 @@ function setup(storage={},preferences={}){
+   const elements=new Map();
+   function element(){return {value:'',textContent:'',disabled:false,children:[],options:[],attributes:{},setAttribute(key,value){this.attributes[key]=value;},querySelector(){return null;},addEventListener(){},append(child){this.children.push(child);this.options.push(child);if(!this.value)this.value=child.value;},replaceChildren(){this.children=[];},showModal(){},close(){}};}
+   const intervals=[];let response,requests=0;
+-  const c=vm.createContext({document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,createElementNS:element},Intl,Date,JSON,AbortController,setTimeout,clearTimeout,setInterval(f){intervals.push(f);},sessionStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v},localStorage:{getItem:k=>preferences[k]||null,setItem:(k,v)=>preferences[k]=v},fetch:()=>{requests++;return new Promise(resolve=>response=resolve);}});
++  const c=vm.createContext({document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,createElementNS:element},Intl,Date:class extends Date {},JSON,AbortController,setTimeout,clearTimeout,setInterval(f){intervals.push(f);},sessionStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v},localStorage:{getItem:k=>preferences[k]||null,setItem:(k,v)=>preferences[k]=v},fetch:()=>{requests++;return new Promise(resolve=>response=resolve);}});
+   vm.runInContext(source,c);
+   return {c,e:id=>elements.get(id),run:code=>vm.runInContext(code,c),respond:async s=>{response({ok:true,json:async()=>s});await vm.runInContext('refreshPromise',c);},requests:()=>requests,storage};
+ }
+@@ -68,9 +68,17 @@ test('smooth line preserves steep drops, extrema, and disconnect gaps',async()=>
+   const numbers=paths[i].d.match(/-?[\d.]+/g).map(Number),min=Math.min(p.c.points[i].value,p.c.points[i+1].value),max=Math.max(p.c.points[i].value,p.c.points[i+1].value);
+   assert.ok(numbers[3]>=min&&numbers[3]<=max);assert.ok(numbers[5]>=min&&numbers[5]<=max);
+  }
+- const scale=JSON.parse(p.run('JSON.stringify(chartScale(points))'));assert.ok(scale.low<=40&&scale.high>=90);
+- p.c.points=[{value:99},{value:98}];const close=JSON.parse(p.run('JSON.stringify(chartScale(points))'));
+- assert.ok(close.high-close.low>=20);assert.equal(close.high,100);assert.ok(close.step<=5);
++});
++
++test('chart fixes zero-to-hundred bounds and switches tick density below 200px plot height',async()=>{
++ const p=setup(),s=status(),end=Math.floor(Date.now()/60000)*60;await p.respond(s);
++ for(const height of [60,180,236,237,238,600])for(const quota of ['primaryRemaining','secondaryRemaining'])for(const range of ['60','300','1440'])for(const values of [[],[98,99],[0,100],[40,90]]){
++  const step=height-37<200?20:10,expected=Array.from({length:100/step+1},(_,i)=>i*step+'%');
++  p.e('quota-chart').clientHeight=height;p.e('chart-quota').value=quota;p.e('chart-window').value=range;
++  p.c.history=values.map((value,i)=>({minute:end-(values.length-1-i)*60,[quota]:value}));
++  p.run('snapshot.quotaHistory=history;renderChart()');
++  assert.deepEqual(p.e('quota-chart-svg').children.filter(n=>String(n.textContent).endsWith('%')).map(n=>n.textContent),expected);
++ }
+ });
+ 
+ test('consolidated log omits routine reads and preserves small request evidence',async()=>{
+@@ -378,13 +386,28 @@ test('quota rings show live values, clamp percentages and handle missing weekly
+  assert.equal(p.e('weekly-copy').textContent,'预计更新待检测');
+  s.current.weeklyResetAt=s.current.primary.resetsAt;
+  p.run('refresh()');await p.respond(s);
+- assert.equal(p.e('weekly-copy').textContent,'预计更新：'+p.run('time(snapshot.current.weeklyResetAt)'));
++ assert.equal(p.e('weekly-copy').textContent,p.run('time(snapshot.current.weeklyResetAt).split(" ")[0]'));
++ assert.equal(p.e('weekly-copy').title,'预计更新：'+p.run('time(snapshot.current.weeklyResetAt)'));
+  p.run("renderQuota('weekly',null)");assert.equal(p.e('weekly').textContent,'—');
+  assert.equal(p.e('weekly-ring').attributes.style,'--progress:0');
+  p.run("renderQuota('remaining',{usedPercent:150})");assert.equal(p.e('remaining').textContent,'0%');
+  assert.equal(p.e('remaining-copy').textContent,'额度已用尽');
+ });
+ 
++test('weekly update label switches from date to Beijing clock below 24 hours',async()=>{
++ const p=setup();await p.respond(status());
++ const now=Date.parse('2026-10-23T23:30:00+08:00')/1000;p.c.labelNow=now;
++ for(const offset of [7*86400,86401,86400,86399,3600,1,0,-1]){
++  p.c.labelAt=now+offset;
++  assert.equal(p.run('weeklyResetText(labelAt,labelNow)'),p.run(offset>=86400?'time(labelAt).split(" ")[0]':'clockTime(labelAt)'));
++ }
++ assert.equal(p.run('weeklyResetText(labelNow+3600,labelNow)'),'00:30:00');
++ p.run('renderQuota("weekly",{usedPercent:20},Date.now()/1000+3600)');
++ assert.match(p.e('weekly-copy').textContent,/^\d{2}:\d{2}:\d{2}$/);
++ p.run('renderQuota("weekly",{usedPercent:20},null)');assert.equal(p.e('weekly-copy').textContent,'预计更新待检测');assert.equal(p.e('weekly-copy').title,'');
++ p.run('renderQuota("weekly",null,labelAt)');assert.equal(p.e('weekly-copy').textContent,'未返回额度');assert.equal(p.e('weekly-copy').title,'');
++});
++
+ test('schedule auto recovery notice appears once and ignores stale notices',async()=>{
+  const p=setup(),s=status();s.scheduleNotice={id:'plan-one',time:Date.now()/1000,message:'定时计划已失效，已恢复自动'};
+  await p.respond(s);assert.equal(p.e('toast').textContent,s.scheduleNotice.message);
+diff --git a/ui.html b/ui.html
+index e868e30..6c492e5 100644
+--- a/ui.html
++++ b/ui.html
+@@ -2199,6 +2199,7 @@
+       }
+       .timeline-event:after {
+         top: 78px;
++        box-sizing: border-box;
+         width: 14px;
+         height: 14px;
+         border-color: #7e8e84;
+@@ -2298,8 +2299,7 @@
+         margin: 7px 0 0;
+       }
+       #weekly-copy {
+-        white-space: normal;
+-        overflow-wrap: anywhere;
++        white-space: nowrap;
+       }
+       .schedule-row > .run-panel {
+         grid-template-rows: 33px 99px 87px 32px;
+@@ -3199,6 +3199,9 @@
+         reserved: "待核实",
+       };
+       const clockTime = (s) => (s ? time(s).split(" ")[1] : "—");
++      function weeklyResetText(at, now = Date.now() / 1000) {
++        return at - now >= 86400 ? time(at).split(" ")[0] : clockTime(at);
++      }
+       function renderQuota(id, quota, weeklyResetAt) {
+         const value = quota
+           ? Math.max(0, Math.min(100, 100 - quota.usedPercent))
+@@ -3216,11 +3219,16 @@
+             ? "未返回额度"
+             : id === "weekly"
+               ? weeklyResetAt
+-                ? "预计更新：" + time(weeklyResetAt)
++                ? weeklyResetText(weeklyResetAt)
+                 : "预计更新待检测"
+               : value > 0
+                 ? "当前可正常发送请求"
+                 : "额度已用尽";
++        if (id === "weekly")
++          $("weekly-copy").title =
++            value !== null && weeklyResetAt
++              ? "预计更新：" + time(weeklyResetAt)
++              : "";
+       }
+       function timeBlock(id, dateId, value) {
+         $(id).textContent = clockTime(value);
+@@ -3957,19 +3965,8 @@
+             return { ...p, value: p[key], delta };
+           });
+       }
+-      function chartScale(points) {
+-        const values = points.map((p) => p.value),
+-          min = values.length ? Math.min(...values) : 0,
+-          max = values.length ? Math.max(...values) : 100;
+-        const span = Math.max(20, max - min + 6),
+-          step = span <= 25 ? 2 : span <= 50 ? 5 : 10;
+-        let low = Math.max(0, Math.floor((min - 3) / step) * step),
+-          high = Math.min(100, Math.ceil((max + 3) / step) * step);
+-        if (high - low < 20) {
+-          low = Math.max(0, Math.min(low, high - 20));
+-          high = Math.min(100, Math.max(high, low + 20));
+-        }
+-        return { low, high, step };
++      function chartScale(plotHeight) {
++        return { low: 0, high: 100, step: plotHeight < 200 ? 20 : 10 };
+       }
+       function chartSegments(points, x, y) {
+         const segments = [];
+@@ -4069,12 +4066,9 @@
+         const left = 42,
+           right = width - 16,
+           plot = right - left,
+-          { low, high, step: baseStep } = chartScale(points),
+           bottom = height - 25,
+-          plotHeight = height - 37;
+-        const step =
+-          baseStep *
+-          Math.max(1, Math.ceil((((high - low) / baseStep) * 12) / plotHeight));
++          plotHeight = height - 37,
++          { low, high, step } = chartScale(plotHeight);
+         const x = (minute) => left + ((minute - start) / (end - start)) * plot,
+           y = (value) => bottom - ((value - low) / (high - low)) * plotHeight;
+         for (let value = low; value <= high; value += step) {
+diff --git a/version.py b/version.py
+index c072e51..5b2eba4 100644
+--- a/version.py
++++ b/version.py
+@@ -1 +1 @@
+-VERSION = '1.6.0-pre.1'
++VERSION = '1.6.0-pre.2'

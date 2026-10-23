@@ -2199,6 +2199,7 @@
       }
       .timeline-event:after {
         top: 78px;
+        box-sizing: border-box;
         width: 14px;
         height: 14px;
         border-color: #7e8e84;
@@ -2298,8 +2299,7 @@
         margin: 7px 0 0;
       }
       #weekly-copy {
-        white-space: normal;
-        overflow-wrap: anywhere;
+        white-space: nowrap;
       }
       .schedule-row > .run-panel {
         grid-template-rows: 33px 99px 87px 32px;
@@ -3199,6 +3199,9 @@
         reserved: "待核实",
       };
       const clockTime = (s) => (s ? time(s).split(" ")[1] : "—");
+      function weeklyResetText(at, now = Date.now() / 1000) {
+        return at - now >= 86400 ? time(at).split(" ")[0] : clockTime(at);
+      }
       function renderQuota(id, quota, weeklyResetAt) {
         const value = quota
           ? Math.max(0, Math.min(100, 100 - quota.usedPercent))
@@ -3216,11 +3219,16 @@
             ? "未返回额度"
             : id === "weekly"
               ? weeklyResetAt
-                ? "预计更新：" + time(weeklyResetAt)
+                ? weeklyResetText(weeklyResetAt)
                 : "预计更新待检测"
               : value > 0
                 ? "当前可正常发送请求"
                 : "额度已用尽";
+        if (id === "weekly")
+          $("weekly-copy").title =
+            value !== null && weeklyResetAt
+              ? "预计更新：" + time(weeklyResetAt)
+              : "";
       }
       function timeBlock(id, dateId, value) {
         $(id).textContent = clockTime(value);
@@ -3957,19 +3965,8 @@
             return { ...p, value: p[key], delta };
           });
       }
-      function chartScale(points) {
-        const values = points.map((p) => p.value),
-          min = values.length ? Math.min(...values) : 0,
-          max = values.length ? Math.max(...values) : 100;
-        const span = Math.max(20, max - min + 6),
-          step = span <= 25 ? 2 : span <= 50 ? 5 : 10;
-        let low = Math.max(0, Math.floor((min - 3) / step) * step),
-          high = Math.min(100, Math.ceil((max + 3) / step) * step);
-        if (high - low < 20) {
-          low = Math.max(0, Math.min(low, high - 20));
-          high = Math.min(100, Math.max(high, low + 20));
-        }
-        return { low, high, step };
+      function chartScale(plotHeight) {
+        return { low: 0, high: 100, step: plotHeight < 200 ? 20 : 10 };
       }
       function chartSegments(points, x, y) {
         const segments = [];
@@ -4069,12 +4066,9 @@
         const left = 42,
           right = width - 16,
           plot = right - left,
-          { low, high, step: baseStep } = chartScale(points),
           bottom = height - 25,
-          plotHeight = height - 37;
-        const step =
-          baseStep *
-          Math.max(1, Math.ceil((((high - low) / baseStep) * 12) / plotHeight));
+          plotHeight = height - 37,
+          { low, high, step } = chartScale(plotHeight);
         const x = (minute) => left + ((minute - start) / (end - start)) * plot,
           y = (value) => bottom - ((value - low) / (high - low)) * plotHeight;
         for (let value = low; value <= high; value += step) {
