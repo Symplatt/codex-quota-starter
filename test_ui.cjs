@@ -441,6 +441,34 @@ test('only statistics height absorbs available viewport space, including below t
  assert.equal(p.e('timeline-reset-at').textContent,'19:09:00');
 });
 
+test('error banners shift the statistics card without reducing its height',async()=>{
+ const p=setup();await p.respond(status());
+ p.run(`window={innerHeight:1080,scrollY:0};
+   getComputedStyle=()=>({getPropertyValue:key=>key==='margin-bottom'?'0':'20'});
+   document.getElementById('quota-chart-panel').style={};
+   document.getElementById('quota-chart-panel').getBoundingClientRect=()=>({top:500});
+   fitChartCard();`);
+ assert.equal(p.e('quota-chart-panel').style.height,'560px');
+ for (const height of [56,200,600]) {
+  p.run(`document.getElementById('error-banner').hidden=false;
+    document.getElementById('error-banner').getBoundingClientRect=()=>({height:${height}});
+    document.getElementById('quota-chart-panel').getBoundingClientRect=()=>({top:${500+height+20}});
+    fitChartCard();`);
+  assert.equal(p.e('quota-chart-panel').style.height,'560px');
+ }
+ p.run('window.innerHeight=900;fitChartCard()');
+ assert.equal(p.e('quota-chart-panel').style.height,'380px');
+ p.run(`document.getElementById('error-banner').hidden=true;
+   document.getElementById('quota-chart-panel').getBoundingClientRect=()=>({top:500});fitChartCard()`);
+ assert.equal(p.e('quota-chart-panel').style.height,'380px');
+});
+
+test('software information renders the current backend installation path as text',async()=>{
+ const p=setup(),s=status();s.installationPath='E:\\源码 & <目录>\\quota-starter';
+ await p.respond(s);assert.equal(p.e('installation-path').textContent,s.installationPath);
+ p.run('refresh()');await p.respond(status());assert.equal(p.e('installation-path').textContent,'—');
+});
+
 test('disconnected quota labels never claim requests can currently be sent',async()=>{
  const p=setup(),s=status();s.linked=false;await p.respond(s);
  assert.equal(p.e('remaining-copy').textContent,'连接中断，显示上次额度');

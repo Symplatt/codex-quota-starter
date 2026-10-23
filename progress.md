@@ -1,3 +1,11 @@
+# 1.6.0-pre.5 安装路径、横幅与日志布局（2026-10-24，审核通过）
+
+- 用户已明确审核通过；CHANGELOG、README、帮助及版本已同步。新增实际安装路径，错误横幅只将统计卡整体下移，日志卡片随内容收紧并保留一屏上限及内部滚动。
+- 验证：隔离发布目录223项Python、61项Node通过；真实浏览器横幅3种窗口及日志4种窗口24组检查通过。正式ZIP共49文件逐项核对，包内5项连接基线测试通过，SHA-256为3cb9e468cf48ab50fe4594f1545f991236b7a9d325ddcd07d8f022f5c473822e。
+- 本机已在源码目录E:\work-space\quota-starter启用pre.5，桌面快捷方式实际启动成功；真实后台linked=true、idle，自启动已启用且无错误，软件信息路径正确、日志无额外留白。28个运行文件与ZIP一致，SQLite完整性ok，1条attempts、2条claims、0个预设任务以及计划/暂停/暂停检测/任务设置内容指纹全部保留。
+- 本机原安装目录已按用户要求移除，原数据备份在%LOCALAPPDATA%\QuotaStarterBackups\installed-before-source-switch-20261024-022213；本次重启前数据库备份在dist/release-pre5/runtime-backup.sqlite3。桌面、开始菜单、自启动均指向源码目录。其他用户安装仍默认使用%LOCALAPPDATA%\Programs\QuotaStarter，通常位于C盘用户目录。
+- 已准备D盘独立未选复选框更新日志；ZIP保留于dist，按约定不放D盘。远程commit/Push/Tag/Release及公开资产最终核验正在执行；核验记录见差异文档/1.6.0-pre.5/发布核验.json。
+
 # 1.6.0-pre.4 预设任务（2026-10-23）
 
 - 已完成：预设任务全部功能及最新修改：本机模型检测/标签复选、AppData默认目录、表单顺序/加粗/26px行距、状态独立列/右对齐、详情视觉左移6px、详情目录内路径缩写/标题右侧等高居中状态胶囊/去重复进度、标题下更新说明/28px留白、导航首项回页顶/末项自然底部、时间轴对齐、检测中时间操作队列；重新检测/重新连接/恢复运行更新周恢复时间，每次五小时100%后补读一次周额度，保留5055980的UI调整。
@@ -5,7 +13,10 @@
 - 已安装页面：http://127.0.0.1:8769；pre.4正式ZIP覆盖安装及真实启动通过，原手动计划、暂停/暂停检测/自启设置、32条attempts及58条claims逐项保留，28个程序文件与ZIP一致，SQLite完整性ok；桌面快捷方式实际启动新版通过。隔离审核后台18779已停止。
 - 审核材料：差异文档/1.6.0-pre.4，含完整代码、SHA-256清单、验证、真实截图及D盘复选框日志草案。
 - D盘独立复选框日志已更新并逐字节核验：D:\Quota-Starter-1.6.0-pre.4-更新日志.md；22个选框全部未选，规则已加入AGENTS.md；ZIP不放D盘。
-- 当前：2026-10-23用户明确审核通过；CHANGELOG与发布版说明已同步。49文件正式ZIP解包后223项Python/59项Node通过，安装与快捷方式核验通过；正在执行commit、Push、v1.6.0-pre.4 Tag与预发布、CI及资产回验。备份为dist/release-pre4/installed-backup。
+- 已完成：2026-10-23用户审核通过；发布提交09f0af19ace7486ed9d966b4b1a2595d30a020d8及v1.6.0-pre.4 Tag已推送，预发布公开：https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.6.0-pre.4。分支/Tag Windows CI均成功（39967817730、39968260644）。首次CI的Windows临时短路径断言已在测试中规范化，程序行为不变。
+- 公开匿名下载回验：两份资产与本地一致，49个文件对应发布Tag、28个安装文件对应公开ZIP；SHA-256为518e901643409656fa2a614567d77baf40e8fafcd77bf4480d5705bcdaaaf33a。Latest仍为v1.5.23，main、archive及旧v1.6.0 Tag未变。安装核验后发生的用户新手动计划已保留。
+- 最终记录为单独docs提交；README项目信息残留的pre.3当前版本文字及pre.1历史表述已纠正，已公开Tag和资产保持原样。备份为dist/release-pre4/installed-backup。
+- 教学文档：D:\Quota Starter 教学文档.md，含只读界面预览、pre.3分线转正式与旧v1.6.0标签冲突、网页/CLI发布、安装数据核验和故障恢复；预览脚本与文档内代码语法已验证。没有执行正式版转换。
 
 ---
 

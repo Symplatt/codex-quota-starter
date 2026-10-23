@@ -2661,9 +2661,10 @@
         white-space: nowrap;
       }
       #activity-panel {
-        height: calc(100vh - 2 * var(--card-gap));
-        height: calc(100dvh - 2 * var(--card-gap));
-        min-height: 200px;
+        height: auto;
+        max-height: calc(100vh - 2 * var(--card-gap));
+        max-height: calc(100dvh - 2 * var(--card-gap));
+        min-height: 0;
         display: flex;
         flex-direction: column;
         scroll-margin-top: var(--card-gap);
@@ -2684,7 +2685,7 @@
       .activity-table {
         min-height: 0;
         max-height: none;
-        flex: 1 1 auto;
+        flex: 0 1 auto;
         overflow: auto;
         overscroll-behavior: contain;
       }
@@ -3212,6 +3213,7 @@
           ><span>版本：<strong id="version">—</strong></span
           ><span>版权所有 © 2026 Symplatt</span>
         </div>
+        <div class="small" style="margin-top: 12px; overflow-wrap: anywhere">安装路径：<span id="installation-path">—</span></div>
       </section>
     </main>
     <nav class="page-nodes" aria-label="卡片导航">
@@ -4129,7 +4131,17 @@
         const gap =
           parseFloat(getComputedStyle(card).getPropertyValue("--card-gap")) ||
           20;
-        const available = window.innerHeight - top - gap;
+        const banner = $("error-banner");
+        let bannerSpace = 0;
+        if (!banner.hidden) {
+          const style = getComputedStyle(banner);
+          bannerSpace = banner.getBoundingClientRect().height +
+            (parseFloat(style.getPropertyValue("margin-top")) || 0) +
+            (parseFloat(style.getPropertyValue("margin-bottom")) || 0);
+        }
+        // Ignore the banner's flow space when sizing: an error shifts the whole
+        // card down without shrinking it, including on initial load or resize.
+        const available = window.innerHeight - (top - bannerSpace) - gap;
         // Only the statistics card absorbs the remaining viewport height. The
         // title, schedule/status cards and their spacing keep their CSS sizes.
         // Narrow layouts may stack the fixed cards; fit whenever they leave room.
@@ -4349,6 +4361,7 @@
         snapshot = s;
         paused = s.paused;
         $("version").textContent = "v" + s.version;
+        $("installation-path").textContent = s.installationPath || "—";
         $("badge").textContent = paused
           ? "停止运行"
           : s.connection?.stopped

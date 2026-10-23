@@ -77,6 +77,7 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None, tasks=None)
                 return self.send(200, {'token': csrf})
             if self.path == '/api/status':
                 return self.send(200, {'service': 'quota-starter', 'version': VERSION,
+                     'installationPath': str(ROOT),
                      'status': engine.status, 'busy': engine.lock.locked() or bool(engine.read_requested),
                      'phase': engine.phase, 'linked': engine.linked,
                      'paused': engine.store.get('paused', False),

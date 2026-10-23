@@ -1,0 +1,24 @@
+{
+  "version": "1.6.0-pre.5",
+  "approved": true,
+  "date": "2026-10-24",
+  "pythonTests": 223,
+  "nodeTests": 61,
+  "packagedBaselineTests": 5,
+  "packageFiles": 49,
+  "runtimeFilesMatched": 28,
+  "sha256": "3cb9e468cf48ab50fe4594f1545f991236b7a9d325ddcd07d8f022f5c473822e",
+  "runningPath": "E:\\work-space\\quota-starter",
+  "linked": true,
+  "phase": "idle",
+  "autostartEnabled": true,
+  "desktopShortcutLaunched": true,
+  "databaseIntegrity": "ok",
+  "settingsAndLedgerPreserved": true,
+  "runtimeCounts": {
+    "attempts": 1,
+    "claims": 2,
+    "scheduled_tasks": 0
+  },
+  "remoteStatus": "pending"
+}

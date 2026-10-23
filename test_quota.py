@@ -424,6 +424,8 @@ class HTTPTests(unittest.TestCase):
     def test_status_and_no_secret(self):
         status,body=self.request('GET','/api/status')
         self.assertEqual(status,200); self.assertEqual(json.loads(body)['service'],'quota-starter')
+        from app import ROOT
+        self.assertEqual(json.loads(body)['installationPath'], str(ROOT))
 
     def test_cross_origin_rejected(self):
         self.assertEqual(self.request('POST','/api/pause',{'Origin':'https://evil.example'})[0],403)

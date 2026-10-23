@@ -1,0 +1,522 @@
+import concurrent.futures
+import copy
+import http.client
+import json
+from pathlib import Path
+import re
+import tempfile
+import threading
+import unittest
+from unittest.mock import Mock, patch
+
+from core import Engine, Store, candidate, evidence, normalize
+from app import create_server
+from rpc import RPC
+
+
+def csrf_token(page):
+    return re.search(r'\b(?:const|let)\s+token\s*=\s*([\'\"])(.*?)\1', page)[2]
+
+
+def raw(end=20000, used=10, weekly=20):
+    bucket = {'limitId': 'codex', 'planType': 'plus',
+              'primary': {'resetsAt': end, 'usedPercent': used, 'windowDurationMins': 300},
+              'secondary': {'resetsAt': 90000, 'usedPercent': weekly, 'windowDurationMins': 10080}}
+    return {'accountId': 'test-account', 'rateLimits': bucket, 'rateLimitsByLimitId': {'codex': bucket}}
+
+
+class FakeRPC:
+    def __init__(self, values, send_error=False):
+        self.values = values
+        self.send_error = send_error
+        self.sent = 0
+        self.reads = 0
+
+    def account(self):
+        return {'type': 'chatgpt', 'planType': 'plus', 'email': 'test@example.test'}
+
+    def limits(self):
+        value = self.values[min(self.reads, len(self.values)-1)]
+        self.reads += 1
+        if isinstance(value, Exception):
+            raise value
+        return copy.deepcopy(value)
+
+    def prepare(self, cwd):
+        return {'threadId': 'fake-thread', 'model': 'gpt-6-luna', 'effort': 'low'}
+
+    def send_minimal(self, prepared):
+        self.sent += 1
+        if self.send_error:
+            raise TimeoutError('lost response')
+        return {'status': 'completed', 'reply': 'OK', 'turnId': 'fake-turn'}
+
+    def close(self):
+        pass
+
+
+class QuotaTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name)/'state.sqlite3')
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def engine(self, fake, now=20002):
+        timer = [now]
+        return Engine(self.store, Path(self.tmp.name)/'empty', rpc_factory=lambda _: fake,
+                      clock=lambda: timer[0], sleeper=lambda seconds: timer.__setitem__(0, timer[0]+seconds))
+
+    def test_multi_bucket_is_authoritative(self):
+        r = raw(); r['rateLimitsByLimitId'] = {'other': r['rateLimits']}
+        with self.assertRaises(ValueError): normalize(r)
+
+    def test_legacy_codex_bucket(self):
+        r = raw(); del r['rateLimitsByLimitId']
+        self.assertEqual(normalize(r)['bucket'], 'codex')
+
+    def test_unknown_percentage_not_zero(self):
+        r=raw(); r['rateLimits']['primary']['usedPercent']=None
+        with self.assertRaises(ValueError): normalize(r)
+
+    def test_wrong_duration_rejected(self):
+        r=raw(); r['rateLimits']['primary']['windowDurationMins']=60
+        with self.assertRaises(ValueError): normalize(r)
+
+    def test_nan_rejected(self):
+        r=raw(); r['rateLimits']['primary']['resetsAt']=float('nan')
+        with self.assertRaises(ValueError): normalize(r)
+
+    def test_weekly_blocks_even_past_timestamp(self):
+        self.assertIsNone(candidate(normalize(raw(100,0,100)),None,200)[0])
+
+    def test_primary_exhausted_blocks(self):
+        self.assertIsNone(candidate(normalize(raw(100,100)),None,200)[0])
+
+    def test_server_disallows_ordinary_usage(self):
+        r=raw(); r['ordinaryUsageAllowed']=False
+        self.assertTrue(normalize(r)['blocked'])
+
+    def test_secondary_missing_fields_fail_closed(self):
+        r=raw(); del r['rateLimits']['secondary']['usedPercent']
+        with self.assertRaises(ValueError): normalize(r)
+
+    def test_wait_in_active_window(self):
+        self.assertIsNone(candidate(normalize(raw()),None,100)[0])
+
+    def test_empty_window_bootstrap(self):
+        self.assertEqual(candidate(normalize(raw(20000,0)),None,100)[0], 'cycle:20000')
+
+    def test_not_early_at_boundary(self):
+        self.assertIsNone(candidate(normalize(raw()),None,20001)[0])
+
+    def test_boundary_two_seconds_later(self):
+        self.assertEqual(candidate(normalize(raw()),None,20002)[0], 'after:20000')
+
+    def test_concurrent_user_already_started(self):
+        self.assertIsNone(candidate(normalize(raw(38000,1)),normalize(raw()),20002)[0])
+
+    def test_one_submission_across_restart(self):
+        fake=FakeRPC([raw(),raw(),raw(38002,0)])
+        self.engine(fake).tick()
+        other=FakeRPC([raw(38002,0)])
+        self.engine(other,20100).tick(manual=True)
+        self.assertEqual(fake.sent,1); self.assertEqual(other.sent,0)
+        self.assertEqual(len(self.store.recent('attempts')),1)
+
+    def test_next_window_can_trigger(self):
+        fake=FakeRPC([raw(),raw(),raw(38002,0)])
+        self.engine(fake).tick()
+        other=FakeRPC([raw(38002,1),raw(38002,1),raw(56004,0)])
+        self.engine(other,38004).tick()
+        self.assertEqual(other.sent,1)
+
+    def test_timeout_attempts_five_times_then_stops(self):
+        fake=FakeRPC([raw()],send_error=True)
+        self.engine(fake).tick()
+        self.engine(fake,20100).tick(manual=True)
+        self.assertEqual(fake.sent,5)
+        self.assertTrue(self.store.get('connection')['stopped'])
+        self.assertEqual(self.store.recent('attempts')[0]['status'],'unknown')
+
+    def test_claim_survives_pre_send_crash(self):
+        self.assertIsNotNone(self.store.claim('acct','after:100',100,{}))
+        recovered=Store(self.store.path)
+        self.assertIsNone(recovered.claim('acct','cycle:18100',110,{}))
+
+    def test_identity_field_change_does_not_bypass_guard(self):
+        self.store.claim('account-id-hash','cycle:20000',100,{})
+        self.assertIsNone(self.store.claim('email-hash','cycle:20000',110,{}))
+        self.assertIsNone(self.store.claim('email-hash','cycle:20001',110,{}))
+
+    def test_missing_account_id_after_restart_does_not_repeat(self):
+        fake=FakeRPC([raw(),raw(),raw(38002,0)])
+        self.engine(fake).tick()
+        other_raw=raw(38002,0); del other_raw['accountId']
+        other=FakeRPC([other_raw])
+        self.engine(other,20100).tick(manual=True)
+        self.assertEqual(other.sent,0)
+
+    def test_old_identity_claim_still_blocks_after_guard_expires(self):
+        self.store.claim('old-identity','cycle:20000',100,{})
+        self.assertIsNone(self.store.claim('new-identity','cycle:20000',20000,{}))
+
+    def test_concurrent_claims_at_most_once(self):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            results=list(pool.map(lambda _: self.store.claim('acct','after:100',100,{}),range(8)))
+        self.assertEqual(sum(x is not None for x in results),1)
+
+    def test_paused_does_not_send(self):
+        self.store.set('paused',True)
+        fake=FakeRPC([raw()]); self.engine(fake).tick(manual=True)
+        self.assertEqual(fake.sent,0)
+
+    def test_preflight_rechecks_weekly(self):
+        fake=FakeRPC([raw(),raw(20000,10,100)])
+        self.engine(fake).tick()
+        self.assertEqual(fake.sent,0)
+
+    def test_account_switch_during_preparation(self):
+        changed=raw(); changed['accountId']='other'
+        fake=FakeRPC([raw(),changed]); self.engine(fake).tick()
+        self.assertEqual(fake.sent,0)
+
+    def test_quota_only_read_never_prepares_or_sends(self):
+        scenarios = [('idle', 100, 0, False, None),
+                     ('reset_due', 20002, 10, False, None),
+                     ('schedule_due', 20002, 0, False, {'status': 'pending', 'sendAt': 19000}),
+                     ('paused', 20002, 0, True, None)]
+        for name, now, used, paused, schedule in scenarios:
+            with self.subTest(name=name):
+                self.store.set('paused', paused)
+                self.store.set('schedule', schedule)
+                self.store.set('current', normalize(raw(20000, used)))
+                fake = FakeRPC([raw(20000, used)])
+                fake.prepare = Mock(side_effect=AssertionError('Read-only check prepared a request'))
+                e = self.engine(fake, now)
+                e.next_poll = 22000
+                result = e.tick(check_only=True)
+                self.assertIn('当前额度已更新', result)
+                self.assertEqual(fake.reads, 2 if used == 0 else 1)
+                fake.prepare.assert_not_called()
+                self.assertEqual(fake.sent, 0)
+                # The 1.5.23 completion cadence is unchanged; paused polling is
+                # suppressed by the outer scheduler and hidden in /api/status.
+                self.assertEqual(e.next_poll, now + 60)
+                self.assertEqual(self.store.get('current')['primary']['usedPercent'], used)
+                self.assertEqual(self.store.get('current')['checkedAt'], now)
+                self.assertEqual(self.store.get('schedule')['status'], 'pending') if schedule else self.assertIsNone(self.store.get('schedule'))
+                self.assertEqual(self.store.recent('attempts'), [])
+                with self.store.connect() as db:
+                    self.assertEqual(db.execute('SELECT COUNT(*) FROM claims').fetchone()[0], 0)
+
+    def test_quota_only_read_failure_preserves_data_and_schedules_retry(self):
+        previous = {'checkedAt': 50, 'primary': {'usedPercent': 25}}
+        self.store.set('current', previous)
+        fake = FakeRPC([TimeoutError('offline')])
+        e = self.engine(fake)
+        e.next_poll = 22000
+        self.assertIn('连接/检测失败', e.tick(check_only=True))
+        self.assertEqual(e.next_poll, 20012)
+        self.assertEqual(self.store.get('current'), previous)
+        self.assertEqual(fake.sent, 0)
+
+    def test_quota_only_read_does_not_interrupt_busy_engine(self):
+        fake = FakeRPC([raw()])
+        e = self.engine(fake)
+        with e.lock:
+            self.assertEqual(e.tick(check_only=True), '检测或请求正在进行')
+        self.assertEqual(fake.reads, 0)
+        self.assertEqual(fake.sent, 0)
+
+    def test_no_guess_when_read_fails(self):
+        fake=FakeRPC([TimeoutError('offline')]); e=self.engine(fake); e.tick()
+        self.assertEqual(fake.sent,0); self.assertGreater(e.next_poll,20002)
+
+    def test_delayed_reset_is_not_fabricated(self):
+        e=evidence(normalize(raw()),normalize(raw()),20002,True)
+        self.assertEqual(e,'发送小额请求，该请求并未导致下次额度刷新时间出现变化（相差≤5秒视为不变）')
+
+    def test_one_second_jitter_is_not_new_cycle_evidence(self):
+        e=evidence(normalize(raw()),normalize(raw(20001)),20002,True)
+        self.assertEqual(e,'发送小额请求，该请求并未导致下次额度刷新时间出现变化（相差≤5秒视为不变）')
+        self.assertEqual(candidate(normalize(raw(20001)),normalize(raw()),100)[1],'等待服务器重置时间')
+
+    def test_completed_request_with_five_hour_countdown(self):
+        e=evidence(normalize(raw()),normalize(raw(38002)),20002,True)
+        self.assertEqual(e,'发送小额请求，ChatGPT将于5小时后刷新额度')
+
+    def test_api_key_rejected(self):
+        rpc=object.__new__(RPC)
+        rpc.call=lambda *args,**kwargs:{'account':{'type':'apiKey'}}
+        with self.assertRaises(RuntimeError): rpc.account()
+
+    def test_no_expensive_model_fallback(self):
+        rpc=object.__new__(RPC)
+        rpc.call=lambda *args,**kwargs:{'data':[{'model':'gpt-6-astra','hidden':False}]}
+        with self.assertRaises(RuntimeError): rpc.choose_model()
+
+
+
+class RetryTests(unittest.TestCase):
+    setUp = QuotaTests.setUp
+    tearDown = QuotaTests.tearDown
+    engine = QuotaTests.engine
+
+    def test_connection_failure_cooldown_survives_restart(self):
+        fake = FakeRPC([TimeoutError('offline')])
+        for now in (100, 110, 120, 130, 140):
+            self.engine(fake, now).tick()
+        self.assertFalse(self.store.get('connection')['stopped'])
+        self.assertEqual(self.store.get('connection')['recoveryAt'], 170)
+        self.engine(fake, 169).tick(check_only=True)
+        self.assertEqual(fake.reads, 5)
+        self.engine(fake, 170).tick()
+        self.assertEqual(fake.reads, 6)
+        self.assertEqual(self.store.get('connection')['failures'], 1)
+
+    def test_total_deadline_prevents_another_connection(self):
+        fake = FakeRPC([TimeoutError('offline')])
+        self.engine(fake, 100).tick()
+        self.engine(fake, 160).tick()
+        self.assertEqual(fake.reads, 1)
+        self.assertFalse(self.store.get('connection')['stopped'])
+        self.assertEqual(self.store.get('connection')['recoveryAt'], 190)
+
+    def test_interval_cannot_be_bypassed_by_recheck(self):
+        fake = FakeRPC([TimeoutError('offline')])
+        self.engine(fake, 100).tick()
+        self.engine(fake, 101).tick(check_only=True)
+        self.assertEqual(fake.reads, 1)
+        self.assertEqual(self.store.get('connection')['failures'], 1)
+
+    def test_first_attempt_has_deadline_and_retry_waits_ten_seconds(self):
+        fake = FakeRPC([TimeoutError('offline')])
+        e = self.engine(fake, 100)
+        e.tick()
+        self.assertEqual(fake.deadline, 160)
+        self.assertEqual(e.next_poll, 110)
+        self.engine(fake, 109).tick()
+        self.assertEqual(fake.reads, 1)
+        self.engine(fake, 110).tick()
+        self.assertEqual(fake.reads, 2)
+        self.assertEqual(fake.deadline, 160)
+
+    def test_disconnected_expired_plan_remains_visible_without_connecting(self):
+        self.store.set('current', {'primary': {'resetsAt': 100}})
+        self.store.set('connection', {'stopped': True})
+        fake = FakeRPC([raw()]); e = self.engine(fake, 500)
+        self.assertEqual(e.timing()['sendAt'], 102)
+        self.assertEqual(e.timing()['estimatedResetAt'], 18102)
+        e.tick()
+        self.assertEqual(fake.reads, 0)
+        self.store.set('schedule', {'status': 'pending', 'sendAt': 600})
+        self.assertEqual(e.timing()['sendAt'], 600)
+
+    def test_reconnect_preserves_pause_and_guard(self):
+        self.store.set('paused', True)
+        self.store.claim('acct', 'cycle:20000', 100, {})
+        self.store.set('connection', {'stopped': True})
+        fake = FakeRPC([raw()]); e = self.engine(fake, 200)
+        guard = self.store.guard_until()
+        e.reconnect(); e.tick()
+        self.assertFalse(e.connection())
+        self.assertTrue(self.store.get('paused'))
+        self.assertEqual(self.store.guard_until(), guard)
+        self.assertEqual(fake.sent, 0)
+        self.assertEqual(fake.reads, 1)
+
+    def test_send_retry_recovers_and_clears_budget(self):
+        fake = FakeRPC([raw()])
+        fake.send_minimal = Mock(side_effect=[TimeoutError('lost'), {'status': 'completed'}])
+        e = self.engine(fake); e.tick()
+        self.assertEqual(fake.send_minimal.call_count, 2)
+        self.assertFalse(e.connection())
+        self.assertEqual(self.store.recent('attempts')[0]['status'], 'completed')
+
+    def test_send_time_budget_stops_before_retry_limit(self):
+        fake = FakeRPC([raw()], send_error=True)
+        e = self.engine(fake)
+        original = fake.send_minimal
+        def slow(prepared):
+            e.sleeper(160)
+            return original(prepared)
+        fake.send_minimal = slow
+        e.tick()
+        self.assertEqual(fake.sent, 1)
+        self.assertTrue(e.connection()['stopped'])
+
+    def test_retry_checks_weekly_limit(self):
+        fake = FakeRPC([raw(), raw(), raw(20000, 10, 100)], send_error=True)
+        e = self.engine(fake); e.tick()
+        self.assertEqual(fake.sent, 1)
+        self.assertIn('额度受限', e.status)
+        self.assertFalse(e.connection())
+
+    def test_restart_during_send_requires_manual_reconnect(self):
+        self.store.set('sending', True)
+        fake = FakeRPC([raw()]); e = self.engine(fake)
+        e.tick()
+        self.assertTrue(e.connection()['stopped'])
+        self.assertEqual(fake.reads, 0)
+
+    def test_reconnect_rejected_while_busy(self):
+        e = self.engine(FakeRPC([raw()]))
+        with e.lock:
+            with self.assertRaises(RuntimeError): e.reconnect()
+
+class HTTPTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp=tempfile.TemporaryDirectory()
+        cls.engine=Engine(Store(Path(cls.tmp.name)/'db'),Path(cls.tmp.name)/'empty')
+        class FakeStartup:
+            enabled=True
+            def apply(self,action):
+                if action != 'status': self.enabled=action=='enable'
+                return {'available':True,'enabled':self.enabled,'error':None}
+        cls.server=create_server(cls.engine,port=18769,startup=FakeStartup())
+        cls.thread=threading.Thread(target=cls.server.serve_forever,daemon=True); cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown(); cls.server.server_close(); cls.thread.join(); cls.tmp.cleanup()
+
+    def setUp(self):
+        self.engine.read_requested = None
+        self.engine.store.set('connection', {})
+        self.engine.set_paused(False)
+
+    def request(self,method,path,headers=None,body=None):
+        c=http.client.HTTPConnection('127.0.0.1',18769)
+        c.request(method,path,headers=headers or {},body=body)
+        r=c.getresponse(); result=(r.status,r.read().decode()); c.close(); return result
+
+    def test_open_logs_uses_fixed_directory_and_records_result(self):
+        _, page = self.request('GET', '/')
+        token = csrf_token(page)
+        headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
+        with patch('app.os.startfile', create=True) as open_folder:
+            self.assertEqual(self.request('POST', '/api/logs/open')[0], 403)
+            open_folder.assert_not_called()
+            self.assertEqual(self.request('POST', '/api/logs/open', headers)[0], 200)
+            open_folder.assert_called_once_with(str(self.engine.store.log_dir.resolve()))
+        with patch('app.os.startfile', side_effect=OSError('failed'), create=True):
+            self.assertEqual(self.request('POST', '/api/logs/open', headers)[0], 500)
+        event = self.engine.store.recent('events', 1)[0]
+        self.assertEqual(event['detail']['action'], 'open_logs')
+        self.assertEqual(event['detail']['error'], 'failed')
+
+    def test_open_triggers_uses_fixed_directory_and_requires_valid_origin_and_token(self):
+        _, page = self.request('GET', '/')
+        token = csrf_token(page)
+        headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
+        with patch('app.os.startfile', create=True) as open_folder:
+            self.assertEqual(self.request('POST', '/api/triggers/open')[0], 403)
+            open_folder.assert_not_called()
+            self.assertEqual(self.request('POST', '/api/triggers/open', headers)[0], 200)
+            open_folder.assert_called_once_with(str(self.engine.store.trigger_dir.resolve()))
+        with patch('app.os.startfile', side_effect=OSError('locked'), create=True):
+            self.assertEqual(self.request('POST', '/api/triggers/open', headers)[0], 500)
+        self.assertEqual(self.engine.store.recent('events', 1)[0]['detail']['action'], 'open_triggers')
+
+    def test_status_and_no_secret(self):
+        status,body=self.request('GET','/api/status')
+        self.assertEqual(status,200); self.assertEqual(json.loads(body)['service'],'quota-starter')
+        from app import ROOT
+        self.assertEqual(json.loads(body)['installationPath'], str(ROOT))
+
+    def test_cross_origin_rejected(self):
+        self.assertEqual(self.request('POST','/api/pause',{'Origin':'https://evil.example'})[0],403)
+
+    def test_dns_rebinding_rejected(self):
+        self.assertEqual(self.request('GET','/api/status',{'Host':'evil.example:18769'})[0],403)
+
+    def test_pause_resume_persists(self):
+        _,page=self.request('GET','/')
+        token=csrf_token(page)
+        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':token}
+        self.assertEqual(self.request('POST','/api/pause',headers)[0],200)
+        self.assertTrue(self.engine.store.get('paused'))
+        self.assertEqual(self.request('POST','/api/trigger',headers)[0],409)
+        self.assertEqual(self.request('POST','/api/resume',headers)[0],200)
+        self.assertFalse(self.engine.store.get('paused'))
+
+    def test_check_endpoint_queues_a_read_without_blocking(self):
+        _, page = self.request('GET', '/')
+        token = csrf_token(page)
+        headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
+        with patch.object(self.engine, 'tick') as tick:
+            code, body = self.request('POST', '/api/check', headers)
+            self.assertEqual(code, 202)
+            self.assertEqual(json.loads(body)['message'], '正在检测额度')
+            self.assertEqual(self.engine.read_requested, 'check')
+            tick.assert_not_called()
+            self.assertEqual(self.request('POST', '/api/check', headers)[0], 409)
+        self.engine.read_requested = None
+        with self.engine.lock:
+            self.assertEqual(self.request('POST', '/api/check', headers)[0], 409)
+        self.assertEqual(self.request('POST', '/api/check')[0], 403)
+
+    def test_manual_trigger_returns_result_without_queue(self):
+        from unittest.mock import patch
+        _,page=self.request('GET','/')
+        token=csrf_token(page)
+        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':token}
+        self.engine.store.set('paused',False)
+        with patch.object(self.engine,'tick',return_value='本周期已处理') as tick:
+            status,body=self.request('POST','/api/trigger',headers)
+            self.assertEqual(status,200)
+            self.assertEqual(json.loads(body)['message'],'本周期已处理')
+            tick.assert_called_once_with(manual=True)
+        with self.engine.lock:
+            with patch.object(self.engine,'tick') as tick:
+                self.assertEqual(self.request('POST','/api/trigger',headers)[0],409)
+                tick.assert_not_called()
+
+    def test_reconnect_endpoint_requires_token_and_preserves_pause(self):
+        self.assertEqual(self.request('POST', '/api/reconnect')[0], 403)
+        _, page = self.request('GET', '/')
+        token = csrf_token(page)
+        headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
+        self.engine.store.set('connection', {'stopped': True})
+        self.engine.store.set('paused', True)
+        code, _ = self.request('POST', '/api/reconnect', headers)
+        self.assertEqual(code, 200)
+        self.assertEqual(self.engine.connection().get('failures', 0), 0)
+        self.assertTrue(self.engine.store.get('paused'))
+        with self.engine.lock:
+            self.assertEqual(self.request('POST', '/api/reconnect', headers)[0], 409)
+        self.engine.store.set('paused', False)
+
+    def test_expired_token_can_refresh_without_weakening_origin_check(self):
+        headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': 'expired'}
+        code, body = self.request('POST', '/api/schedule/clear', headers)
+        self.assertEqual(code, 403)
+        self.assertEqual(json.loads(body)['code'], 'stale_session')
+        self.assertEqual(self.request('GET', '/api/session')[0], 403)
+        self.assertEqual(self.request('GET', '/api/session', {'X-Quota-Session': 'refresh', 'Origin': 'https://evil.example'})[0], 403)
+        self.assertEqual(self.request('GET', '/api/session', {'X-Quota-Session': 'refresh', 'Sec-Fetch-Site': 'cross-site'})[0], 403)
+        code, body = self.request('GET', '/api/session', {'X-Quota-Session': 'refresh'})
+        self.assertEqual(code, 200)
+        headers['X-Quota-Token'] = json.loads(body)['token']
+        self.assertEqual(self.request('POST', '/api/schedule/clear', headers)[0], 200)
+        headers['Origin'] = 'https://evil.example'
+        self.assertEqual(self.request('POST', '/api/schedule/clear', headers)[0], 403)
+
+    def test_autostart_toggle(self):
+        _,page=self.request('GET','/')
+        token=csrf_token(page)
+        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':token}
+        self.assertEqual(self.request('POST','/api/autostart/disable',headers)[0],200)
+        self.assertFalse(json.loads(self.request('GET','/api/status')[1])['autostart']['enabled'])
+        self.assertEqual(self.request('POST','/api/autostart/enable',headers)[0],200)
+        self.assertTrue(json.loads(self.request('GET','/api/status')[1])['autostart']['enabled'])
+
+    def test_autostart_requires_origin_token(self):
+        self.assertEqual(self.request('POST','/api/autostart/disable')[0],403)
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)
