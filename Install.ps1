@@ -11,6 +11,7 @@ $oldTask = Get-ScheduledTask -TaskName 'QuotaStarter-WorkCodex' -ErrorAction Sil
 $preserveDisabled = $oldTask -and (-not $oldTask.Settings.Enabled)
 $files = @('windows_settings.py','Autostart-Control.ps1','app.py','core.py','rpc.py','supervisor.py','diagnose.py','ui.html','Start.ps1','Start.cmd','Stop.ps1','Install-Autostart.ps1','Install-Autostart.cmd','Uninstall-Autostart.ps1','Uninstall.ps1','README.md','MECHANISM.md','VALIDATION.md','CHANGELOG.md','requirements.txt','LICENSE')
 $files = @('AGENTS.md','help.html','favicon.svg','version.py') + $files
+$files = @('tasks.py','tasks.js','schedule_queue.py') + $files
 foreach ($file in $files) {
     $from = Join-Path $source $file
     if (-not (Test-Path -LiteralPath $from)) { throw "Missing release file: $file" }

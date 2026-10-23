@@ -118,7 +118,7 @@ class AuditTests(unittest.TestCase):
             e.reconnect()
         e.tick()
         self.assertEqual(self.store.get('schedule')['status'], 'cancelled' if action == 'reconnect' else 'pending')
-        self.assertEqual(fake.reads, 1)
+        self.assertEqual(fake.reads, 2)  # Full quota adds one weekly follow-up.
         self.assertEqual(fake.sent, 0)
         self.assertEqual(e.next_poll, 260)
         if action == 'reconnect':
@@ -138,14 +138,14 @@ class AuditTests(unittest.TestCase):
         self.assert_due_empty_schedule_survives_read_only('reconnect')
 
     def test_final_preflight_keeps_schedule_when_empty_reset_moves(self):
-        fake = FakeRPC([raw(100, 0), raw(18201, 0), raw(18200, 1)])
+        fake = FakeRPC([raw(100, 0), raw(100, 0), raw(18201, 0), raw(18201, 0), raw(18200, 1)])
         self.schedule(self.engine(fake, 110))
         self.engine(fake, 200).tick()
         self.assertEqual(fake.sent, 1)
         self.assertEqual(self.store.get('schedule')['status'], 'submitted')
 
     def test_schedule_cancels_when_rolling_empty_window_becomes_used(self):
-        fake = FakeRPC([raw(18110, 0), raw(18170, 1)])
+        fake = FakeRPC([raw(18110, 0), raw(18110, 0), raw(18170, 1)])
         e = self.engine(fake, 110)
         self.schedule(e)
         e.tick()
@@ -196,7 +196,7 @@ class AuditTests(unittest.TestCase):
             e.request_check()
         e.tick()
         self.assertEqual(fake.sent, 0)
-        self.assertEqual(fake.reads, 1)
+        self.assertEqual(fake.reads, 2)
         self.assertIsNone(e.read_requested)
         self.assertEqual(e.next_poll, 170)
 

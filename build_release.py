@@ -13,6 +13,8 @@ files=['windows_settings.py','Autostart-Control.ps1','app.py','core.py','rpc.py'
 files += ['AGENTS.md','help.html','favicon.svg','version.py','test_schedule.py','test_ui.cjs','test_audit.py','test_statistics.py','test_update.py','test_weekly_reset.py']
 files += ['test_connection_baseline.py','差异文档/1.6.0/connection-baseline.json']
 files += ['test_connection.py','差异文档/1.6.0-pre.3/connection-changes.json']
+files += ['tasks.py','tasks.js','test_tasks.py','test_tasks_ui.cjs','差异文档/1.6.0-pre.4/审核清单.md']
+files += ['schedule_queue.py','test_schedule_queue.py']
 out=root/'dist';out.mkdir(exist_ok=True)
 target=out/f'quota-starter-{VERSION}-windows.zip'
 with zipfile.ZipFile(target,'w',compression=zipfile.ZIP_DEFLATED) as archive:

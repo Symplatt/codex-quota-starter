@@ -44,6 +44,16 @@ test('timeline handle follows live availability including stale sessions and pen
  p.run("pendingActions.clear();connected=false;updateControls()");assert.equal(p.e('timeline-handle').disabled,true);
 });
 
+test('timing edits remain available during detection and only real queued errors show a banner',async()=>{
+ const p=setup(),s={...status(),busy:true,phase:'checking'};await p.respond(s);
+ assert.equal(p.e('choose-time').disabled,false);assert.equal(p.e('timeline-handle').disabled,false);
+ assert.equal(p.e('error-banner').hidden,true);
+ s.scheduleQueue={pending:1,last:{status:'queued'}};p.run('refresh()');await p.respond(s);
+ assert.equal(p.e('error-banner').hidden,true);
+ s.scheduleQueue={pending:0,last:{status:'failed',error:'时间已失效'}};p.run('refresh()');await p.respond(s);
+ assert.equal(p.e('error-banner').textContent,'时间已失效');
+});
+
 test('minute chart keeps gaps unknown and reports consumption separately from recovery',async()=>{
  const p=setup(),s=status();await p.respond(s);
  p.c.points=[{minute:0,primaryRemaining:90},{minute:60,primaryRemaining:88},{minute:180,primaryRemaining:85},{minute:240,primaryRemaining:100}];
@@ -386,7 +396,7 @@ test('quota rings show live values, clamp percentages and handle missing weekly 
  assert.equal(p.e('weekly-copy').textContent,'预计更新待检测');
  s.current.weeklyResetAt=s.current.primary.resetsAt;
  p.run('refresh()');await p.respond(s);
- assert.equal(p.e('weekly-copy').textContent,p.run('time(snapshot.current.weeklyResetAt).split(" ")[0]'));
+ assert.equal(p.e('weekly-copy').textContent,'更新：'+p.run('time(snapshot.current.weeklyResetAt).split(" ")[0]'));
  assert.equal(p.e('weekly-copy').title,'预计更新：'+p.run('time(snapshot.current.weeklyResetAt)'));
  p.run("renderQuota('weekly',null)");assert.equal(p.e('weekly').textContent,'—');
  assert.equal(p.e('weekly-ring').attributes.style,'--progress:0');
@@ -403,7 +413,7 @@ test('weekly update label switches from date to Beijing clock below 24 hours',as
  }
  assert.equal(p.run('weeklyResetText(labelNow+3600,labelNow)'),'00:30:00');
  p.run('renderQuota("weekly",{usedPercent:20},Date.now()/1000+3600)');
- assert.match(p.e('weekly-copy').textContent,/^\d{2}:\d{2}:\d{2}$/);
+ assert.match(p.e('weekly-copy').textContent,/^更新：\d{2}:\d{2}:\d{2}$/);
  p.run('renderQuota("weekly",{usedPercent:20},null)');assert.equal(p.e('weekly-copy').textContent,'预计更新待检测');assert.equal(p.e('weekly-copy').title,'');
  p.run('renderQuota("weekly",null,labelAt)');assert.equal(p.e('weekly-copy').textContent,'未返回额度');assert.equal(p.e('weekly-copy').title,'');
 });
@@ -434,6 +444,6 @@ test('only statistics height absorbs available viewport space, including below t
 test('disconnected quota labels never claim requests can currently be sent',async()=>{
  const p=setup(),s=status();s.linked=false;await p.respond(s);
  assert.equal(p.e('remaining-copy').textContent,'连接中断，显示上次额度');
- s.linked=true;p.run('refresh()');await p.respond(s);assert.equal(p.e('remaining-copy').textContent,'当前可正常发送请求');
+ s.linked=true;p.run('refresh()');await p.respond(s);assert.equal(p.e('remaining-copy').textContent,'可正常发送请求');
  p.run('showOffline()');assert.equal(p.e('remaining-copy').textContent,'连接中断，显示上次额度');
 });

@@ -198,7 +198,7 @@ class QuotaTests(unittest.TestCase):
                 e.next_poll = 22000
                 result = e.tick(check_only=True)
                 self.assertIn('当前额度已更新', result)
-                self.assertEqual(fake.reads, 1)
+                self.assertEqual(fake.reads, 2 if used == 0 else 1)
                 fake.prepare.assert_not_called()
                 self.assertEqual(fake.sent, 0)
                 # The 1.5.23 completion cadence is unchanged; paused polling is

@@ -531,6 +531,18 @@ class Engine:
         if enabled and self.store.get('paused', False):
             self.next_poll = 0
 
+    def resume(self):
+        self.set_paused(False)
+        if self.connection().get('stopped'):
+            return
+        # One quota response contains both windows. Queue a read-only first
+        # round on resume instead of waiting for the old minute deadline.
+        if not self.read_requested:
+            self.read_requested = 'resume'
+        if not self.lock.locked() and not self.connection().get('failures'):
+            self.next_poll = 0
+            self._phase('checking', '正在检测五小时及周额度')
+
     def polling_enabled(self):
         return (not self.store.get('paused', False)
                 or self.store.get('pollWhilePaused', False))
@@ -730,15 +742,21 @@ class Engine:
         return (identity, raw.get('accountId')), snapshot
 
     def _publish(self, identity, snapshot, *, reconnected=False):
+        refresh_weekly = (snapshot['primary']['usedPercent'] == 0 or reconnected or
+                          self.read_requested in ('check', 'reconnect', 'resume'))
+        if snapshot['primary']['usedPercent'] == 0 and self.rpc is not None:
+            # Every full reading gets one immediate follow-up. Reuse the validated
+            # read path so both windows and the account stay consistent; never loop
+            # if the follow-up is also full. All publish paths share this rule.
+            _, fresh = self._read(identity)
+            snapshot.update(fresh)
         account_key = hashlib.sha256(identity[0].encode()).hexdigest()[:24]
         now = self.clock()
-        previous = self.store.get('snapshot:' + account_key)
         weekly_key = 'weekly-reset:' + account_key
         weekly = self.store.get(weekly_key)
-        # Cache only at the full-quota boundary, including the first full read
-        # after upgrade. Routine polling must not move the displayed estimate.
-        if snapshot['primary']['usedPercent'] == 0 and (
-                weekly is None or previous is None or previous['primary']['usedPercent'] != 0):
+        # Explicit checks refresh the estimate even when five-hour quota is not
+        # full. Routine non-full polling keeps the last confirmed estimate.
+        if refresh_weekly:
             weekly = {'resetsAt': (snapshot.get('secondary') or {}).get('resetsAt'),
                       'checkedAt': now}
             self.store.set(weekly_key, weekly)

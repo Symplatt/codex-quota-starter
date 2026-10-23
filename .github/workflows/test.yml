@@ -15,4 +15,5 @@ jobs:
         with:
           node-version: '22'
       - run: node --test test_ui.cjs
+      - run: node --test test_tasks_ui.cjs
       - run: python -X utf8 build_release.py

@@ -26,8 +26,11 @@ class ScheduleTests(unittest.TestCase):
         reset_at, send_at, refresh_at = 3 * 3600, 3 * 3600 + 30 * 60, 8 * 3600 + 30 * 60
         self.store.set('current', {'primary': {'resetsAt': reset_at, 'usedPercent': 10}})
         # Empty quota may report a moving now + 5h timestamp until a request starts it.
-        values = [raw(reset_at)] + [raw(now + 18000, 0) for now in range(reset_at, send_at, 60)]
-        values += [raw(refresh_at, 0), raw(refresh_at + 1, 0), raw(refresh_at, 1)]
+        # Each full sample includes its immediate weekly follow-up; time itself
+        # advances only at the original sixty-second polling boundary.
+        values = [raw(reset_at)] + [raw(now + 18000, 0) for now in range(reset_at, send_at, 60) for _ in range(2)]
+        values += [raw(refresh_at, 0), raw(refresh_at, 0),
+                   raw(refresh_at + 1, 0), raw(refresh_at + 1, 0), raw(refresh_at, 1)]
         fake = FakeRPC(values)
         e = self.engine(fake, reset_at - 60)
         plan = e.set_schedule(refresh_at=refresh_at)
@@ -72,7 +75,7 @@ class ScheduleTests(unittest.TestCase):
                     self.assertEqual(self.store.get('schedule')['id'], plan['id'])
                     self.assertEqual(self.store.get('schedule')['status'], 'pending')
                     restarted.tick()
-                    self.assertEqual(fake.reads, 0 if stopped else 1)
+                    self.assertEqual(fake.reads, 0 if stopped else 2)
                     self.assertEqual(fake.sent, 0)
                     self.assertEqual(self.store.get('schedule')['status'], 'pending')
 
@@ -85,7 +88,7 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(e.timing()['mode'], 'auto')
         self.assertEqual(self.store.get('scheduleNotice')['id'], plan['id'])
         self.assertIn('恢复自动', self.store.get('scheduleNotice')['message'])
-        self.assertEqual(fake.reads, 1)
+        self.assertEqual(fake.reads, 2)
         self.assertEqual(fake.sent, 0)
         self.assertEqual(e.next_poll, 160)
         e.reconnect()
