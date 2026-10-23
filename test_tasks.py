@@ -38,7 +38,9 @@ class FakeRunner:
 class TaskTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
+        # Windows runners may expose TEMP through an 8.3 alias (RUNNER~1).
+        # Compare canonical paths, as the application does for saved directories.
+        self.root = Path(self.tmp.name).resolve()
         self.now = 1000
         self.store = Store(self.root / 'quota.sqlite3')
         self.store.set('current', dict(account='test-account', checkedAt=1000,
