@@ -3035,7 +3035,7 @@
         <div class="section-head chart-head">
           <h2 class="card-title">
             <button type="button" class="panel-jump" id="quota-chart-jump">
-              额度变化统计
+              额度变化
             </button>
           </h2>
           <div class="chart-options">
@@ -3219,10 +3219,10 @@
             ? "未返回额度"
             : id === "weekly"
               ? weeklyResetAt
-                ? weeklyResetText(weeklyResetAt)
+                ? "更新：" + weeklyResetText(weeklyResetAt)
                 : "预计更新待检测"
               : value > 0
-                ? "当前可正常发送请求"
+                ? "可正常发送请求"
                 : "额度已用尽";
         if (id === "weekly")
           $("weekly-copy").title =
@@ -4263,13 +4263,23 @@
 
       let lastScheduleNotice = null;
       function showScheduleNotice(notice) {
-        if (!notice?.id || notice.id === lastScheduleNotice ||
-            Math.abs(Date.now() / 1000 - notice.time) > 120) return;
+        if (
+          !notice?.id ||
+          notice.id === lastScheduleNotice ||
+          Math.abs(Date.now() / 1000 - notice.time) > 120
+        )
+          return;
         lastScheduleNotice = notice.id;
         try {
-          if (sessionStorage.getItem("quota-starter:schedule-notice") === notice.id) return;
+          if (
+            sessionStorage.getItem("quota-starter:schedule-notice") ===
+            notice.id
+          )
+            return;
           sessionStorage.setItem("quota-starter:schedule-notice", notice.id);
-        } catch (e) { /* In-memory deduplication remains available. */ }
+        } catch (e) {
+          /* In-memory deduplication remains available. */
+        }
         showFeedback("toast", notice.message, true);
       }
 
