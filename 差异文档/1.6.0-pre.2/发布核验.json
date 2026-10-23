@@ -1,0 +1,46 @@
+{
+  "version": "1.6.0-pre.2",
+  "releaseUrl": "https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.6.0-pre.2",
+  "releaseCommit": "ca8453db0a97d57452f01f29a335761c8f4dd256",
+  "releaseBranch": "release/1.6.0",
+  "prerelease": true,
+  "draft": false,
+  "latestStable": "v1.5.23",
+  "mainAndArchiveUnchanged": true,
+  "oldV160TagUnchanged": true,
+  "matchingPublicSourceFiles": 40,
+  "matchingInstalledFiles": 25,
+  "zipSHA256": "50149925ee2c8dd85d55646845023eac5b0d8c3da1789fb5ac969a6dd0316380",
+  "preserved": {
+    "settings": true,
+    "attempts": true,
+    "claims": true
+  },
+  "attemptsAtInstall": 31,
+  "claimsAtInstall": 56,
+  "databaseIntegrity": "ok",
+  "autostartEnabled": true,
+  "installedVersion": "1.6.0-pre.2",
+  "linkedAtFinalCheck": false,
+  "phaseAtFinalCheck": "retry_wait",
+  "connectionErrorAtFinalCheck": "account/read 超时",
+  "ciRuns": [
+    {
+      "conclusion": "success",
+      "databaseId": 39900490837,
+      "headBranch": "release/1.6.0",
+      "headSha": "ca8453db0a97d57452f01f29a335761c8f4dd256",
+      "status": "completed",
+      "url": "https://github.com/Symplatt/codex-quota-starter/actions/runs/39900490837"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 39900490822,
+      "headBranch": "v1.6.0-pre.2",
+      "headSha": "ca8453db0a97d57452f01f29a335761c8f4dd256",
+      "status": "completed",
+      "url": "https://github.com/Symplatt/codex-quota-starter/actions/runs/39900490822"
+    }
+  ],
+  "backupPath": "C:\\Users\\HP\\AppData\\Local\\Temp\\quota-pre2-installed-backup-20261023"
+}
