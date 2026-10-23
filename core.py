@@ -13,14 +13,15 @@ import threading
 import time
 import uuid
 
-from rpc import RPC
+from rpc import RPC, CodexCompatibilityError
 
 WINDOW = 18000
 POLL_INTERVAL = 60
 ATTEMPT_LIMIT = 5
 RETRY_INTERVAL = 10
 RETRY_BUDGET = 60
-RECOVERY_INTERVAL = 20 * 60
+RECOVERY_INTERVAL = 30
+MAX_RECOVERY_INTERVAL = 300
 BEIJING = timezone(timedelta(hours=8))
 
 
@@ -28,8 +29,26 @@ def transient_connection_error(error):
     if isinstance(error, (TimeoutError, ConnectionError)):
         return True
     message = str(error).lower()
+    if any(text in message for text in ('unauthorized', 'forbidden', 'invalid_grant',
+                                        'invalid token', 'account changed during workspace routing')):
+        return False
+    diagnostics = getattr(error, 'rpc_diagnostics', {})
+    read_method = (diagnostics.get('method') in ('account/read', 'account/rateLimits/read')
+                   or re.match(r'^account/(?:read|ratelimits/read)\s*[:：]', message))
+    if read_method:
+        # HTTP failures returned by the read-only API do not always contain a
+        # transport-error phrase. Keep authentication and other permanent HTTP
+        # errors out of recovery, including after restart from a stored message.
+        status = re.search(
+            r'\b(?:http(?:/\d(?:\.\d)?)?(?:\s+status)?'
+            r'(?:\s+(?:client|server))?(?:\s+error)?'
+            r'|status(?:\s+code)?)\s*[:=(]?\s*(\d{3})\b', message)
+        if status:
+            return int(status[1]) in (408, 425, 429, 500, 502, 503, 504)
     return any(text in message for text in (
-        'workspace routing discovery', 'error sending request', 'timed out',
+        'workspace routing discovery timed out', 'workspace routing discovery failed',
+        'workspace routing discovery cancelled', 'retry account/read',
+        'error sending request', 'timed out',
         'connection reset', 'connection refused', 'connection closed',
         'temporarily unavailable', 'dns error', 'codex app server 已断开',
         'broken pipe', 'pipe has been ended', '管道已结束', '管道正在被关闭',
@@ -452,11 +471,13 @@ class Engine:
                 and transient_connection_error(retry.get('error', ''))):
             self.stop_connection(recoverable=True)
             retry = self.connection()
-        if retry.get('recoveryAt') and retry.get('recoveryInterval') != RECOVERY_INTERVAL:
-            # Upgrade the old one-minute wait once, without postponing on every restart.
-            retry['recoveryAt'] = max(self.clock(), retry['recoveryAt'] - 60 + RECOVERY_INTERVAL)
+        if retry.get('recoveryAt') and retry.get('recoveryPolicy') != 'backoff-v1':
+            # Migrate a legacy twenty-minute wait once. Restarts must never move
+            # an already scheduled recovery farther into the future.
+            retry['recoveryAt'] = max(self.clock(), min(retry['recoveryAt'], self.clock() + RECOVERY_INTERVAL))
             retry['nextAt'] = retry['recoveryAt']
             retry['recoveryInterval'] = RECOVERY_INTERVAL
+            retry['recoveryPolicy'] = 'backoff-v1'
             self.store.set('connection', retry)
         if retry.get('stopped'):
             self.status = '已断开，请点击重新连接'
@@ -538,9 +559,13 @@ class Engine:
         state['stopReason'] = 'network' if recoverable else 'manual_required'
         state.pop('recoveryAt', None)
         if recoverable:
-            state['recoveryAt'] = max(self.clock(), state.get('recoveryStartedAt', self.clock()) + RECOVERY_INTERVAL)
+            rounds = min(state.get('recoveryRounds', 0) + 1, 5)
+            interval = min(RECOVERY_INTERVAL * 2 ** (rounds - 1), MAX_RECOVERY_INTERVAL)
+            state['recoveryRounds'] = rounds
+            state['recoveryAt'] = self.clock() + interval
             state['nextAt'] = state['recoveryAt']
-            state['recoveryInterval'] = RECOVERY_INTERVAL
+            state['recoveryInterval'] = interval
+            state['recoveryPolicy'] = 'backoff-v1'
         self.store.set('connection', state)
         self.next_poll = state['recoveryAt'] if recoverable else 0
         self.status = ('连接暂时不可用，等待自动重连' if recoverable
@@ -561,18 +586,26 @@ class Engine:
         state['failures'] = state.get('failures', 0) + 1
         state['nextAt'] = min(now + RETRY_INTERVAL, state['startedAt'] + RETRY_BUDGET)
         state['error'] = str(error)[:1200]
+        state['upgradeRequired'] = isinstance(error, CodexCompatibilityError)
         state['recoverable'] = (transient_connection_error(error)
                                 and not self.store.get('sending', False))
         state['readOnlyRecovery'] = state['recoverable']
         self.store.set('connection', state)
         self.linked = False
         diagnostics = getattr(error, 'rpc_diagnostics', {})
-        # A live stdio child can still have broken HTTP/proxy state. Recreate it
-        # before the next bounded retry so routing and transport are rebuilt.
-        self.close()
+        # A completed read-only HTTP error leaves the JSON-RPC stream usable.
+        # Keep its discovered account route within the bounded retry round;
+        # local timeouts/broken pipes require a fresh transport instead.
+        keep_transport = (state['recoverable']
+                          and not isinstance(error, (TimeoutError, ConnectionError))
+                          and diagnostics.get('method') in ('account/read', 'account/rateLimits/read')
+                          and self.rpc and self.rpc.is_alive())
+        if not keep_transport:
+            self.close()
+        diagnostics['reusedTransport'] = bool(keep_transport)
         self.store.log('connection_failure', {'error': state['error'], 'failures': state['failures'],
                                              'nextAt': state['nextAt'], 'diagnostics': diagnostics}, now)
-        if state.get('autoRecovery') or state['failures'] >= ATTEMPT_LIMIT or now >= state['startedAt'] + RETRY_BUDGET:
+        if state['upgradeRequired'] or state['failures'] >= ATTEMPT_LIMIT or now >= state['startedAt'] + RETRY_BUDGET:
             self.stop_connection(recoverable=state['recoverable'])
         else:
             self.next_poll = state['nextAt']
@@ -669,7 +702,7 @@ class Engine:
 
     def _ok(self, status):
         previous = self.connection()
-        if previous.get('failures') or previous.get('autoRecovery'):
+        if previous.get('failures') or previous.get('autoRecovery') or previous.get('readOnlyRecovery'):
             self.store.log('connection_recovered', {'message': '已恢复连接，账户和额度核验成功',
                                                    'failures': previous.get('failures', 0)}, self.clock())
         self.store.set('connection', {})
@@ -809,11 +842,12 @@ class Engine:
                 if now < retry['recoveryAt']:
                     return self.status
                 retry = {'startedAt': now, 'nextAt': now, 'failures': 0,
-                         'autoRecovery': True, 'recoveryStartedAt': now, 'recoverable': True}
+                         'recoveryRounds': retry.get('recoveryRounds', 0),
+                         'readOnlyRecovery': True, 'recoverable': True}
                 self.store.set('connection', retry)
                 self.read_requested = 'reconnect'
             elif retry.get('autoRecovery'):
-                # A restart during a probe must not start another probe in that slot.
+                # An interrupted probe from a legacy version keeps its guard.
                 self.stop_connection(recoverable=True)
                 return self.status
             if retry and now >= retry['startedAt'] + RETRY_BUDGET:

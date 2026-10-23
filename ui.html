@@ -4245,6 +4245,8 @@
         if (c) {
           renderQuota("remaining", c.primary);
           renderQuota("weekly", c.secondary, c.weeklyResetAt);
+          if (s.linked === false)
+            $("remaining-copy").textContent = "连接中断，显示上次额度";
           timeBlock("checked", "checked-date", c.checkedAt);
           $("checked").title = time(c.checkedAt);
         }
@@ -4276,6 +4278,8 @@
           "无法连接本机后台服务，请通过桌面快捷方式启动软件；若仍失败，请检查后台日志。",
         );
         connected = false;
+        if (snapshot?.current)
+          $("remaining-copy").textContent = "连接中断，显示上次额度";
         $("badge").textContent = "连接中断";
         $("status").textContent = "等待重连";
         $("status-detail").textContent = snapshot

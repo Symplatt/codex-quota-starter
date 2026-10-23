@@ -9,7 +9,43 @@ import subprocess
 import threading
 import time
 import tomllib
+import urllib.request
+from urllib.parse import urlsplit
 from version import VERSION
+
+
+class CodexCompatibilityError(RuntimeError):
+    """The installed CLI rejected an interface required by this application."""
+
+
+def configure_proxy(env):
+    """Resolve the active Windows proxy before spawning any Codex HTTP client."""
+    override = env.get('QUOTA_HTTP_PROXY')
+    system = (urllib.request.getproxies_registry() if os.name == 'nt' else {})
+    inherited = any(k.lower() in ('http_proxy', 'https_proxy', 'all_proxy') and v
+                    for k, v in env.items())
+    source = 'override' if override else 'windows' if system else 'environment' if inherited else 'default'
+    proxies = ({'http': override, 'https': override} if override else system)
+    if proxies:
+        # Explorer/autostart can inherit old or missing shell variables. Use the
+        # currently enabled Windows proxy consistently, including on reconnect.
+        for key in list(env):
+            if key.lower() in ('http_proxy', 'https_proxy', 'all_proxy'):
+                env.pop(key)
+        for scheme in ('http', 'https'):
+            value = proxies.get(scheme)
+            if value:
+                env[scheme.upper() + '_PROXY'] = value
+    bypass = next((v for k, v in env.items() if k.lower() == 'no_proxy'), '')
+    for key in list(env):
+        if key.lower() == 'no_proxy':
+            env.pop(key)
+    env['NO_PROXY'] = ','.join(dict.fromkeys(filter(None, [*bypass.split(','), 'localhost', '127.0.0.1', '::1'])))
+    value = env.get('HTTPS_PROXY') or env.get('https_proxy') or env.get('ALL_PROXY') or env.get('all_proxy')
+    parsed = urlsplit(value if value and '://' in value else 'http://' + value) if value else None
+    # Only log routing information; proxy credentials never enter diagnostics.
+    return {'source': source, 'proxy': (f'{parsed.scheme}://{parsed.hostname}:{parsed.port or 80}'
+                                       if parsed and parsed.hostname else 'default')}
 
 
 def find_codex():
@@ -19,9 +55,8 @@ def find_codex():
         if p.is_file() and p.suffix.lower() == '.exe':
             return str(p)
         raise RuntimeError('QUOTA_CODEX_EXE 必须指向官方 codex.exe')
-    direct = shutil.which('codex.exe')
-    if direct:
-        return direct
+    # The desktop app prepends its preview CLI to PATH. Prefer the npm CLI
+    # users install/upgrade for this tool, unless an explicit override is set.
     roots = [Path(os.environ.get('APPDATA', '')) / 'npm/node_modules/@openai/codex']
     shim = shutil.which('codex') or shutil.which('codex.cmd')
     if shim:
@@ -30,6 +65,9 @@ def find_codex():
         matches = list(root.glob('node_modules/@openai/codex-win32-*/vendor/*/bin/codex.exe'))
         if matches:
             return str(matches[0])
+    direct = shutil.which('codex.exe')
+    if direct:
+        return direct
     raise RuntimeError('未找到 Codex CLI。请安装官方 @openai/codex 后使用 codex login 登录 ChatGPT。')
 
 
@@ -46,14 +84,20 @@ class RPC:
         env = os.environ.copy()
         for key in ('OPENAI_API_KEY', 'CODEX_API_KEY', 'OPENAI_BASE_URL'):
             env.pop(key, None)
-        args = [find_codex(), 'app-server', '--listen', 'stdio://']
+        self.transport = configure_proxy(env)
+        self.codex_exe = find_codex()
+        args = [self.codex_exe, 'app-server', '--listen', 'stdio://']
         overrides = ['model_provider="openai"', 'forced_login_method="chatgpt"',
                      'web_search="disabled"', 'project_doc_max_bytes=0',
                      'features.shell_tool=false', 'features.multi_agent=false',
                      'features.apps=false', 'features.plugins=false',
                      'features.memories=false', 'features.hooks=false',
-                     'features.respect_system_proxy=true',
+                     'features.respect_system_proxy=false',
+                     'features.system_proxy_fallback=false',
                      'skills.max_context_tokens=1', 'service_tier="default"']
+        # Resolve static proxies here, or let reqwest use its normal direct/env
+        # route. Repeating WinHTTP/PAC discovery can hang even when Windows has
+        # no enabled proxy (notably at logon without shell proxy variables).
         # Disable user-configured MCP tools without exposing their configuration.
         home = Path(env.get('CODEX_HOME', str(Path.home() / '.codex')))
         config_path = home / 'config.toml'
@@ -139,6 +183,17 @@ class RPC:
             self._send({'id': seq, 'method': method, 'params': params or {}})
             result = waiting.get(timeout=timeout)
             if 'error' in result:
+                error = result['error']
+                # Older CLIs accept empty params but reject the new quota option.
+                # Detect the protocol response, not a guessed minimum version.
+                if (method == 'account/rateLimits/read' and isinstance(error, dict)
+                        and (error.get('code') == -32601 or
+                             (error.get('code') in (-32600, -32602) and any(
+                                 text in str(error.get('message', '')).lower()
+                                 for text in ('expected unit', 'excluderesetcreditdetails'))))):
+                    compatibility = self.compatibility_error()
+                    compatibility.rpc_server_error = error
+                    raise compatibility
                 raise RuntimeError(f'{method}：' + str(result['error'])[:1200])
             if 'result' not in result:
                 raise RuntimeError(f'{method}：服务器响应缺少结果')
@@ -148,16 +203,41 @@ class RPC:
             exc = TimeoutError(f'{method} 超时{suffix}')
             exc.rpc_diagnostics = {'method': method,
                                    'elapsedSeconds': round(time.monotonic() - started, 3),
-                                   'processAlive': self.is_alive()}
+                                   'processAlive': self.is_alive(),
+                                   'transport': getattr(self, 'transport', {})}
             raise exc from None
         except Exception as exc:
             exc.rpc_diagnostics = {'method': method,
                                    'elapsedSeconds': round(time.monotonic() - started, 3),
-                                   'processAlive': self.is_alive()}
+                                   'processAlive': self.is_alive(),
+                                   'transport': getattr(self, 'transport', {})}
+            if isinstance(exc, CodexCompatibilityError):
+                exc.rpc_diagnostics['serverError'] = exc.rpc_server_error
             raise
         finally:
             with self.lock:
                 self.pending.pop(seq, None)
+
+    def compatibility_error(self):
+        version = '无法读取'
+        try:
+            # Query the same executable as the server; PATH may contain several CLIs.
+            remaining = (self.deadline - time.time()) if self.deadline is not None else 3
+            if remaining > 0:
+                result = subprocess.run([self.codex_exe, '--version'], capture_output=True,
+                                        text=True, encoding='utf-8', timeout=min(3, remaining),
+                                        creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+                match = re.fullmatch(r'codex-cli ([0-9A-Za-z.+-]+)', result.stdout.strip())
+                if result.returncode == 0 and match:
+                    version = match.group(1)
+        except (OSError, subprocess.TimeoutExpired, UnicodeError):
+            pass
+        error = CodexCompatibilityError(
+            f'Codex CLI 版本过低或接口不兼容（当前版本：{version}），不支持本软件的额度读取接口或参数。'
+            '请在 PowerShell 运行 npm install -g @openai/codex@latest，'
+            '完成后点击“重新连接”。若仍提示，请确认升级的是下列程序。'
+            f'当前程序：{self.codex_exe}')
+        return error
 
     def account(self):
         account = self.call('account/read', {'refreshToken': False}).get('account')

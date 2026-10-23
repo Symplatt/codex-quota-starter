@@ -1,6 +1,7 @@
 """Read-only diagnostics; explicit submissions use the running service's ledger and lock."""
 import argparse
 import json
+import subprocess
 import tempfile
 import time
 import urllib.request
@@ -28,7 +29,12 @@ def main():
         try:
             account = rpc.account()
             quota = normalize(rpc.limits())
+            cli_version = subprocess.run([rpc.codex_exe, '--version'], capture_output=True,
+                                         text=True, timeout=3,
+                                         creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)).stdout.strip()
             print(json.dumps({'auth': account['type'], 'plan': account['planType'], 'quota': quota,
+                              'cliExecutable': rpc.codex_exe, 'cliVersion': cli_version,
+                              'transport': rpc.transport,
                               'readSeconds': round(time.monotonic() - started, 3)}, ensure_ascii=False, indent=2))
         finally:
             rpc.close()

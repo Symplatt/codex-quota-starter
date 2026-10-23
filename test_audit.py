@@ -346,24 +346,21 @@ class RecoveryTests(unittest.TestCase):
             if not engine.connection().get('recoveryAt'):
                 engine.sleeper(10)
 
-    def test_three_single_probes_per_hour_and_restart_preserves_wait(self):
+    def test_recovery_backoff_is_capped_and_restart_preserves_wait(self):
         fake = FakeRPC([TimeoutError('offline')])
         e = self.engine(fake, 100)
         self.failed_round(e)
-        self.assertEqual(fake.reads, 5)
-        start = e.clock()
-        for index in range(1, 4):
-            due = start + index * 1200
-            restarted = self.engine(fake, due - 1)
-            restarted.tick()
-            self.assertEqual(fake.reads, 4 + index)
-            restarted.sleeper(1)
-            restarted.tick()
-            self.assertEqual(fake.reads, 5 + index)
-            self.assertEqual(restarted.next_poll, due + 1200)
-            restarted.sleeper(10)
-            restarted.tick()
-            self.assertEqual(fake.reads, 5 + index)
+        for interval in (30, 60, 120, 240, 300, 300):
+            self.assertEqual(e.connection()['recoveryInterval'], interval)
+            due = e.next_poll
+            self.assertEqual(due, e.clock() + interval)
+            reads = fake.reads
+            e = self.engine(fake, due - 1)
+            e.tick()
+            self.assertEqual(fake.reads, reads)
+            e.sleeper(1)
+            self.failed_round(e)
+            self.assertEqual(fake.reads, reads + 5)
         self.assertEqual(fake.sent, 0)
 
     def test_restart_during_probe_does_not_repeat_it(self):
@@ -373,17 +370,17 @@ class RecoveryTests(unittest.TestCase):
         e = self.engine(fake, 101)
         e.tick()
         self.assertEqual(fake.reads, 0)
-        self.assertEqual(e.next_poll, 1300)
+        self.assertEqual(e.next_poll, 131)
 
     def test_old_one_minute_wait_migrates_once(self):
         self.store.set('connection', {'startedAt': 100, 'nextAt': 200, 'failures': 5,
                                      'stopped': False, 'recoveryAt': 200})
         fake = FakeRPC([raw()])
         e = self.engine(fake, 150)
-        self.assertEqual(e.next_poll, 1340)
-        self.assertEqual(self.engine(fake, 160).next_poll, 1340)
+        self.assertEqual(e.next_poll, 180)
+        self.assertEqual(self.engine(fake, 160).next_poll, 180)
 
-    def test_manual_reconnect_bypasses_twenty_minute_wait(self):
+    def test_manual_reconnect_bypasses_backoff_wait(self):
         fake = FakeRPC([TimeoutError('offline')] * 5 + [raw(20000, 0)])
         e = self.engine(fake, 100)
         self.failed_round(e)
@@ -392,6 +389,17 @@ class RecoveryTests(unittest.TestCase):
         self.assertTrue(e.linked)
         self.assertEqual(fake.sent, 0)
         self.assertEqual(e.next_poll, 200)
+
+    def test_first_successful_recovery_probe_records_recovered_event(self):
+        fake = FakeRPC([TimeoutError('offline')] * 5 + [raw(149)])
+        e = self.engine(fake, 100)
+        self.failed_round(e)
+        e.sleeper(RECOVERY_INTERVAL)
+        e.tick(check_only=True)
+        self.assertTrue(e.linked)
+        self.assertEqual(fake.sent, 0)
+        recovered = [r for r in self.store.activity() if r['kind'] == 'connection_recovered']
+        self.assertEqual(len(recovered), 1)
 
     def test_upstream_timeout_rebuilds_live_transport_before_read_only_retry(self):
         fake = FakeRPC([TimeoutError('routing timed out'), raw()])
@@ -427,13 +435,13 @@ class RecoveryTests(unittest.TestCase):
         self.store.set('current', {'primary': {'resetsAt': 149}})
         plan = e.set_schedule(150)
         self.failed_round(e)
-        self.assertEqual(e.next_poll, 1340)
+        self.assertEqual(e.next_poll, 170)
         self.assertEqual(self.store.get('schedule')['id'], plan['id'])
         e.sleeper(RECOVERY_INTERVAL)
         e.tick()
         self.assertTrue(e.linked)
         self.assertEqual(fake.sent, 0)  # Recovery first verifies the account/quota.
-        self.assertEqual(e.next_poll, 1400)
+        self.assertEqual(e.next_poll, 230)
         e.sleeper(60)
         e.tick()
         self.assertEqual(fake.sent, 1)
@@ -469,12 +477,12 @@ class RecoveryTests(unittest.TestCase):
         fake = FakeRPC([raw(149)])
         e = self.engine(fake, 200)
         self.assertFalse(e.connection()['stopped'])
-        self.assertEqual(e.next_poll, 1400)
+        self.assertEqual(e.next_poll, 230)
         restarted = self.engine(fake, 220)
-        self.assertEqual(restarted.next_poll, 1400)
+        self.assertEqual(restarted.next_poll, 230)
         restarted.tick()
         self.assertEqual(fake.reads, 0)
-        restarted.sleeper(1180)
+        restarted.sleeper(10)
         restarted.tick()
         self.assertTrue(restarted.linked)
         self.assertEqual(self.store.get('schedule')['id'], 'existing')

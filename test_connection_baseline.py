@@ -1,4 +1,4 @@
-"""Prevent UI/data upgrades from changing the pinned 1.5.23 connection implementation."""
+"""Protect unchanged 1.5.23 behavior and explicitly approved pre.3 connection repairs."""
 import ast
 import hashlib
 import json
@@ -9,6 +9,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parent
 BASELINE = json.loads((ROOT / '差异文档' / '1.6.0' / 'connection-baseline.json').read_text(encoding='utf-8'))
+CHANGES = json.loads((ROOT / '差异文档' / '1.6.0-pre.3' / 'connection-changes.json').read_text(encoding='utf-8'))
 
 
 def digest(text):
@@ -28,31 +29,31 @@ def methods(source):
 
 
 class ConnectionBaselineTests(unittest.TestCase):
-    def test_transport_and_launchers_are_byte_equivalent_to_1523(self):
-        for filename, expected in BASELINE['files'].items():
+    def test_transport_and_launchers_match_approved_sources(self):
+        for filename, expected in {**BASELINE['files'], **CHANGES['files']}.items():
             with self.subTest(file=filename):
                 self.assertEqual(digest((ROOT / filename).read_text(encoding='utf-8')), expected)
 
-    def test_connection_methods_and_comments_are_unchanged(self):
+    def test_connection_methods_match_approved_sources(self):
         source = (ROOT / 'core.py').read_text(encoding='utf-8')
         found = methods(source)
-        for name, expected in BASELINE['methods'].items():
+        for name, expected in {**BASELINE['methods'], **CHANGES['methods']}.items():
             with self.subTest(method=name):
                 self.assertEqual(digest(ast.get_source_segment(source, found[name])), expected)
 
-    def test_retry_and_recovery_constants_are_unchanged(self):
+    def test_retry_and_recovery_constants_match_approved_policy(self):
         tree = ast.parse((ROOT / 'core.py').read_text(encoding='utf-8'))
         values = {target.id: ast.dump(node.value, include_attributes=False)
                   for node in tree.body if isinstance(node, ast.Assign)
-                  for target in node.targets if isinstance(target, ast.Name) and target.id in BASELINE['constants']}
-        self.assertEqual(values, BASELINE['constants'])
+                  for target in node.targets if isinstance(target, ast.Name) and target.id in {**BASELINE['constants'], **CHANGES['constants']}}
+        self.assertEqual(values, {**BASELINE['constants'], **CHANGES['constants']})
 
-    def test_tick_retry_branch_is_unchanged(self):
+    def test_tick_retry_branch_matches_approved_recovery(self):
         source = (ROOT / 'core.py').read_text(encoding='utf-8')
         tick = ast.get_source_segment(source, methods(source)['Engine.tick'])
         start = tick.index('            now = self.clock()\n            retry = self.connection()')
         end = tick.index('            self._phase(', start)
-        self.assertEqual(digest(tick[start:end]), BASELINE['tickRetryBlock'])
+        self.assertEqual(digest(tick[start:end]), CHANGES['tickRetryBlock'])
 
     def test_default_web_port_remains_8769(self):
         source = (ROOT / 'app.py').read_text(encoding='utf-8')

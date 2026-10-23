@@ -1,0 +1,21 @@
+{
+  "version": "1.6.0-pre.3",
+  "authorization": "2026-10-23 user authorized connection/reconnection changes and pre.3 installation/publication",
+  "base": "v1.5.23",
+  "files": {
+    "rpc.py": "c6fec3b1ef72839f73f6f670d340d90bd83bea3b98682eab753c6e62a2ab4360",
+    "diagnose.py": "5ccceb48969e4674285832b3cb95def8831bc0ffde545468bdfe9d8524d85f10"
+  },
+  "methods": {
+    "transient_connection_error": "cd1186b978c5bfc6cf5a26f8738b14e966ab51675748ba373bce201e7a29a961",
+    "Engine.__init__": "bd3fa5193359d7e9884644b17c3989f562e92516dd18aa4aeaf5b400211cf089",
+    "Engine.stop_connection": "48dc8e80b087c4ee0bf679fbe5cd0ea25d1557d213ed0dc7298247079e84e942",
+    "Engine.failed_connection": "b36fcff42253be89bc06486f2b2047cf5d4cb6ca29bfc047c3891972ff8e0204",
+    "Engine._ok": "48edaf9dee49a69d111609de9377f35c9d2aa8f73c39c15a251a45fa9b72e0cb"
+  },
+  "constants": {
+    "RECOVERY_INTERVAL": "Constant(value=30)",
+    "MAX_RECOVERY_INTERVAL": "Constant(value=300)"
+  },
+  "tickRetryBlock": "7f9cc91b9c8cc388167aef7ae064c11b25ff0492e39e0b543585a05fee932d42"
+}

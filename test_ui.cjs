@@ -430,3 +430,10 @@ test('only statistics height absorbs available viewport space, including below t
  assert.equal(p.e('quota-chart-panel').style.height,'253px');
  assert.equal(p.e('timeline-reset-at').textContent,'19:09:00');
 });
+
+test('disconnected quota labels never claim requests can currently be sent',async()=>{
+ const p=setup(),s=status();s.linked=false;await p.respond(s);
+ assert.equal(p.e('remaining-copy').textContent,'连接中断，显示上次额度');
+ s.linked=true;p.run('refresh()');await p.respond(s);assert.equal(p.e('remaining-copy').textContent,'当前可正常发送请求');
+ p.run('showOffline()');assert.equal(p.e('remaining-copy').textContent,'连接中断，显示上次额度');
+});

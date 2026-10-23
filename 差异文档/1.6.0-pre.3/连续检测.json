@@ -1,0 +1,115 @@
+{
+  "elapsedSeconds": 600.5,
+  "freshReads": 10,
+  "childTerminationInjected": true,
+  "attempts": 0,
+  "rows": [
+    {
+      "elapsedSeconds": 2.6,
+      "duration": 2.641,
+      "freshQuota": true,
+      "phase": "idle",
+      "linked": true,
+      "connection": {},
+      "attempts": 0
+    },
+    {
+      "elapsedSeconds": 64.3,
+      "duration": 1.563,
+      "freshQuota": true,
+      "phase": "idle",
+      "linked": true,
+      "connection": {},
+      "attempts": 0
+    },
+    {
+      "elapsedSeconds": 126.2,
+      "duration": 1.641,
+      "freshQuota": true,
+      "phase": "idle",
+      "linked": true,
+      "connection": {},
+      "attempts": 0
+    },
+    {
+      "elapsedSeconds": 186.4,
+      "duration": 0.062,
+      "freshQuota": false,
+      "phase": "retry_wait",
+      "linked": false,
+      "connection": {
+        "startedAt": 1792731701.8753524,
+        "failures": 1,
+        "nextAt": 1792731711.8819332,
+        "error": "account/read：Codex App Server 已断开",
+        "upgradeRequired": false,
+        "recoverable": true,
+        "readOnlyRecovery": true
+      },
+      "attempts": 0
+    },
+    {
+      "elapsedSeconds": 199.0,
+      "duration": 2.625,
+      "freshQuota": true,
+      "phase": "idle",
+      "linked": true,
+      "connection": {},
+      "attempts": 0
+    },
+    {
+      "elapsedSeconds": 260.8,
+      "duration": 1.485,
+      "freshQuota": true,
+      "phase": "idle",
+      "linked": true,
+      "connection": {},
+      "attempts": 0
+    },
+    {
+      "elapsedSeconds": 322.1,
+      "duration": 1.141,
+      "freshQuota": true,
+      "phase": "idle",
+      "linked": true,
+      "connection": {},
+      "attempts": 0
+    },
+    {
+      "elapsedSeconds": 383.5,
+      "duration": 1.234,
+      "freshQuota": true,
+      "phase": "idle",
+      "linked": true,
+      "connection": {},
+      "attempts": 0
+    },
+    {
+      "elapsedSeconds": 444.8,
+      "duration": 1.219,
+      "freshQuota": true,
+      "phase": "idle",
+      "linked": true,
+      "connection": {},
+      "attempts": 0
+    },
+    {
+      "elapsedSeconds": 506.4,
+      "duration": 1.313,
+      "freshQuota": true,
+      "phase": "idle",
+      "linked": true,
+      "connection": {},
+      "attempts": 0
+    },
+    {
+      "elapsedSeconds": 567.8,
+      "duration": 1.312,
+      "freshQuota": true,
+      "phase": "idle",
+      "linked": true,
+      "connection": {},
+      "attempts": 0
+    }
+  ]
+}
