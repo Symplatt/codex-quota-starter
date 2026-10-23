@@ -20,5 +20,27 @@
     "claims": 2,
     "scheduled_tasks": 0
   },
-  "remoteStatus": "pending"
+  "remoteStatus": "verified",
+  "releaseCommit": "e57628c134d3a3386610d16e25e912a78c07bde8",
+  "tag": "v1.6.0-pre.5",
+  "releaseUrl": "https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.6.0-pre.5",
+  "prerelease": true,
+  "draft": false,
+  "publicAssetsMatch": true,
+  "allPackageFilesMatchTag": true,
+  "latestStable": "v1.5.23",
+  "mainArchiveAndOldTagUnchanged": true,
+  "temporaryPreviewClosed": true,
+  "ci": [
+    {
+      "id": 40005956143,
+      "ref": "release/1.6.0",
+      "conclusion": "success"
+    },
+    {
+      "id": 40005963039,
+      "ref": "v1.6.0-pre.5",
+      "conclusion": "success"
+    }
+  ]
 }

@@ -1,10 +1,12 @@
-# 1.6.0-pre.5 安装路径、横幅与日志布局（2026-10-24，审核通过）
+# 1.6.0-pre.5 安装路径、横幅与日志布局（2026-10-24，发布完成）
 
 - 用户已明确审核通过；CHANGELOG、README、帮助及版本已同步。新增实际安装路径，错误横幅只将统计卡整体下移，日志卡片随内容收紧并保留一屏上限及内部滚动。
 - 验证：隔离发布目录223项Python、61项Node通过；真实浏览器横幅3种窗口及日志4种窗口24组检查通过。正式ZIP共49文件逐项核对，包内5项连接基线测试通过，SHA-256为3cb9e468cf48ab50fe4594f1545f991236b7a9d325ddcd07d8f022f5c473822e。
 - 本机已在源码目录E:\work-space\quota-starter启用pre.5，桌面快捷方式实际启动成功；真实后台linked=true、idle，自启动已启用且无错误，软件信息路径正确、日志无额外留白。28个运行文件与ZIP一致，SQLite完整性ok，1条attempts、2条claims、0个预设任务以及计划/暂停/暂停检测/任务设置内容指纹全部保留。
 - 本机原安装目录已按用户要求移除，原数据备份在%LOCALAPPDATA%\QuotaStarterBackups\installed-before-source-switch-20261024-022213；本次重启前数据库备份在dist/release-pre5/runtime-backup.sqlite3。桌面、开始菜单、自启动均指向源码目录。其他用户安装仍默认使用%LOCALAPPDATA%\Programs\QuotaStarter，通常位于C盘用户目录。
-- 已准备D盘独立未选复选框更新日志；ZIP保留于dist，按约定不放D盘。远程commit/Push/Tag/Release及公开资产最终核验正在执行；核验记录见差异文档/1.6.0-pre.5/发布核验.json。
+- 已完成：发布提交e57628c134d3a3386610d16e25e912a78c07bde8、release/1.6.0推送、v1.6.0-pre.5 Tag及GitHub预发布：https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.6.0-pre.5。分支和Tag Windows CI均成功（40005956143、40005963039）。
+- 公开匿名下载回验：ZIP及SHA256SUMS均与本地一致，49个文件与Tag逐字节一致，Release说明与CHANGELOG一致。Latest仍为v1.5.23，main、archive及旧v1.6.0 Tag未变。D盘更新日志5个选框全部未选，ZIP仅保留dist并上传Release。
+- 本次无待完成发布步骤；18780临时预览已关闭，正式源码后台8769保持linked=true。核验记录见差异文档/1.6.0-pre.5/发布核验.json；最终完成记录单独docs提交，不移动发布Tag或重打发布资产。
 
 # 1.6.0-pre.4 预设任务（2026-10-23）
 
