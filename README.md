@@ -1,6 +1,6 @@
 # 额度启程 · Quota Starter
 
-当前预发布版本：1.6.0-pre.3；最新正式版：1.5.23
+当前正式版本：1.6.0
 
 Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Work / Codex 共享额度，并在额度刷新后尝试发送一次简短请求。你也可以选择希望的刷新时间，由软件提前五小时安排请求。
 
@@ -27,7 +27,7 @@ pre.3按用户授权修复连接：优先使用npm官方Codex CLI；为子进程
 
 ### 2. 下载并安装
 
-1. 测试本次更新请打开 [1.6.0预发布下载页](https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.6.0-pre.3)；[最新正式版下载页](https://github.com/Symplatt/codex-quota-starter/releases/latest)仍提供1.5.23。
+1. 下载正式版请打开 [1.6.0下载页](https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.6.0)；[最新正式版下载页](https://github.com/Symplatt/codex-quota-starter/releases/latest)提供1.6.0。
 2. 在 **Assets** 中下载 `quota-starter-版本号-windows.zip`，不要选择 `Source code`。
 3. 右键 ZIP，选择 **全部解压**。
 4. 打开解压后的 `quota-starter` 文件夹，双击 **Install.cmd**，等待安装完成。不要直接从压缩包窗口运行。
@@ -153,7 +153,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Stop.ps1
 
 ## 项目信息
 
-当前预发布版本：**v1.6.0-pre.3**；最新正式版：**v1.5.23**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
+当前正式版本：**v1.6.0**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
 
 - [版本更新记录](CHANGELOG.md)
 - [机制说明](MECHANISM.md)
@@ -193,6 +193,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Stop.ps1
 
 源码“差异文档”保存历史比较、完整HTML与校验值；本次选取范围见 `差异文档/1.6.0/实施说明.md`。其中连接章节只作历史记录，本次不移植；本地网页保留8769。差异文档独立提供，不随安装器复制。
 
-2026-10-23用户批准先发布1.6.0预发布。预发布使用v1.6.0-pre.1，正式Release保留到v1.5.23；被撤下版本的历史说明保存在“差异文档/1.6.0/撤下版本历史.md”。旧Tag与提交历史保留。
+2026-10-23用户批准先发布1.6.0预发布。预发布使用v1.6.0-pre.1，正式版更新为v1.6.0；被撤下版本的历史说明保存在“差异文档/1.6.0/撤下版本历史.md”。历史提交与预发布Tag保留；旧v1.6.0 Tag已备份并由2026-10-24正式版替代。
 
-源码分支：`release/1.6.0`为本次预发布（直接基于v1.5.23），`archive/1.7.0-plus`保留拆分时的1.7.0+代码；`main`保持原历史。分支与版本处理见[发布分支说明](差异文档/1.6.0/发布分支说明.md)。
+源码分支：`codex/formal-1.6.0`为正式化发布分支（基于v1.6.0-pre.3），`archive/1.7.0-plus`保留拆分时的1.7.0+代码；`main`保持原历史。分支与版本处理见[发布分支说明](差异文档/1.6.0/发布分支说明.md)。
+
+## 2026-10-24版本调整
+
+原1.6.0-pre.3正式发布为1.6.0；原pre.4与pre.5分别改为1.7.0-pre.1与1.7.0-pre.2，继续保持预发布。正式版基于pre.3，未包含后续预设任务功能。
