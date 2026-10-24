@@ -1,3 +1,25 @@
+# 1.7.0-pre.3 用户审核通过与发布（2026-10-24）
+
+- 用户已明确审核通过；CHANGELOG、README、帮助、版本与独立D盘日志已同步。
+- 两个连接基线JSON按原提交原样恢复，打包清单使用本版审核清单；其余4个原有历史文档删除未纳入提交。
+- 完整225项Python和64项前端测试通过；49文件正式ZIP与源码逐项核验，SHA-256为24965973f1d8650fb75d711d4039bfcef5522a8ce1d00bb0d6e3ca6e0acfe69d。
+- 本机沿用E:\work-space\quota-starter运行，已重启并真实读取成功，版本1.7.0-pre.3、linked=true、idle、自启动开启且无错误。桌面快捷方式实际启动通过，桌面/Quota Starter开始菜单/自启均指向源码目录，未创建默认安装副本。
+- SQLite在线备份位于dist/release-pre3-1.7.0/runtime-backup.sqlite3；重启后完整性ok，2条attempts、4条claims、1个用户任务及计划、暂停、暂停检测、任务目录/模型设置的内容指纹一致。未修改真实任务，未为验证发送模型请求。
+- D:\Quota-Starter-1.7.0-pre.3-更新日志.md全部复选框保持未选；ZIP仅保留dist并作为Release资产。
+- 下一步：推送codex/release-1.7.0-pre.3及Tag，确认Windows CI，发布预发布并回下载验证；Latest保持1.6.0。
+
+# 2026-10-24 版本正式化与待审核功能
+
+- 用户明确授权废弃旧v1.6.0，以pre.3内容正式发布1.6.0；pre.4/pre.5改为1.7.0-pre.1/pre.2，仍为预发布。功能代码仅改version.py，其余只更新README/CHANGELOG/AGENTS。
+- 三个发布提交：ed9a3a24f9ee76bf8cb99ae3f51c75550fcf0a9c、d7325f4a43417649b77df86096bc4a81bd39b00e、377427dd25aa6356494b9c5a2d20511adc1b14ac。对应codex/formal-1.6.0及codex/prerelease-1.7.0-pre.1/pre.2分支；main及原release/1.6.0分支历史保留。
+- 旧v1.6.0已备份为archive/v1.6.0-20261020 Tag；原Tag对象、源码和三份旧Release说明/附件均保存在dist/release-reorganization/backups。
+- 1.6.0正式Release已设为Latest；1.7.0-pre.1/pre.2均为预发布。三份ZIP逐文件匹配提交；已从公开Release回下载ZIP和SHA256SUMS，与本地逐字节一致，包内版本、正文、Latest和预发布标记均已核验（dist/release-reorganization/发布核验.json）；Windows CI 40064555089、40064555543、40064555509全部成功。1.6.0本地178项Python、45项Node通过；最新预发布另补5项基线、61项Node通过。
+- D盘三份重编号更新日志及1.7.0-pre.3待审核日志已保存，全部复选框未选。ZIP仅保留项目dist并上传Release。
+- 本次待审核1.7.0-pre.3：等待中未执行任务支持编辑名称、模型、强度、开始方式/时间、内容和执行目录，保存事务与执行认领互斥，保留原ID/账户/MD；增加本地采样最近7天和北京日期刻度、选择记忆。相关Python50项、Node64项通过。
+- 全量Python220项通过；原有删除导致test_connection_baseline模块缺少差异文档/1.6.0/connection-baseline.json和pre.3/connection-changes.json无法加载；已从发布pre.5副本载入基线定义，对当前源码补验5项通过。原6个文档删除状态未改动，后续正式构建前须处理所需基线和打包清单。
+- 已关闭的临时真实预览8770仅转发8769读数及从SQLite读取7天采样；未修改真实任务、发送请求或重启正式后台。当前8769仍运行原pre.5进程，源码version.py已按新待审核版本标为1.7.0-pre.3；用户现有任务和设置继续保留。
+- 下一步：用户审核差异文档/1.7.0-pre.3的功能与截图后，同步该功能CHANGELOG，处理已有缺失的构建依赖，正式构建核验；按本机源码运行规则重启核验并发布1.7.0-pre.3。未审核功能未commit/Push/Tag/Release。
+
 # 1.6.0-pre.5 安装路径、横幅与日志布局（2026-10-24，发布完成）
 
 - 用户已明确审核通过；CHANGELOG、README、帮助及版本已同步。新增实际安装路径，错误横幅只将统计卡整体下移，日志卡片随内容收紧并保留一屏上限及内部滚动。

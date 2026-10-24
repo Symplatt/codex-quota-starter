@@ -2742,7 +2742,7 @@
       .task-actions button, .task-path-row button { padding: 7px 12px; font-size: 13px; white-space: nowrap; }
       .task-empty { margin: 0; padding: 28px 0; color: #819087; text-align: center; font-size: 14px; }
       .task-subtitle { margin: 6px 0 0; font-size: 12px; }
-      .task-row { display: grid; grid-template-columns: minmax(0, 1fr) 170px 190px 86px var(--task-action-width); gap: 12px; align-items: center; padding: 18px 0; border-top: 1px solid #edf0e9; }
+      .task-row { display: grid; grid-template-columns: minmax(0, 1fr) 170px 190px 86px 116px; gap: 12px; align-items: center; padding: 18px 0; border-top: 1px solid #edf0e9; }
       .task-row:first-child { border-top: 0; padding-top: 0; }
       .task-row:last-child { padding-bottom: 0; }
       .task-name { font-size: 14px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
@@ -2752,7 +2752,7 @@
       .task-status[data-state="completed"] { background: #e7f0e8; color: #315c43; }
       .task-status[data-state="failed"] { background: #f9eee9; color: #a0634a; }
       .task-row-actions { display: flex; gap: 12px; justify-content: flex-end; justify-self: end; }
-      .task-row-actions button { border: 0; background: transparent; padding: 5px 0; font-size: 13px; color: #54765f; }
+      .task-row-actions button { border: 0; background: transparent; padding: 5px 0; font-size: 13px; color: #54765f; white-space: nowrap; flex-shrink: 0; }
       .task-detail-button { transform: translateX(-6px); }
       dialog.task-dialog { width: min(720px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); padding: 26px; border: 1px solid #dfe5da; border-radius: 18px; color: #203b34; overflow: auto; }
       .task-dialog::backdrop { background: #1b332c55; }
@@ -3125,7 +3125,8 @@
             <select id="chart-window" aria-label="统计时间范围">
               <option value="60">最近一小时</option>
               <option value="300" selected>最近五小时</option>
-              <option value="1440">最近二十四小时</option></select
+              <option value="1440">最近二十四小时</option>
+              <option value="10080">最近7天</option></select
             ><select id="chart-quota" aria-label="统计额度类型">
               <option value="primaryRemaining">五小时额度</option>
               <option value="secondaryRemaining">周额度</option>
@@ -3232,7 +3233,7 @@
         <label>推理强度<select id="task-effort"><option value="low">轻度 · low</option><option value="medium" selected>中度 · medium</option><option value="high">高度 · high</option><option value="xhigh">更高 · xhigh</option><option value="max">最高 · max</option><option value="ultra">极高 · ultra</option></select></label>
         <label>开始方式<select id="task-mode"><option value="time">指定时间</option><option value="quota">五小时额度回满后立即执行</option></select></label>
         <label id="task-time-field">开始时间（北京时间）<input id="task-time" type="datetime-local" step="1" required /></label>
-        <label class="task-wide">文档来源<select id="task-source"><option value="new">填写内容，生成新 MD</option><option value="existing">读取已有 MD</option></select></label>
+        <label class="task-wide">文档来源<select id="task-source"><option value="new">填写内容，生成新 MD</option><option value="existing">读取已有 MD</option><option value="snapshot" hidden disabled>修改任务快照</option></select></label>
         <label class="task-wide">任务文档路径<span class="task-path-row"><input id="task-path" placeholder="留空使用默认目录，自动生成独立 MD 文件" /><button id="task-pick-file" type="button">选择文件</button><button id="task-read" type="button" hidden>读取文档</button></span></label>
         <label class="task-wide">任务内容<textarea id="task-content" rows="6" required placeholder="填写 Codex 需要执行的任务"></textarea></label>
         <label class="task-wide">执行目录<span class="task-path-row"><input id="task-cwd" placeholder="留空使用任务文档所在目录" /><button id="task-pick-cwd" type="button">选择目录</button></span></label>
@@ -4044,7 +4045,7 @@
       function restoreChartPreferences() {
         try {
           const saved = JSON.parse(localStorage.getItem(chartPreferencesKey));
-          if (saved && ["60", "300", "1440"].includes(saved.window))
+          if (saved && ["60", "300", "1440", "10080"].includes(saved.window))
             $("chart-window").value = saved.window;
           if (
             saved &&
@@ -4230,7 +4231,7 @@
             ),
           );
         }
-        const minor = (minutes <= 60 ? 1 : minutes <= 300 ? 5 : 30) * 60;
+        const minor = (minutes <= 60 ? 1 : minutes <= 300 ? 5 : minutes <= 1440 ? 30 : 240) * 60;
         const major =
           (minutes <= 60
             ? width < 500
@@ -4240,7 +4241,9 @@
               ? width < 500
                 ? 60
                 : 30
-              : width < 500
+              : minutes > 1440
+                ? 1440
+                : width < 500
                 ? 240
                 : 120) * 60;
         for (
@@ -4248,7 +4251,7 @@
           at <= end;
           at += minor
         ) {
-          const majorTick = at % major === 0;
+          const majorTick = (at + (minutes > 1440 ? 8 * 3600 : 0)) % major === 0;
           svg.append(
             svgPart("line", {
               x1: x(at),
@@ -4282,7 +4285,9 @@
                         : "middle",
                   class: "chart-axis",
                 },
-                clockTime(at).slice(0, 5),
+                minutes > 1440
+                  ? new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit" }).format(new Date(at * 1000))
+                  : clockTime(at).slice(0, 5),
               ),
             );
           }

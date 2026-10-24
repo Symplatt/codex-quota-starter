@@ -1,0 +1,14 @@
+{
+  "app.py": "741e1ddbfda8c099a8ff2b13f3b4fa05b119d426bc1fa43b287f65199149225d",
+  "core.py": "7d3f568531d4f764fd026ebe0e02644c57bf853b784c9c84c359596fc1acb683",
+  "help.html": "f840ba2703734c94d028e66bac1cabbf8fdac972b5ca04b4f39a08d8f8f2952c",
+  "README.md": "ee01b8e668c8dccb12e3c362e8e07ad6608048977be51cea078a12da51d31c7b",
+  "tasks.js": "2a400ac7d8b7e7f35cae3e9c3b48571c3ae198a34a0e5ffa3affe33f465c8bb0",
+  "tasks.py": "5d50f15bf5cf30a9b2b7e8ad6e91708ad68c1396ec4eed6ddd2c90026e24fb24",
+  "test_statistics.py": "9e87f160cb04ab368999b69f0be676e888840bae0d3d058a87d3872c0cdeb3c3",
+  "test_tasks.py": "13e951f7e6614c44f79bebccb33484b61dffcbf2bf1a83bed4c788bdfd74b1a5",
+  "test_tasks_ui.cjs": "e9a0ffaaf37289f2c93de99dc7a9d99a30c5f4cd7bbd8bdad87b538b28183d2d",
+  "test_ui.cjs": "371a9b398685eb9979d2685967e99d1edcacc82f726acdd429f1426f630a79c0",
+  "ui.html": "0ca882b8e27a417fc9def1eaa804abea7431a1093900b91ac1d12e84af3f9602",
+  "version.py": "17d7dbff74c5a544dc69a1a5b8178ce1c1d17638d37d515b8bbb0b6ff2807ff2"
+}

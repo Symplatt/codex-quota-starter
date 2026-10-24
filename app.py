@@ -112,6 +112,8 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None, tasks=None)
                     if route == 'create':
                         task = tasks.create(body)
                         return self.send(200, {'task': task, 'message': '已添加预设任务'})
+                    if route == 'edit':
+                        return self.send(200, {'task': tasks.edit(body), 'message': '已修改预设任务'})
                     if route == 'settings':
                         tasks.save_settings(body)
                         return self.send(200, {'message': '已保存任务设置'})

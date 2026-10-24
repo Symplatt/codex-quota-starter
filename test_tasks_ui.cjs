@@ -135,7 +135,7 @@ test('cancellation uses the task endpoint and never calls quota controls',async(
   const p=await setup({tasks:[sample()]});
   const actions=p.get('task-list').children[0].children[4];
   assert.equal(actions.children.at(-1).textContent,'详情');
-  const cancel=actions.children[0];await cancel.events.click();
+  const cancel=actions.children.find(b=>b.textContent==='取消');await cancel.events.click();
   assert.equal(p.calls.find(c=>c.url.endsWith('/cancel')).options.body,JSON.stringify({id:'a'.repeat(32)}));
   assert.ok(p.calls.every(c=>c.url.startsWith('/api/tasks')));
 });
@@ -188,4 +188,33 @@ test('detail status capsule updates independently while progress and failure rea
   assert.equal(p.get('task-detail-status').attributes['aria-label'],'任务执行状态：执行失败');
   assert.equal(p.get('task-detail-progress').textContent,'执行目录不可访问');
   assert.equal(p.get('task-detail-progress').hidden,false);
+});
+
+
+test('waiting tasks edit their snapshot and retain custom models; new form resets editing',async()=>{
+  const task={...sample(),model:'gpt-custom',content:'原内容',cwd:'E:\\tasks'};
+  const p=await setup({tasks:[task]},async(url)=>url.endsWith('/detail')?{ok:true,json:async()=>({task})}:null);
+  await p.get('task-list').children[0].children[4].children.find(b=>b.textContent==='修改').events.click();
+  assert.equal(p.get('task-dialog').open,true);
+  assert.equal(p.get('task-model').value,'gpt-custom');
+  assert.equal(p.get('task-content').value,'原内容');
+  assert.equal(p.get('task-path').disabled,true);
+  p.get('task-content').value='修改内容';
+  await p.event('task-form','submit');
+  const body=JSON.parse(p.calls.find(c=>c.url.endsWith('/edit')).options.body);
+  assert.equal(body.id,task.id);assert.equal(body.content,'修改内容');
+  await p.event('task-new');assert.equal(p.get('task-path').disabled,false);
+  assert.equal(p.get('task-save').textContent,'添加任务');
+});
+
+test('started tasks have no edit action and stale edits preserve their draft on rejection',async()=>{
+  const p=await setup({tasks:[sample('running')]});
+  assert.equal(p.get('task-list').children[0].children[4].children.some(b=>b.textContent==='修改'),false);
+  const task={...sample(),content:'保留草稿',cwd:'E:\\tasks'};
+  const q=await setup({tasks:[task]},async(url)=>url.endsWith('/detail')?{ok:true,json:async()=>({task})}:
+    url.endsWith('/edit')?{ok:false,status:400,json:async()=>({error:'任务已开始'})}:null);
+  await q.get('task-list').children[0].children[4].children.find(b=>b.textContent==='修改').events.click();
+  await q.event('task-form','submit');
+  assert.equal(q.get('task-dialog').open,true);assert.equal(q.get('task-content').value,'保留草稿');
+  assert.equal(q.get('task-error').textContent,'任务已开始');
 });

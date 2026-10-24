@@ -82,6 +82,37 @@ class TaskTests(unittest.TestCase):
         self.assertEqual(self.tasks.snapshot(task['id'])['content'], '原任务')
         self.assertEqual(path.read_text(encoding='utf-8'), '稍后修改')
 
+    def test_edit_preserves_identity_and_document_and_executes_new_snapshot(self):
+        task = self.create()
+        self.tasks.update(task['id'], retryAt=9999)
+        body = dict(task, title='修改后的任务', content='新内容', mode='quota', effort='high')
+        changed = self.tasks.edit(body)
+        self.assertEqual(changed['id'], task['id'])
+        self.assertEqual(changed['createdAt'], task['createdAt'])
+        self.assertEqual(changed['account'], task['account'])
+        self.assertEqual(changed['content'], '新内容')
+        self.assertNotIn('retryAt', changed)
+        self.assertEqual(Path(task['path']).read_text(encoding='utf-8'), task['content'])
+        self.assertEqual(self.tasks.snapshot()['total'], 1)
+        self.now = 2000
+        self.tasks.tick()
+        self.assertEqual(self.runner.calls, [task['id']])
+
+    def test_edit_rejects_started_finished_invalid_and_missing_tasks(self):
+        task = self.create()
+        with self.assertRaises(ValueError):
+            self.tasks.edit(dict(task, content=''))
+        self.assertEqual(self.tasks.snapshot(task['id']), task)
+        for state in ('running', 'completed', 'failed', 'cancelled'):
+            self.tasks.update(task['id'], status=state)
+            with self.assertRaisesRegex(ValueError, '尚未执行'):
+                self.tasks.edit(dict(task, title='不允许'))
+        self.tasks.update(task['id'], status='waiting', submittedAt=1000)
+        with self.assertRaises(ValueError):
+            self.tasks.edit(task)
+        with self.assertRaises(ValueError):
+            self.tasks.edit(dict(task, id=uuid.uuid4().hex))
+
     def test_default_directory_custom_model_and_filenames_persist(self):
         self.tasks.save_settings({'directory': str(self.root), 'models': ['gpt-6-sol', 'gpt-6-sol']})
         a, b = self.create(path=''), self.create(path='')
@@ -424,7 +455,10 @@ class TaskHTTPTests(unittest.TestCase):
         self.assertEqual(self.post('create', body)[0], 200)
         self.assertEqual(json.loads(self.request('GET', '/api/tasks')[1])['total'], 1)
         self.assertEqual(self.post('detail', {'id': task_id})[0], 200)
+        self.assertEqual(self.post('edit', dict(body, content='修改内容'))[0], 200)
+        self.assertEqual(self.tasks.snapshot(task_id)['content'], '修改内容')
         self.assertEqual(self.post('cancel', {'id': task_id})[0], 200)
+        self.assertEqual(self.post('edit', body)[0], 400)
         self.assertEqual(self.tasks.snapshot(task_id)['status'], 'cancelled')
         self.assertEqual(self.post('settings', {'directory': self.tmp.name, 'models': ['gpt-6-sol']})[0], 200)
         self.assertEqual(self.post('read', {'path': body['path']})[0], 200)

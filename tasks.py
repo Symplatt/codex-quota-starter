@@ -392,13 +392,25 @@ class TaskScheduler:
         return {'tasks': tasks, 'total': total, 'counts': counts, 'settings': self.settings()}
 
     def create(self, body):
+        return self.save_task(body)
+
+    def edit(self, body):
+        return self.save_task(body, editing=True)
+
+    def save_task(self, body, editing=False):
         task_id, now = body.get('id'), self.clock()
         if not isinstance(task_id, str) or not re.fullmatch(r'[a-f0-9]{32}', task_id):
             raise ValueError('任务标识无效，请重新打开新建窗口')
         # Browser/session retries carry the same ID, including after lost responses.
         with self.create_lock, self.db() as db:
+            # Serialize edits with the scheduler's durable claim, so a running
+            # task can never execute a mixture of old and new fields.
+            db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT data FROM scheduled_tasks WHERE id=?', (task_id,)).fetchone()
-            if row:
+            original = json.loads(row[0]) if row else None
+            if editing and (not original or original['status'] != 'waiting' or original.get('submittedAt')):
+                raise ValueError('只有尚未执行的等待中任务可以修改，请刷新任务状态')
+            if row and not editing:
                 return json.loads(row[0])
             mode, at = body.get('mode'), body.get('runAt')
             if mode not in ('time', 'quota'):
@@ -416,9 +428,11 @@ class TaskScheduler:
                 raise ValueError('请输入 1 至 100 字的任务名称')
             current = self.store.get('current') or {}
             account = current.get('account')
+            if editing:
+                account = original['account']
             if not account:
                 raise ValueError('请先成功检测一次额度，确认创建任务的账户')
-            path_value = body.get('path')
+            path_value = original['path'] if editing else body.get('path')
             if not path_value:
                 directory = self.settings()['directory']
                 if Path(directory) == self.default_directory:
@@ -426,16 +440,16 @@ class TaskScheduler:
                 path_value = str(Path(directory) / (time.strftime('%Y%m%d-%H%M%S') + '-' + task_id[:8] + '.md'))
             path = absolute_path(path_value)
             cwd = absolute_path(body.get('cwd') or str(path.parent), directory=True)
-            source = body.get('source', 'new')
+            source = 'snapshot' if editing else body.get('source', 'new')
             if source == 'existing':
                 content = read_markdown(str(path))
-            elif source == 'new':
+            elif source == 'new' or editing and source == 'snapshot':
                 content = body.get('content')
                 if not isinstance(content, str) or not content.strip() or len(content.encode('utf-8')) > MAX_CONTENT:
                     raise ValueError('请输入不超过 200 KB 的任务内容')
                 if not path.parent.is_dir():
                     raise ValueError('文档所在目录不存在')
-                if path.exists():
+                if source == 'new' and path.exists():
                     raise ValueError('文件已存在，请另选文件名；读取已有文件请切换至“已有 MD”')
             else:
                 raise ValueError('文档来源无效')
@@ -443,6 +457,9 @@ class TaskScheduler:
                         mode=mode, runAt=at if mode == 'time' else None, model=model, effort=effort,
                         path=str(path), cwd=str(cwd), content=content, account=account,
                         progress='等待开始时间' if mode == 'time' else '等待五小时额度回满', result='')
+            if editing:
+                task['createdAt'] = original['createdAt']
+                task['updatedAt'] = now
             if source == 'new':
                 # Exclusive create never overwrites a user's document, even in a race.
                 with path.open('x', encoding='utf-8', newline='\n') as output:

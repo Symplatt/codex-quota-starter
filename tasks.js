@@ -17,6 +17,7 @@
     listBusy = false,
     signature = "",
     taskId = "",
+    editing = false,
     detailId = "",
     saving = false;
   let selectedModels = new Set(),
@@ -126,6 +127,12 @@
         detail = make("button", "详情", "task-detail-button");
       detail.type = "button";
       detail.addEventListener("click", () => openDetail(task.id));
+      if (task.status === "waiting" && !task.submittedAt) {
+        const edit = make("button", "修改");
+        edit.type = "button";
+        edit.addEventListener("click", () => openEdit(task.id));
+        actions.append(edit);
+      }
       if (task.status === "waiting" || task.status === "running") {
         const cancel = make(
           "button",
@@ -181,12 +188,12 @@
   function updateModels(selected) {
     const select = el("task-model");
     select.replaceChildren();
-    for (const model of settings.models) {
+    for (const model of new Set([...settings.models, ...(selected ? [selected] : [])])) {
       const option = make("option", modelName(model));
       option.value = model;
       select.append(option);
     }
-    select.value = settings.models.includes(selected) ? selected : defaults[0];
+    select.value = selected || defaults[0];
     el("task-default-hint").textContent =
       (settings.directory
         ? `默认文档目录：${settings.directory}。`
@@ -206,6 +213,8 @@
 
   el("task-new").addEventListener("click", () => {
     if (saving) return;
+    editing = false;
+    editControls();
     el("task-form").reset();
     taskId = crypto.randomUUID().replaceAll("-", "");
     el("task-time").value = localTime(Date.now() / 1000 + 3600);
@@ -216,6 +225,39 @@
     updateModels(defaults[0]);
     el("task-dialog").showModal();
   });
+  function editControls() {
+    el("task-dialog-title").textContent = editing ? "修改预设任务" : "新建预设任务";
+    el("task-save").textContent = editing ? "保存修改" : "添加任务";
+    for (const id of ["task-source", "task-path", "task-pick-file"])
+      el(id).disabled = editing;
+  }
+  async function openEdit(id) {
+    if (saving) return;
+    try {
+      const { task } = await request("detail", { id });
+      if (saving || el("task-dialog").open) return;
+      if (task.status !== "waiting" || task.submittedAt)
+        throw Error("任务已开始或结束，请刷新任务状态");
+      el("task-form").reset();
+      taskId = task.id;
+      editing = true;
+      editControls();
+      sourceChanged();
+      el("task-source").value = "snapshot";
+      updateModels(task.model);
+      for (const [field, value] of Object.entries({ title: task.title, model: task.model,
+        effort: task.effort, mode: task.mode, time: task.runAt ? localTime(task.runAt) : "",
+        path: task.path, cwd: task.cwd, content: task.content }))
+        el("task-" + field).value = value;
+      el("task-time-field").hidden = task.mode !== "time";
+      el("task-time").required = task.mode === "time";
+      el("task-default-hint").textContent = "修改保存在任务内容中，原 MD 文档保持原样。任务开始后不能修改。";
+      el("task-error").textContent = "";
+      el("task-dialog").showModal();
+    } catch (error) {
+      el("task-sync").textContent = error.message;
+    }
+  }
   el("task-mode").addEventListener("change", () => {
     const fixed = el("task-mode").value === "time";
     el("task-time-field").hidden = !fixed;
@@ -290,13 +332,13 @@
         cwd: el("task-cwd").value.trim(),
         content: el("task-content").value,
       };
-      await request("create", body);
+      await request(editing ? "edit" : "create", body);
       el("task-dialog").close();
       await refreshTasks();
     } catch (error) {
       el("task-error").textContent =
         error.name === "AbortError"
-          ? "结果未确认，可重试添加；同一任务不会重复创建。"
+          ? "结果未确认，请刷新任务状态后核对；重试不会重复创建任务。"
           : error.message;
     } finally {
       saving = false;

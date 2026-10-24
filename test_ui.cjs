@@ -475,3 +475,12 @@ test('disconnected quota labels never claim requests can currently be sent',asyn
  s.linked=true;p.run('refresh()');await p.respond(s);assert.equal(p.e('remaining-copy').textContent,'可正常发送请求');
  p.run('showOffline()');assert.equal(p.e('remaining-copy').textContent,'连接中断，显示上次额度');
 });
+
+
+test('seven-day chart restores its range and renders readable date ticks',async()=>{
+ const p=setup({},{'quota-starter:chart-preferences:v1':'{"window":"10080","quota":"primaryRemaining"}'});
+ await p.respond(status());assert.equal(p.e('chart-window').value,'10080');
+ const labels=p.e('quota-chart-svg').children.filter(n=>/^\d{2}\/\d{2}$/.test(n.textContent));
+ assert.ok(labels.length>=6 && labels.length<=8);
+ assert.ok(p.e('quota-chart-svg').children.length<200);
+});

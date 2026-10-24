@@ -422,7 +422,7 @@ class Store:
         with self.connect() as db:
             rows = db.execute('SELECT minute,checked,primary_used,secondary_used FROM quota_samples '
                               'WHERE account=? AND minute>=? AND minute<=? ORDER BY minute',
-                              (current['account'], math.floor(now / 60) * 60 - 86400, now)).fetchall()
+                              (current['account'], math.floor(now / 60) * 60 - 7 * 86400, now)).fetchall()
         return [{'minute': row['minute'], 'checkedAt': row['checked'],
                  'primaryRemaining': 100 - row['primary_used'],
                  'secondaryRemaining': None if row['secondary_used'] is None else 100 - row['secondary_used']}
