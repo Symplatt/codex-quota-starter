@@ -1,0 +1,21 @@
+{
+  "version": "1.7.0-pre.3",
+  "commit": "afc386e9a37c3202665132ea11d3306824ea2520",
+  "release": "https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.0-pre.3",
+  "prerelease": true,
+  "latest": "v1.6.0",
+  "assetsVerified": true,
+  "sourceFilesVerified": 49,
+  "sha256": "24965973f1d8650fb75d711d4039bfcef5522a8ce1d00bb0d6e3ca6e0acfe69d",
+  "ciRuns": [
+    40065421746,
+    40065425111
+  ],
+  "pythonTests": 225,
+  "nodeTests": 64,
+  "localVersion": "1.7.0-pre.3",
+  "localLinked": true,
+  "dataPreserved": true,
+  "databaseIntegrity": "ok",
+  "uncheckedLogItems": 6
+}

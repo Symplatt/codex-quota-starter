@@ -1,4 +1,4 @@
-# 1.7.0-pre.3 用户审核通过与发布（2026-10-24）
+# 1.7.0-pre.3 用户审核通过与发布（2026-10-24，已完成）
 
 - 用户已明确审核通过；CHANGELOG、README、帮助、版本与独立D盘日志已同步。
 - 两个连接基线JSON按原提交原样恢复，打包清单使用本版审核清单；其余4个原有历史文档删除未纳入提交。
@@ -6,7 +6,8 @@
 - 本机沿用E:\work-space\quota-starter运行，已重启并真实读取成功，版本1.7.0-pre.3、linked=true、idle、自启动开启且无错误。桌面快捷方式实际启动通过，桌面/Quota Starter开始菜单/自启均指向源码目录，未创建默认安装副本。
 - SQLite在线备份位于dist/release-pre3-1.7.0/runtime-backup.sqlite3；重启后完整性ok，2条attempts、4条claims、1个用户任务及计划、暂停、暂停检测、任务目录/模型设置的内容指纹一致。未修改真实任务，未为验证发送模型请求。
 - D:\Quota-Starter-1.7.0-pre.3-更新日志.md全部复选框保持未选；ZIP仅保留dist并作为Release资产。
-- 下一步：推送codex/release-1.7.0-pre.3及Tag，确认Windows CI，发布预发布并回下载验证；Latest保持1.6.0。
+- 已完成：发布提交afc386e9a37c3202665132ea11d3306824ea2520、分支codex/release-1.7.0-pre.3和v1.7.0-pre.3 Tag均已推送；分支/Tag Windows CI 40065421746、40065425111全部成功。预发布公开：https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.0-pre.3。
+- 回下载两份公开资产逐字节匹配本地，49文件匹配Tag，Release正文匹配CHANGELOG，Latest仍为1.6.0；本机1.7.0-pre.3真实连接正常。详情见差异文档/1.7.0-pre.3/发布核验.json。原有4个历史文档删除和3张本地审核截图保留在工作区，未混入提交；无待完成发布步骤。
 
 # 2026-10-24 版本正式化与待审核功能
 
