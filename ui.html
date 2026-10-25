@@ -2787,6 +2787,15 @@
       .task-dialog h3 { font-size: 13px; font-weight: 500; margin: 22px 0 10px; }
       .task-dialog pre { font: inherit; font-size: 13px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; background: #f7f9f5; border-radius: 8px; max-height: 300px; overflow: auto; margin: 0; }
       .task-detail-meta { white-space: pre-line; overflow-wrap: anywhere; margin: 0; }
+      .task-directory { display: flex; align-items: baseline; gap: 6px; margin: 0; }
+      .task-directory[hidden] { display: none; }
+      .task-directory-path { overflow-wrap: anywhere; min-width: 0; }
+      .task-path-action { position: relative; display: inline-flex; flex: none; align-self: center; }
+      .task-path-action button { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 4px; border: 0; background: transparent; color: inherit; border-radius: 4px; }
+      .task-path-action button:hover { background: #e5e9e3; }
+      .task-path-action svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+      .task-path-tooltip { position: absolute; top: calc(100% + 6px); right: 0; z-index: 2; width: max-content; padding: 5px 9px; border-radius: 4px; background: #111; color: #fff; font-size: 12px; line-height: 18px; white-space: nowrap; pointer-events: none; visibility: hidden; }
+      .task-path-action:hover .task-path-tooltip, .task-path-action:focus-within .task-path-tooltip { visibility: visible; }
       #task-detail-progress { font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
       .page-nodes { position: fixed; right: max(18px, calc((100vw - 1080px) / 4 - 42px)); top: 50%; transform: translateY(-50%); width: 92px; z-index: 15; }
       .page-nodes button { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; height: 44px; padding: 0; border: 0; background: transparent; color: #94a391; font-size: 12px; }
@@ -3255,6 +3264,13 @@
     <dialog id="task-detail-dialog" class="task-dialog" aria-labelledby="task-detail-title">
       <div class="task-dialog-head"><div class="task-detail-heading"><h2 id="task-detail-title">任务详情</h2><span id="task-detail-status" class="task-status task-detail-status" role="status"></span></div><button type="button" data-close="task-detail-dialog" aria-label="关闭">×</button></div>
       <p id="task-detail-meta" class="small task-detail-meta"></p>
+      <div id="task-detail-directory" class="small task-directory" hidden>
+        <span class="task-directory-path">执行目录：<span id="task-detail-cwd"></span></span>
+        <span class="task-path-action"><button id="task-copy-cwd" type="button" aria-label="复制路径" aria-describedby="task-copy-tooltip"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M15 5V3H3v12h2"/></svg></button><span id="task-copy-tooltip" class="task-path-tooltip" role="tooltip">复制路径</span></span>
+        <span class="task-path-action"><button id="task-open-cwd" type="button" aria-label="打开目录" aria-describedby="task-open-tooltip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v1M3 7h18l-3 14H3z"/></svg></button><span id="task-open-tooltip" class="task-path-tooltip" role="tooltip">打开目录</span></span>
+      </div>
+      <p id="task-detail-files" class="small task-detail-meta"></p>
+      <p id="task-path-feedback" class="task-error" role="status"></p>
       <p id="task-detail-progress" role="status" hidden></p>
       <h3>任务内容</h3><pre id="task-detail-content"></pre>
       <h3>执行结果</h3><pre id="task-detail-result">等待执行</pre>

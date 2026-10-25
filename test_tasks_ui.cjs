@@ -163,8 +163,9 @@ test('detail paths shorten only descendants of the execution directory and retai
     const task={...sample('completed'),cwd,path,resultPath,progress:'已完成',content:'任务内容',result:'任务结果'};
     const p=await setup({tasks:[task]},async(url)=>url.endsWith('/detail')?{ok:true,json:async()=>({task})}:null);
     await p.get('task-list').children[0].children[4].children.at(-1).events.click();
-    const meta=p.get('task-detail-meta');
-    assert.ok(meta.textContent.includes('执行目录：'+cwd));
+    const meta=p.get('task-detail-files');
+    assert.equal(p.get('task-detail-cwd').textContent,cwd);
+    assert.equal(p.get('task-detail-directory').hidden,false);
     assert.ok(meta.textContent.includes('任务文档：'+shortPath));
     assert.ok(meta.textContent.includes('结果文档：'+shortResult));
     assert.equal(meta.title,'任务文档：'+path+'\n结果文档：'+resultPath);
@@ -173,6 +174,24 @@ test('detail paths shorten only descendants of the execution directory and retai
     assert.equal(p.get('task-detail-progress').textContent,'');
     assert.equal(p.get('task-detail-progress').hidden,true);
   }
+});
+
+test('directory actions copy the full path and open the saved task directory with visible failures',async()=>{
+  const task={...sample(),cwd:'C:\\work space\\项目',content:'内容'};
+  let copied;
+  const p=await setup({tasks:[task]},async(url)=>url.endsWith('/detail')?{ok:true,json:async()=>({task})}:null);
+  p.context.navigator={clipboard:{writeText:async text=>{copied=text;}}};
+  await p.get('task-list').children[0].children[4].children.at(-1).events.click();
+  await p.event('task-copy-cwd');
+  assert.equal(copied,task.cwd);
+  assert.equal(p.get('task-copy-tooltip').textContent,'已复制路径');
+  await p.event('task-open-cwd');
+  const call=p.calls.find(c=>c.url.endsWith('/open-directory'));
+  assert.deepEqual(JSON.parse(call.options.body),{id:task.id});
+  assert.equal(p.get('task-open-cwd').disabled,false);
+  p.context.navigator.clipboard.writeText=async()=>{throw Error('权限不足');};
+  await p.event('task-copy-cwd');
+  assert.match(p.get('task-path-feedback').textContent,/复制失败.*权限不足/);
 });
 
 test('detail status capsule updates independently while progress and failure reasons stay visible without duplicated labels',async()=>{

@@ -123,6 +123,13 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None, tasks=None)
                         return self.send(200, {'models': tasks.catalog(body.get('force', False))})
                     if route == 'detail':
                         return self.send(200, {'task': tasks.snapshot(body.get('id', 'invalid'))})
+                    if route == 'open-directory':
+                        task = tasks.snapshot(body.get('id', 'invalid'))
+                        folder = Path(task['cwd'])
+                        if not folder.is_absolute() or not folder.is_dir():
+                            raise ValueError('执行目录不存在或无法访问')
+                        os.startfile(str(folder))
+                        return self.send(200, {'message': '已打开执行目录'})
                     if route == 'cancel':
                         tasks.cancel(body.get('id'))
                         return self.send(200, {'message': '已取消或正在中断任务'})

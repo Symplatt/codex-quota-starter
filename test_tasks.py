@@ -474,6 +474,21 @@ class TaskHTTPTests(unittest.TestCase):
             self.assertEqual(json.loads(self.post('pick', {'kind': 'open'})[1])['path'], '')
         self.assertEqual(self.request('GET', '/tasks.js')[0], 200)
 
+    def test_open_directory_uses_saved_task_and_rejects_missing_directory(self):
+        task_id = uuid.uuid4().hex
+        body = dict(id=task_id, title='目录快捷操作', mode='time', runAt=time.time() + 100,
+                    model='gpt-6.1-sol', effort='low', path=str(Path(self.tmp.name) / 'task.md'),
+                    cwd=self.tmp.name, content='测试')
+        self.assertEqual(self.post('create', body)[0], 200)
+        with patch('app.os.startfile', create=True) as opened:
+            self.assertEqual(self.request('POST', '/api/tasks/open-directory', json.dumps({'id': task_id}))[0], 403)
+            self.assertEqual(self.post('open-directory', {'id': 'missing'})[0], 400)
+            self.assertEqual(self.post('open-directory', {'id': task_id, 'path': 'C:\\untrusted'})[0], 200)
+            opened.assert_called_once_with(str(Path(self.tmp.name).resolve()))
+            with patch('app.Path.is_dir', return_value=False):
+                self.assertEqual(self.post('open-directory', {'id': task_id})[0], 400)
+            self.assertEqual(opened.call_count, 1)
+
     def test_model_catalog_endpoint_and_time_edit_queue_while_checking(self):
         with patch.object(self.tasks, 'catalog', return_value=[{'model': 'gpt-6-sol', 'label': 'GPT-6 Sol'}]) as catalog:
             self.assertEqual(self.post('models', {'force': True})[0], 200)

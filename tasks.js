@@ -19,6 +19,7 @@
     taskId = "",
     editing = false,
     detailId = "",
+    detailCwd = "",
     saving = false;
   let selectedModels = new Set(),
     detectingModels = false;
@@ -448,11 +449,16 @@
     const task = data.task;
     el("task-detail-title").textContent = task.title;
     el("task-detail-meta").textContent =
-      `模型选择：${modelName(task.model)} · ${task.effort}\n执行目录：${task.cwd}\n任务文档：${shortTaskPath(task.path, task.cwd)}` +
+      `模型选择：${modelName(task.model)} · ${task.effort}`;
+    detailCwd = task.cwd || "";
+    el("task-detail-directory").hidden = !detailCwd;
+    el("task-detail-cwd").textContent = detailCwd;
+    el("task-detail-files").textContent =
+      `任务文档：${shortTaskPath(task.path, task.cwd)}` +
       (task.resultPath ? `\n结果文档：${shortTaskPath(task.resultPath, task.cwd)}` : "") +
       (task.startedAt ? `\n开始时间：${stamp(task.startedAt)}` : "") +
       (task.finishedAt ? `\n结束时间：${stamp(task.finishedAt)}` : "");
-    el("task-detail-meta").title = `任务文档：${task.path}` +
+    el("task-detail-files").title = `任务文档：${task.path}` +
       (task.resultPath ? `\n结果文档：${task.resultPath}` : "");
     detailStatus(task.status);
     detailProgress(task.progress?.trim() === labels[task.status] ? "" : task.progress || "");
@@ -462,6 +468,12 @@
   }
   async function openDetail(id) {
     detailId = id;
+    detailCwd = "";
+    el("task-detail-directory").hidden = true;
+    el("task-detail-files").textContent = "";
+    el("task-detail-files").title = "";
+    el("task-path-feedback").textContent = "";
+    el("task-copy-tooltip").textContent = "复制路径";
     el("task-detail-title").textContent = "任务详情";
     el("task-detail-meta").textContent = "";
     el("task-detail-meta").title = "";
@@ -477,6 +489,33 @@
       detailProgress(error.message);
     }
   }
+
+  el("task-copy-cwd").addEventListener("click", async () => {
+    if (!detailCwd) return;
+    const id = detailId;
+    try {
+      await navigator.clipboard.writeText(detailCwd);
+      if (detailId === id) {
+        el("task-path-feedback").textContent = "";
+        el("task-copy-tooltip").textContent = "已复制路径";
+      }
+    } catch (error) {
+      if (detailId === id) el("task-path-feedback").textContent = "复制失败：" + error.message;
+    }
+  });
+  el("task-open-cwd").addEventListener("click", async () => {
+    if (!detailCwd || el("task-open-cwd").disabled) return;
+    const id = detailId;
+    el("task-open-cwd").disabled = true;
+    try {
+      await request("open-directory", { id });
+      if (detailId === id) el("task-path-feedback").textContent = "";
+    } catch (error) {
+      if (detailId === id) el("task-path-feedback").textContent = error.message;
+    } finally {
+      el("task-open-cwd").disabled = false;
+    }
+  });
 
   for (const button of document.querySelectorAll("[data-close]"))
     button.addEventListener("click", () => el(button.dataset.close).close());
