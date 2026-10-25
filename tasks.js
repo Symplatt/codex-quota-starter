@@ -20,6 +20,7 @@
     editing = false,
     detailId = "",
     detailCwd = "",
+    detailText = { content: "", result: "" },
     saving = false;
   let selectedModels = new Set(),
     detectingModels = false;
@@ -154,6 +155,34 @@
         actions.append(cancel);
       }
       actions.append(detail);
+      const remove = make("button", undefined, "task-delete-button");
+      remove.type = "button";
+      remove.disabled = task.status === "running";
+      remove.title = remove.disabled ? "运行中的任务请先中断" : "删除任务";
+      remove.setAttribute("aria-label", "删除任务");
+      const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      icon.setAttribute("viewBox", "0 0 24 24");
+      icon.setAttribute("aria-hidden", "true");
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7");
+      icon.append(path);
+      remove.append(icon);
+      remove.addEventListener("click", async () => {
+        if (remove.disabled) return;
+        remove.disabled = true;
+        try {
+          await request("delete", { id: task.id });
+          if (detailId === task.id) {
+            detailId = "";
+            el("task-detail-dialog").close();
+          }
+          await refreshTasks();
+        } catch (error) {
+          el("task-sync").textContent = error.message;
+          remove.disabled = false;
+        }
+      });
+      actions.append(remove);
       row.append(info, model, plan, state, actions);
       return row;
     });
@@ -199,7 +228,7 @@
       (settings.directory
         ? `默认文档目录：${settings.directory}。`
         : "尚未设置默认目录，请选择文档路径或先保存任务设置。") +
-      " Codex 可在执行目录内修改文件。暂停运行会阻止新任务开始；任务内容按创建时保存。";
+      " 执行目录须单独选择，Codex 只能修改该目录内的文件。暂停运行会阻止新任务开始。";
   }
 
   function sourceChanged() {
@@ -318,6 +347,7 @@
     el("task-error").textContent = "";
     try {
       const mode = el("task-mode").value;
+      if (!el("task-cwd").value.trim()) throw Error("请选择执行目录，任务内容中的路径不会自动成为可写目录");
       const body = {
         id: taskId,
         title: el("task-title").value,
@@ -432,14 +462,25 @@
 
   function detailStatus(state, text = labels[state] || state) {
     const badge = el("task-detail-status");
-    badge.textContent = text;
+    detailTextContent("task-detail-status", text);
     badge.dataset.state = state;
     badge.setAttribute("aria-label", "任务执行状态：" + text);
   }
 
   function detailProgress(text = "") {
-    el("task-detail-progress").textContent = text;
+    detailTextContent("task-detail-progress", text);
     el("task-detail-progress").hidden = !text;
+  }
+
+  function detailTextContent(id, text) {
+    const node = el(id);
+    text = String(text ?? "");
+    if (node.textContent === text) return;
+    // A polling refresh must not replace the text nodes backing a mouse selection.
+    // Defer changed text until the selection is cleared; other details keep updating.
+    const selection = document.getSelection?.();
+    if (selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(node)) return;
+    node.textContent = text;
   }
 
   async function refreshDetail() {
@@ -447,28 +488,33 @@
       data = await request("detail", { id });
     if (detailId !== id) return;
     const task = data.task;
-    el("task-detail-title").textContent = task.title;
-    el("task-detail-meta").textContent =
-      `模型选择：${modelName(task.model)} · ${task.effort}`;
+    detailTextContent("task-detail-title", task.title);
+    detailTextContent("task-detail-meta", `模型选择：${modelName(task.model)} · ${task.effort}`);
     detailCwd = task.cwd || "";
     el("task-detail-directory").hidden = !detailCwd;
-    el("task-detail-cwd").textContent = detailCwd;
-    el("task-detail-files").textContent =
+    detailTextContent("task-detail-cwd", detailCwd);
+    detailTextContent("task-detail-files",
       `任务文档：${shortTaskPath(task.path, task.cwd)}` +
       (task.resultPath ? `\n结果文档：${shortTaskPath(task.resultPath, task.cwd)}` : "") +
       (task.startedAt ? `\n开始时间：${stamp(task.startedAt)}` : "") +
-      (task.finishedAt ? `\n结束时间：${stamp(task.finishedAt)}` : "");
+      (task.finishedAt ? `\n结束时间：${stamp(task.finishedAt)}` : ""));
     el("task-detail-files").title = `任务文档：${task.path}` +
       (task.resultPath ? `\n结果文档：${task.resultPath}` : "");
     detailStatus(task.status);
     detailProgress(task.progress?.trim() === labels[task.status] ? "" : task.progress || "");
-    el("task-detail-content").textContent = task.content;
-    el("task-detail-result").textContent =
-      task.result || (task.status === "waiting" ? "等待执行" : "暂无回复");
+    detailText = { content: task.content || "", result: task.result || "" };
+    detailTextContent("task-detail-content", detailText.content);
+    detailTextContent("task-detail-result", detailText.result || (task.status === "waiting" ? "等待执行" : "暂无回复"));
+    for (const key of ["content", "result"]) el("task-copy-" + key).disabled = !detailText[key];
   }
   async function openDetail(id) {
     detailId = id;
     detailCwd = "";
+    detailText = { content: "", result: "" };
+    for (const key of ["content", "result"]) {
+      el("task-copy-" + key).disabled = true;
+      el("task-copy-" + key + "-feedback").textContent = "";
+    }
     el("task-detail-directory").hidden = true;
     el("task-detail-files").textContent = "";
     el("task-detail-files").title = "";
@@ -488,6 +534,20 @@
       detailStatus("failed", "读取失败");
       detailProgress(error.message);
     }
+  }
+
+  for (const key of ["content", "result"]) {
+    el("task-copy-" + key).addEventListener("click", async () => {
+      if (!detailText[key]) return;
+      const id = detailId;
+      const feedback = el("task-copy-" + key + "-feedback");
+      try {
+        await navigator.clipboard.writeText(detailText[key]);
+        if (detailId === id) feedback.textContent = "已复制";
+      } catch (error) {
+        if (detailId === id) feedback.textContent = "复制失败：" + error.message;
+      }
+    });
   }
 
   el("task-copy-cwd").addEventListener("click", async () => {

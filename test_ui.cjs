@@ -13,6 +13,24 @@ function setup(storage={},preferences={}){
 }
 function status(){const at=Date.parse('2090-10-09T19:09:00+08:00')/1000;return {service:'quota-starter',version:'1.4.5',paused:false,busy:false,status:'等待重置时间',current:{primary:{usedPercent:20,resetsAt:at},checkedAt:at-3600},timing:{serverResetAt:at,minSendAt:at+1,minRefreshAt:at+18060,maxRefreshAt:at+366*86400,sendAt:at+2,estimatedResetAt:at+18002,schedule:null},nextPoll:at,attempts:[],events:[],autostart:{available:true,enabled:true}};}
 
+test('hour and minute wheels respond more quickly with bounded steps across delta modes',async()=>{
+ const p=setup();await p.respond(status());
+ for(const index of [0,1,2])assert.equal(p.run(`wheelSteps(${index},{deltaY:120,deltaMode:0})`),1);
+ for(const index of [3,4]){
+   assert.equal(p.run(`wheelSteps(${index},{deltaY:120,deltaMode:0})`),index===3?2:3);
+   assert.equal(p.run(`wheelSteps(${index},{deltaY:-120,deltaMode:0})`),index===3?2:3);
+   assert.equal(p.run(`wheelSteps(${index},{deltaY:3,deltaMode:1})`),1);
+   assert.equal(p.run(`wheelSteps(${index},{deltaY:10000,deltaMode:0})`),index===3?3:5);
+ }
+});
+
+test('task lifecycle events show readable names and failure reasons in activity',async()=>{
+ const p=setup(),s=status();s.activity=[{time:1,kind:'task',detail:{action:'failed',title:'更新软件',id:'task-id',cwd:'C:\\project',reason:'目录不可用'}}];
+ await p.respond(s);const row=p.e('activity').children[0];
+ assert.equal(row.children[1].textContent,'预设任务失败');
+ assert.match(row.children[2].textContent,/任务：更新软件/);assert.match(row.children[2].textContent,/目录不可用/);
+});
+
 test('error banner shows current failures safely and disappears after recovery',async()=>{
  const p=setup(),s=status();await p.respond(s);assert.equal(p.e('error-banner').hidden,true);
  s.connection={stopped:true,upgradeRequired:true,error:'Codex CLI 版本过低（0.144.4） <script>test</script>'};

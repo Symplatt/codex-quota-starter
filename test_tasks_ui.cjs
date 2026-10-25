@@ -19,7 +19,7 @@ async function setup(initial={tasks:[],settings:{directory:'E:\\tasks',models:['
   let data=initial;
   const window={innerHeight:900,get scrollY(){return scroll;},matchMedia:()=>({matches:false}),
     scrollTo(options){scroll=options.top;window.lastScroll=options;listeners.scroll?.();},addEventListener(n,fn){listeners[n]=fn;}};
-  const context=vm.createContext({token:'old',document:{getElementById:get,createElement:element,
+  const context=vm.createContext({token:'old',document:{getElementById:get,createElement:element,createElementNS:(_, tag)=>element(tag),
     body:element(),documentElement:{scrollHeight:3800},querySelectorAll(selector){return selector==='.page-nodes button'?nodes:[];}},
     window,Intl,Date,JSON,AbortController,setTimeout,clearTimeout,crypto:{randomUUID:()=> '12345678-1234-1234-1234-123456789abc'},
     setInterval(fn,ms){intervals.push([fn,ms]);},getComputedStyle:()=>({getPropertyValue:()=> '20px'}),
@@ -32,6 +32,33 @@ async function setup(initial={tasks:[],settings:{directory:'E:\\tasks',models:['
 }
 const sample=(state='waiting')=>({id:'a'.repeat(32),title:'<img src=x onerror=alert(1)>',status:state,
   model:'gpt-6-astra',effort:'ultra',mode:'time',runAt:1792701000,path:'E:\\tasks\\x.md',progress:'等待开始时间'});
+
+test('new tasks require an explicit execution directory before posting',async()=>{
+ const p=await setup();await p.event('task-new');
+ p.get('task-content').value='更新 C:\\project';await p.event('task-form','submit');
+ assert.match(p.get('task-error').textContent,/请选择执行目录/);
+ assert.equal(p.calls.filter(c=>c.url.endsWith('/create')).length,0);
+ assert.equal(p.get('task-dialog').open,true);
+});
+
+test('detail copies full text and keeps unchanged or selected text nodes across polling',async()=>{
+ let task={...sample('running'),content:'任务内容\n第二行',result:'执行结果\n第二行',cwd:'C:\\project'};
+ const p=await setup({tasks:[task]},async(url)=>url.endsWith('/detail')?{ok:true,json:async()=>({task})}:null);
+ await p.get('task-list').children[0].children[4].children.find(b=>b.textContent==='详情').events.click();
+ const node=p.get('task-detail-result');let value=node.textContent,writes=0;
+ Object.defineProperty(node,'textContent',{get:()=>value,set:v=>{writes++;value=v;}});
+ await p.poll();await p.poll();assert.equal(writes,0);
+ p.context.document.getSelection=()=>({isCollapsed:false,rangeCount:1,getRangeAt:()=>({intersectsNode:n=>n===node})});
+ task={...task,result:'新增执行结果'};await p.poll();assert.equal(writes,0);
+ p.context.document.getSelection=()=>({isCollapsed:true});await p.poll();assert.equal(value,'新增执行结果');
+ let copied;p.context.navigator={clipboard:{writeText:async text=>{copied=text;}}};
+ await p.event('task-copy-content');assert.equal(copied,task.content);
+ assert.equal(p.get('task-copy-content-feedback').textContent,'已复制');
+ await p.event('task-copy-result');assert.equal(copied,task.result);
+ p.context.navigator.clipboard.writeText=async()=>{throw Error('无法访问剪贴板');};
+ await p.event('task-copy-result');assert.match(p.get('task-copy-result-feedback').textContent,/复制失败/);
+ task={...task,result:''};await p.poll();assert.equal(p.get('task-copy-result').disabled,true);
+});
 
 test('task polling uses only its endpoint, renders user text safely and has no quota side effects',async()=>{
   const p=await setup({tasks:[sample()],settings:{directory:'',models:['gpt-6-astra','gpt-6.1-sol']}});
@@ -46,6 +73,7 @@ test('new form uses Beijing seconds, preserves all six efforts and sends an idem
   assert.match(p.get('task-time').value,/T\d{2}:\d{2}:\d{2}$/);
   p.get('task-title').value='任务';p.get('task-time').value='2026-10-24T00:00:01';
   p.get('task-content').value='内容';p.get('task-effort').value='ultra';
+  p.get('task-cwd').value='C:\\project';
   await p.event('task-form','submit');
   const post=p.calls.find(c=>c.url.endsWith('/create')),body=JSON.parse(post.options.body);
   assert.equal(body.runAt,Date.parse('2026-10-24T00:00:01+08:00')/1000);
@@ -69,6 +97,7 @@ test('session refresh retries the same task once and updates credentials',async(
     if(url==='/api/session')return {ok:true,json:async()=>({token:'new'})};
   });
   await p.event('task-new');p.get('task-time').value='2026-10-24T00:00:01';
+  p.get('task-cwd').value='C:\\project';
   await p.event('task-form','submit');
   const calls=p.calls.filter(c=>c.url.endsWith('/create'));
   assert.equal(calls.length,2);assert.equal(calls[0].options.body,calls[1].options.body);
@@ -78,6 +107,7 @@ test('session refresh retries the same task once and updates credentials',async(
 test('rejected creation keeps draft and task ID for safe manual retry',async()=>{
   const p=await setup(undefined,async(url)=>url.endsWith('/create')?{ok:false,status:400,json:async()=>({error:'路径不存在'})}:null);
   await p.event('task-new');p.get('task-time').value='2026-10-24T00:00:01';p.get('task-content').value='保留';
+  p.get('task-cwd').value='C:\\project';
   await p.event('task-form','submit');await p.event('task-form','submit');
   assert.equal(p.get('task-dialog').open,true);assert.equal(p.get('task-content').value,'保留');
   const posts=p.calls.filter(c=>c.url.endsWith('/create'));
@@ -134,10 +164,23 @@ test('offline refresh keeps prior task rows and reports stale status',async()=>{
 test('cancellation uses the task endpoint and never calls quota controls',async()=>{
   const p=await setup({tasks:[sample()]});
   const actions=p.get('task-list').children[0].children[4];
-  assert.equal(actions.children.at(-1).textContent,'详情');
+  assert.equal(actions.children.at(-2).textContent,'详情');
   const cancel=actions.children.find(b=>b.textContent==='取消');await cancel.events.click();
   assert.equal(p.calls.find(c=>c.url.endsWith('/cancel')).options.body,JSON.stringify({id:'a'.repeat(32)}));
   assert.ok(p.calls.every(c=>c.url.startsWith('/api/tasks')));
+});
+
+test('delete icon follows details, uses its own endpoint and cannot delete running tasks',async()=>{
+ const p=await setup({tasks:[sample('failed')]});
+ const actions=p.get('task-list').children[0].children[4];
+ assert.equal(actions.children.at(-2).textContent,'详情');
+ const remove=actions.children.at(-1);assert.equal(remove.attributes['aria-label'],'删除任务');
+ await remove.events.click();
+ assert.deepEqual(JSON.parse(p.calls.find(c=>c.url.endsWith('/delete')).options.body),{id:sample().id});
+ const q=await setup({tasks:[sample('running')]});
+ const blocked=q.get('task-list').children[0].children[4].children.at(-1);
+ assert.equal(blocked.disabled,true);await blocked.events.click();
+ assert.equal(q.calls.some(c=>c.url.endsWith('/delete')),false);
 });
 
 test('model and effort have their own column and status is shown only in the right capsule',async()=>{
@@ -162,7 +205,7 @@ test('detail paths shorten only descendants of the execution directory and retai
   for(const [cwd,path,resultPath,shortPath,shortResult] of cases){
     const task={...sample('completed'),cwd,path,resultPath,progress:'已完成',content:'任务内容',result:'任务结果'};
     const p=await setup({tasks:[task]},async(url)=>url.endsWith('/detail')?{ok:true,json:async()=>({task})}:null);
-    await p.get('task-list').children[0].children[4].children.at(-1).events.click();
+    await p.get('task-list').children[0].children[4].children.find(b=>b.textContent==='详情').events.click();
     const meta=p.get('task-detail-files');
     assert.equal(p.get('task-detail-cwd').textContent,cwd);
     assert.equal(p.get('task-detail-directory').hidden,false);
@@ -181,7 +224,7 @@ test('directory actions copy the full path and open the saved task directory wit
   let copied;
   const p=await setup({tasks:[task]},async(url)=>url.endsWith('/detail')?{ok:true,json:async()=>({task})}:null);
   p.context.navigator={clipboard:{writeText:async text=>{copied=text;}}};
-  await p.get('task-list').children[0].children[4].children.at(-1).events.click();
+  await p.get('task-list').children[0].children[4].children.find(b=>b.textContent==='详情').events.click();
   await p.event('task-copy-cwd');
   assert.equal(copied,task.cwd);
   assert.equal(p.get('task-copy-tooltip').textContent,'已复制路径');
@@ -197,7 +240,7 @@ test('directory actions copy the full path and open the saved task directory wit
 test('detail status capsule updates independently while progress and failure reasons stay visible without duplicated labels',async()=>{
   let task={...sample('running'),cwd:'E:\\tasks',content:'任务',progress:'正在执行第二步',result:''};
   const p=await setup({tasks:[task]},async(url)=>url.endsWith('/detail')?{ok:true,json:async()=>({task})}:null);
-  await p.get('task-list').children[0].children[4].children.at(-1).events.click();
+  await p.get('task-list').children[0].children[4].children.find(b=>b.textContent==='详情').events.click();
   assert.equal(p.get('task-detail-status').textContent,'执行中');
   assert.equal(p.get('task-detail-progress').textContent,'正在执行第二步');
   assert.equal(p.get('task-detail-progress').hidden,false);

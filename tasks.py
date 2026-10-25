@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import queue
 import re
-import sqlite3
 import subprocess
 import tempfile
 import threading
@@ -312,16 +311,20 @@ class TaskScheduler:
                 data.update(status='failed', finishedAt=self.clock(),
                             progress='后台已退出，结果未知，请检查工作目录；不会自动重试')
                 self.write(db, data)
+                self.event(db, data, 'recovered', reason=data['progress'])
 
     @contextmanager
     def db(self):
-        db = sqlite3.connect(self.store.path, timeout=5)
-        db.row_factory = sqlite3.Row
-        try:
-            with db:
-                yield db
-        finally:
-            db.close()
+        # Commit task transitions and their audit event together; Store also
+        # archives committed events to the existing monthly JSONL log.
+        with self.store.connect() as db:
+            yield db
+
+    def event(self, db, task, action, **extra):
+        detail = {key: task[key] for key in ('id', 'title', 'status', 'cwd', 'model', 'effort', 'mode', 'runAt') if key in task}
+        detail.update(action=action, **extra)
+        db.execute('INSERT INTO events(time,kind,detail) VALUES (?,?,?)',
+                   (self.clock(), 'task', json.dumps(detail, ensure_ascii=False)))
 
     @staticmethod
     def write(db, task):
@@ -349,6 +352,7 @@ class TaskScheduler:
             if not result:
                 raise ValueError('本机 Codex 未返回可选模型')
             self.model_cache, self.model_cache_at = result, self.clock()
+            self.store.log('task', {'action': 'models', 'models': [m['model'] for m in result]}, now=self.clock())
             return result
         finally:
             if rpc is not None:
@@ -373,20 +377,21 @@ class TaskScheduler:
             self.default_directory.mkdir(parents=True, exist_ok=True)
         self.store.set('taskDirectory', directory)
         self.store.set('taskModels', list(dict.fromkeys(models)))
+        self.store.log('task', {'action': 'settings', **self.settings()}, now=self.clock())
 
     def snapshot(self, detail_id=None):
         if detail_id is not None and (not isinstance(detail_id, str) or not re.fullmatch(r'[a-f0-9]{32}', detail_id)):
             raise ValueError('任务标识无效')
         with self.db() as db:
             if detail_id:
-                row = db.execute('SELECT data FROM scheduled_tasks WHERE id=?', (detail_id,)).fetchone()
+                row = db.execute("SELECT data FROM scheduled_tasks WHERE id=? AND status!='deleted'", (detail_id,)).fetchone()
                 if not row:
                     raise ValueError('任务不存在')
                 return json.loads(row[0])
-            rows = db.execute("SELECT data FROM scheduled_tasks ORDER BY "
+            rows = db.execute("SELECT data FROM scheduled_tasks WHERE status!='deleted' ORDER BY "
                               "CASE WHEN status IN ('waiting','running') THEN 0 ELSE 1 END, created DESC LIMIT 200").fetchall()
-            total = db.execute('SELECT COUNT(*) FROM scheduled_tasks').fetchone()[0]
-            counts = {r[0]: r[1] for r in db.execute('SELECT status,COUNT(*) FROM scheduled_tasks GROUP BY status')}
+            total = db.execute("SELECT COUNT(*) FROM scheduled_tasks WHERE status!='deleted'").fetchone()[0]
+            counts = {r[0]: r[1] for r in db.execute("SELECT status,COUNT(*) FROM scheduled_tasks WHERE status!='deleted' GROUP BY status")}
         tasks = [{k: v for k, v in json.loads(r[0]).items() if k not in ('content', 'result')}
                  for r in rows]
         return {'tasks': tasks, 'total': total, 'counts': counts, 'settings': self.settings()}
@@ -439,7 +444,9 @@ class TaskScheduler:
                     self.default_directory.mkdir(parents=True, exist_ok=True)
                 path_value = str(Path(directory) / (time.strftime('%Y%m%d-%H%M%S') + '-' + task_id[:8] + '.md'))
             path = absolute_path(path_value)
-            cwd = absolute_path(body.get('cwd') or str(path.parent), directory=True)
+            if not isinstance(body.get('cwd'), str) or not body['cwd'].strip():
+                raise ValueError('请选择执行目录；任务只能修改该目录内的文件，文档保存目录不代表目标项目目录')
+            cwd = absolute_path(body['cwd'], directory=True)
             source = 'snapshot' if editing else body.get('source', 'new')
             if source == 'existing':
                 content = read_markdown(str(path))
@@ -465,6 +472,7 @@ class TaskScheduler:
                 with path.open('x', encoding='utf-8', newline='\n') as output:
                     output.write(content)
             self.write(db, task)
+            self.event(db, task, 'edited' if editing else 'created')
         return task
 
     def cancel(self, task_id):
@@ -478,8 +486,12 @@ class TaskScheduler:
             task = json.loads(row[0])
             if task['status'] == 'waiting':
                 task.update(status='cancelled', finishedAt=self.clock(), progress='已取消')
+                self.event(db, task, 'cancelled', reason=task['progress'])
             elif task['status'] == 'running':
+                if task.get('cancelRequested'):
+                    return
                 task.update(cancelRequested=True, progress='正在中断，已产生的修改会保留')
+                self.event(db, task, 'cancel_requested')
             self.write(db, task)
 
     def update(self, task_id, **fields):
@@ -487,8 +499,37 @@ class TaskScheduler:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT data FROM scheduled_tasks WHERE id=?', (task_id,)).fetchone()
             task = json.loads(row[0])
+            previous = task.copy()
             task.update(fields, updatedAt=self.clock())
             self.write(db, task)
+            if fields.get('status') and fields['status'] != previous['status']:
+                self.event(db, task, fields['status'], reason=task.get('progress', ''),
+                           resultPath=task.get('resultPath'))
+            elif fields.get('submittedAt') and not previous.get('submittedAt'):
+                self.event(db, task, 'submitted')
+            elif fields.get('threadId') and fields['threadId'] != previous.get('threadId'):
+                self.event(db, task, 'session_started', threadId=fields['threadId'])
+            elif fields.get('progress') in ('正在执行命令', '正在修改文件') and fields['progress'] != previous.get('progress'):
+                self.event(db, task, 'execution_step', message=fields['progress'])
+
+    def delete(self, task_id):
+        if not isinstance(task_id, str) or not re.fullmatch(r'[a-f0-9]{32}', task_id):
+            raise ValueError('任务标识无效')
+        with self.db() as db:
+            # Serialize with the scheduler claim so a deleted waiting task can
+            # never start. Retain a tombstone to reject stale creation retries.
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT data FROM scheduled_tasks WHERE id=?', (task_id,)).fetchone()
+            if not row:
+                raise ValueError('任务不存在')
+            task = json.loads(row[0])
+            if task['status'] == 'running':
+                raise ValueError('运行中的任务请先中断，结束后再删除')
+            if task['status'] == 'deleted':
+                return
+            task.update(status='deleted', deletedAt=self.clock())
+            self.write(db, task)
+            self.event(db, task, 'deleted')
 
     def due(self, task, current, now):
         if task.get('retryAt', 0) > now:
@@ -516,6 +557,7 @@ class TaskScheduler:
                     return
                 task.update(status='running', startedAt=now, progress='正在校验账户、额度和模型')
                 self.write(db, task)
+                self.event(db, task, 'started')
             task_id = task['id']
             cancelled = lambda: self.stop.is_set() or bool(self.snapshot(task_id).get('cancelRequested'))
             try:

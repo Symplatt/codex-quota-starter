@@ -56,7 +56,7 @@ class TaskTests(unittest.TestCase):
     def body(self, **values):
         task_id = uuid.uuid4().hex
         return dict(id=task_id, title='整理笔记', mode='time', runAt=self.now + 1,
-                    path=str(self.root / (task_id + '.md')), content='请整理资料',
+                    path=str(self.root / (task_id + '.md')), cwd=str(self.root), content='请整理资料',
                     model='gpt-6-astra', effort='ultra', **values)
 
     def create(self, **values):
@@ -126,7 +126,7 @@ class TaskTests(unittest.TestCase):
                  dict(runAt=self.now + 367 * 86400), dict(mode='other'), dict(effort='none'),
                  dict(model='-bad'), dict(model='foo;bar'), dict(content=''), dict(content='中' * 70000),
                  dict(title=''), dict(title=2), dict(path='relative.md'), dict(path=str(self.root / 'x.txt')),
-                 dict(cwd=str(self.root / 'missing')), dict(source='other')]
+                 dict(cwd=''), dict(cwd=None), dict(cwd=str(self.root / 'missing')), dict(source='other')]
         for case in cases:
             with self.subTest(case=str(case)[:100]), self.assertRaises((ValueError, OSError)):
                 self.create(**case)
@@ -180,6 +180,73 @@ class TaskTests(unittest.TestCase):
         self.assertEqual(Path(final['resultPath']).read_text(encoding='utf-8'), '测试结果')
         self.assertEqual(self.runner.calls, [task['id']])
         self.assertNotIn('content', self.tasks.snapshot()['tasks'][0])
+
+    def test_task_directory_is_explicit_and_separate_from_document_storage(self):
+        project = self.root / 'project'
+        project.mkdir()
+        task = self.create(path='', cwd=str(project))
+        self.assertEqual(task['cwd'], str(project))
+        self.assertNotEqual(Path(task['path']).parent, project)
+        body = self.body()
+        del body['cwd']
+        with self.assertRaisesRegex(ValueError, '请选择执行目录'):
+            self.tasks.create(body)
+        self.assertFalse(Path(body['path']).exists())
+
+    def test_task_lifecycle_is_archived_without_polling_or_sensitive_text(self):
+        self.store.clock = lambda: self.now
+        task = self.create(content='private task text')
+        self.tasks.edit(dict(task, title='新任务名'))
+        self.now += 1
+        self.tasks.tick()
+        before = self.store.recent('events', 100)
+        for _ in range(3):
+            self.tasks.snapshot()
+            self.tasks.snapshot(task['id'])
+        self.assertEqual(self.store.recent('events', 100), before)
+        actions = [event['detail']['action'] for event in reversed(before) if event['kind'] == 'task']
+        self.assertEqual(actions, ['created', 'edited', 'started', 'submitted', 'completed'])
+        records = ''.join(path.read_text(encoding='utf-8') for path in self.store.log_dir.glob('*.jsonl'))
+        self.assertIn(task['id'], records)
+        self.assertNotIn('private task text', records)
+        self.assertNotIn('测试结果', records)
+
+    def test_task_failure_cancel_and_crash_have_distinct_log_entries(self):
+        a, b = self.create(), self.create()
+        self.tasks.cancel(a['id'])
+        self.tasks.cancel(a['id'])
+        self.runner.error = ValueError('校验失败')
+        self.now += 2
+        self.tasks.tick()
+        events = [e['detail'] for e in self.store.recent('events', 100) if e['kind'] == 'task']
+        self.assertEqual(sum(e['action'] == 'cancelled' for e in events), 1)
+        self.assertTrue(any(e['id'] == b['id'] and e['action'] == 'failed' and e['reason'] == '校验失败' for e in events))
+        c = self.create()
+        self.tasks.update(c['id'], status='running')
+        TaskScheduler(self.store, self.runner, clock=lambda: self.now)
+        self.assertTrue(any(e['detail'].get('action') == 'recovered' for e in self.store.recent('events', 100)))
+
+    def test_delete_keeps_documents_and_deduplication_and_blocks_running_tasks(self):
+        body = self.body()
+        task = self.tasks.create(body)
+        self.tasks.delete(task['id'])
+        self.tasks.delete(task['id'])
+        self.assertEqual(self.tasks.snapshot()['total'], 0)
+        self.assertEqual(self.tasks.snapshot()['counts'], {})
+        self.assertTrue(Path(task['path']).exists())
+        with self.assertRaisesRegex(ValueError, '不存在'):
+            self.tasks.snapshot(task['id'])
+        self.assertEqual(self.tasks.create(body)['status'], 'deleted')
+        self.now += 2
+        self.tasks.tick()
+        self.assertEqual(self.runner.calls, [])
+        other = self.create()
+        self.tasks.update(other['id'], status='running')
+        with self.assertRaisesRegex(ValueError, '先中断'):
+            self.tasks.delete(other['id'])
+        self.assertEqual(self.tasks.snapshot(other['id'])['status'], 'running')
+        events = self.store.recent('events', 100)
+        self.assertEqual(sum(e['detail'].get('action') == 'deleted' for e in events), 1)
 
     def test_result_file_failure_keeps_confirmed_completion_and_reply(self):
         task = self.create()
@@ -449,7 +516,7 @@ class TaskHTTPTests(unittest.TestCase):
     def test_api_lifecycle_and_csrf_and_bounded_bodies(self):
         task_id = uuid.uuid4().hex
         body = dict(id=task_id, title='测试', mode='time', runAt=time.time() + 100,
-                    model='gpt-6.1-sol', effort='low', path=str(Path(self.tmp.name) / 'task.md'), content='测试')
+                    model='gpt-6.1-sol', effort='low', path=str(Path(self.tmp.name) / 'task.md'), cwd=self.tmp.name, content='测试')
         self.assertEqual(self.request('POST', '/api/tasks/create', json.dumps(body))[0], 403)
         self.assertEqual(self.post('create', body)[0], 200)
         self.assertEqual(self.post('create', body)[0], 200)
@@ -462,6 +529,11 @@ class TaskHTTPTests(unittest.TestCase):
         self.assertEqual(self.tasks.snapshot(task_id)['status'], 'cancelled')
         self.assertEqual(self.post('settings', {'directory': self.tmp.name, 'models': ['gpt-6-sol']})[0], 200)
         self.assertEqual(self.post('read', {'path': body['path']})[0], 200)
+        self.assertEqual(self.request('POST', '/api/tasks/delete', json.dumps({'id': task_id}))[0], 403)
+        self.assertEqual(self.post('delete', {'id': task_id})[0], 200)
+        self.assertTrue(Path(body['path']).exists())
+        self.assertEqual(self.post('detail', {'id': task_id})[0], 400)
+        self.assertEqual(json.loads(self.request('GET', '/api/tasks')[1])['total'], 0)
         self.assertEqual(self.request('POST', '/api/tasks/create', '{}', {**self.headers, 'Content-Length': '900000'})[0], 400)
 
     def test_invalid_requests_and_picker_cancellation_are_safe(self):
