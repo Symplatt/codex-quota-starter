@@ -129,7 +129,7 @@ Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Wor
 
 代理依次使用 `QUOTA_HTTP_PROXY`、当前启用的 Windows 代理和继承的环境变量，本地地址保持直连。仅有 PAC 配置时，可通过 `QUOTA_HTTP_PROXY` 提供明确代理。软件不修改系统代理或 Codex 配置，不读取或复制认证文件。
 
-软件信息显示名称、版本、当前后台程序的实际安装路径及版权声明“版权所有 © 2026 Symplatt”；从源码运行时，安装路径显示源码目录。
+软件信息显示名称、版本、当前后台程序的实际安装路径及版权声明“版权所有 © 2026 Symplatt”；从源码运行时，安装路径显示源码目录。点击路径旁的文件夹图标可打开该目录，悬停或键盘聚焦显示“打开目录”。
 
 ## 停止与卸载
 
@@ -171,7 +171,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Stop.ps1
 
 ## 项目信息
 
-当前正式版本：**v1.7.0**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
+当前源码版本：**v1.7.1**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
 
 - [版本更新记录](CHANGELOG.md)
 - [机制说明](MECHANISM.md)

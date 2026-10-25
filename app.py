@@ -142,6 +142,13 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None, tasks=None)
                     return self.send(400, {'error': str(exc)})
                 except (RuntimeError, subprocess.TimeoutExpired) as exc:
                     return self.send(409, {'error': str(exc)})
+            if self.path == '/api/installation/open':
+                # Resolve the backend's own directory; never accept a path from the browser.
+                try:
+                    os.startfile(str(ROOT))
+                except OSError as exc:
+                    return self.send(500, {'error': '无法打开安装目录：' + str(exc)})
+                return self.send(200, {'message': '已打开安装目录'})
             if self.path in ('/api/logs/open', '/api/triggers/open'):
                 triggers = self.path == '/api/triggers/open'
                 folder = engine.store.log_dir.resolve()

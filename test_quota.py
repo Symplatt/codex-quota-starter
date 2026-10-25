@@ -393,6 +393,21 @@ class HTTPTests(unittest.TestCase):
         c.request(method,path,headers=headers or {},body=body)
         r=c.getresponse(); result=(r.status,r.read().decode()); c.close(); return result
 
+    def test_open_installation_uses_backend_directory_and_requires_session(self):
+        from app import ROOT
+        _, page = self.request('GET', '/')
+        headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': csrf_token(page)}
+        with patch('app.os.startfile', create=True) as open_folder:
+            self.assertEqual(self.request('POST', '/api/installation/open')[0], 403)
+            self.assertEqual(self.request('POST', '/api/installation/open', {**headers, 'Origin': 'https://example.com'})[0], 403)
+            open_folder.assert_not_called()
+            self.assertEqual(self.request('POST', '/api/installation/open', headers, '{"path":"C:/other"}')[0], 200)
+            open_folder.assert_called_once_with(str(ROOT))
+        with patch('app.os.startfile', side_effect=OSError('denied'), create=True):
+            code, body = self.request('POST', '/api/installation/open', headers)
+            self.assertEqual(code, 500)
+            self.assertIn('无法打开安装目录', json.loads(body)['error'])
+
     def test_open_logs_uses_fixed_directory_and_records_result(self):
         _, page = self.request('GET', '/')
         token = csrf_token(page)

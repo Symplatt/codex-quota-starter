@@ -2796,6 +2796,10 @@
       .task-path-action svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
       .task-path-tooltip { position: absolute; top: calc(100% + 6px); right: 0; z-index: 2; width: max-content; padding: 5px 9px; border-radius: 4px; background: #111; color: #fff; font-size: 12px; line-height: 18px; white-space: nowrap; pointer-events: none; visibility: hidden; }
       .task-path-action:hover .task-path-tooltip, .task-path-action:focus-within .task-path-tooltip { visibility: visible; }
+      .installation-directory { display: flex; align-items: center; gap: 4px; margin-top: 12px; overflow-wrap: anywhere; }
+      .installation-directory > span:first-child { min-width: 0; }
+      .installation-directory button { width: 1.3em; height: 1.3em; padding: 0; font-size: inherit; }
+      .installation-directory svg { width: 1em; height: 1em; }
       #task-detail-progress { font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
       .page-nodes { position: fixed; right: max(18px, calc((100vw - 1080px) / 4 - 42px)); top: 50%; transform: translateY(-50%); width: 92px; z-index: 15; }
       .page-nodes button { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; height: 44px; padding: 0; border: 0; background: transparent; color: #94a391; font-size: 12px; }
@@ -3223,7 +3227,7 @@
           ><span>版本：<strong id="version">—</strong></span
           ><span>版权所有 © 2026 Symplatt</span>
         </div>
-        <div class="small" style="margin-top: 12px; overflow-wrap: anywhere">安装路径：<span id="installation-path">—</span></div>
+        <div class="small installation-directory"><span>安装路径：<span id="installation-path">—</span></span><span class="task-path-action"><button id="open-installation" type="button" aria-label="打开目录" aria-describedby="installation-open-tooltip" onclick="action('installation/open')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v1M3 7h18l-3 14H3z"/></svg></button><span id="installation-open-tooltip" class="task-path-tooltip" role="tooltip">打开目录</span></span></div>
       </section>
     </main>
     <nav class="page-nodes" aria-label="卡片导航">
