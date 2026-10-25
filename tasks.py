@@ -33,6 +33,122 @@ def windows_sandbox_mode(env):
     return mode
 
 
+def task_environment():
+    env = os.environ.copy()
+    # Desktop session/runtime handles are not valid in a standalone CLI process.
+    # Keep the login home, proxy and network restrictions, never credentials.
+    for key in list(env):
+        if key in ('OPENAI_API_KEY', 'CODEX_API_KEY', 'OPENAI_BASE_URL') or (
+                key.startswith('CODEX_') and key not in ('CODEX_HOME', 'CODEX_SANDBOX_NETWORK_DISABLED')):
+            env.pop(key, None)
+    configure_proxy(env)
+    return env
+
+
+def execution_directories(body):
+    values = body.get('directories', [body.get('cwd')])
+    if not isinstance(values, list) or not 1 <= len(values) <= 50:
+        raise ValueError('请选择 1 至 50 个执行目录')
+    if any(not isinstance(v, str) or not v.strip() for v in values):
+        raise ValueError('请选择执行目录；任务只能修改所选目录内的文件')
+    return list(dict.fromkeys(str(absolute_path(v, directory=True)) for v in values))
+
+
+def probe_windows_sandbox(task, env):
+    mode = windows_sandbox_mode(env)
+    modes = [mode] + (['mxc'] if mode == 'elevated' else [])
+    for backend in modes:
+        result = subprocess.run([find_codex(), '-c', 'windows.sandbox=' + json.dumps(backend),
+                                 'sandbox', '-P', ':workspace', '-C', task['cwd'],
+                                 'cmd.exe', '/d', '/c', 'exit 0'],
+                                cwd=task['cwd'], env=env, capture_output=True, text=True,
+                                encoding='utf-8', errors='replace', timeout=45,
+                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        if result.returncode == 0:
+            return backend
+        error = (result.stderr or result.stdout)[-2000:]
+        # Probe only before submitting a task. MXC keeps Windows isolation and
+        # the workspace policy; no retry of model work or full-access fallback.
+        if backend != 'elevated' or not any(t in error.lower() for t in (
+                'helper_unknown_error', 'setup refresh', 'setup failed')):
+            break
+    raise RuntimeError('Windows 沙箱初始化失败，任务未提交：' + error)
+
+
+def foreground_window():
+    if os.name != 'nt':
+        return 0
+    import ctypes as ct
+    from ctypes import wintypes as wt
+    user = ct.WinDLL('user32')
+    user.GetForegroundWindow.restype = wt.HWND
+    return user.GetForegroundWindow() or 0
+
+
+def choose_directories(owner=0):
+    """Windows IFileOpenDialog supports selecting several folders in one visit."""
+    import ctypes as ct
+    from ctypes import wintypes as wt
+    user = ct.WinDLL('user32')
+    user.IsWindow.argtypes = [wt.HWND]
+    if not owner or not user.IsWindow(owner):
+        owner = foreground_window()
+    class GUID(ct.Structure):
+        _fields_ = [('data', ct.c_ubyte * 16)]
+        def __init__(self, value):
+            super().__init__()
+            self.data[:] = uuid.UUID(value).bytes_le
+    ole = ct.OleDLL('ole32')
+    ole.CoTaskMemFree.argtypes = [ct.c_void_p]
+    def invoke(ptr, index, types=(), args=(), result=ct.c_long):
+        table = ct.cast(ptr, ct.POINTER(ct.POINTER(ct.c_void_p))).contents
+        value = ct.WINFUNCTYPE(result, ct.c_void_p, *types)(table[index])(ptr, *args)
+        if result == ct.c_long and value < 0:
+            raise OSError(value, '无法打开目录选择窗口')
+        return value
+    dialog, items = ct.c_void_p(), ct.c_void_p()
+    ole.CoInitializeEx(None, 2)
+    try:
+        hr = ole.CoCreateInstance(ct.byref(GUID('DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7')),
+                                 None, 1, ct.byref(GUID('D57C7288-D4AD-4768-BE02-9D969532D960')),
+                                 ct.byref(dialog))
+        if hr < 0:
+            raise OSError(hr, '无法打开目录选择窗口')
+        invoke(dialog, 9, (wt.DWORD,), (0x20 | 0x40 | 0x200 | 0x800,))
+        invoke(dialog, 17, (wt.LPCWSTR,), ('选择执行目录（可多选）',))
+        # Cancellation is a normal empty result, distinct from a picker failure.
+        # An unowned dialog from the background HTTP process can open behind
+        # the browser with its own Python taskbar entry. Own it by the window
+        # that received the user's click so it stays above that browser.
+        shown = invoke(dialog, 3, (wt.HWND,), (owner or None,), result=wt.DWORD)
+        if shown == 0x800704C7:
+            return []
+        if shown & 0x80000000:
+            raise OSError(shown, '无法打开目录选择窗口')
+        invoke(dialog, 27, (ct.POINTER(ct.c_void_p),), (ct.byref(items),))
+        count = wt.DWORD()
+        invoke(items, 7, (ct.POINTER(wt.DWORD),), (ct.byref(count),))
+        paths = []
+        for index in range(count.value):
+            item, name = ct.c_void_p(), ct.c_void_p()
+            try:
+                invoke(items, 8, (wt.DWORD, ct.POINTER(ct.c_void_p)), (index, ct.byref(item)))
+                invoke(item, 5, (wt.DWORD, ct.POINTER(ct.c_void_p)), (0x80058000, ct.byref(name)))
+                paths.append(ct.wstring_at(name))
+            finally:
+                if name.value:
+                    ole.CoTaskMemFree(name)
+                if item.value:
+                    invoke(item, 2, result=wt.ULONG)
+        return paths
+    finally:
+        if items.value:
+            invoke(items, 2, result=wt.ULONG)
+        if dialog.value:
+            invoke(dialog, 2, result=wt.ULONG)
+        ole.CoUninitialize()
+
+
 def available_models(rpc):
     models, cursor, seen = [], None, set()
     while True:
@@ -73,7 +189,7 @@ def read_markdown(path):
 
 def choose_path(kind):
     """Run the native picker in a disposable process, outside HTTP/quota threads."""
-    if kind not in ('directory', 'open', 'save'):
+    if kind not in ('directory', 'directories', 'open', 'save'):
         raise ValueError('路径选择类型无效')
     script = '''import sys, tkinter as tk
 from tkinter import filedialog
@@ -86,12 +202,15 @@ else: result=filedialog.asksaveasfilename(**options,defaultextension='.md',filet
 print(result); root.destroy()
 '''
     import sys
-    result = subprocess.run([sys.executable, '-X', 'utf8', '-c', script, kind],
+    if kind == 'directories':
+        script = 'import sys,json; sys.path.insert(0,sys.argv[2]); from tasks import choose_directories; print(json.dumps(choose_directories(int(sys.argv[3]))))'
+    owner = foreground_window()
+    result = subprocess.run([sys.executable, '-X', 'utf8', '-c', script, kind, str(Path(__file__).parent), str(owner)],
                             capture_output=True, text=True, encoding='utf-8', timeout=180,
                             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     if result.returncode:
         raise RuntimeError('无法打开路径选择窗口，请手动填写完整路径')
-    return result.stdout.strip()
+    return json.loads(result.stdout) if kind == 'directories' else result.stdout.strip()
 
 
 class QuotaNotFull(RuntimeError):
@@ -137,6 +256,9 @@ class TaskRunner:
             supported = [e['reasoningEffort'] for e in model['supportedReasoningEfforts']]
             if task['effort'] not in supported:
                 raise ValueError('该模型不支持所选推理强度，可用：' + ' / '.join(supported))
+            execution_directories(task)
+            if os.name == 'nt':
+                task['sandboxBackend'] = probe_windows_sandbox(task, task_environment())
             if rpc.account() != account:
                 raise ValueError('发送前账户发生变化，任务已停止')
         finally:
@@ -159,20 +281,12 @@ class TaskRunner:
             proc.kill()
 
     def run(self, task, update, cancelled):
-        env = os.environ.copy()
-        for key in ('OPENAI_API_KEY', 'CODEX_API_KEY', 'OPENAI_BASE_URL'):
-            env.pop(key, None)
-        # A nested CLI must create its own workspace-write session, rather than
-        # attach to the dashboard launcher/parent agent's permission profile.
-        # Keep CODEX_HOME and network restrictions; no sandbox bypass is used.
-        for key in ('CODEX_PERMISSION_PROFILE', 'CODEX_THREAD_ID', 'CODEX_SESSION_ID',
-                    'CODEX_APP_TOOLS_PIPE_PATH', 'CODEX_TOOL_CALL_ID',
-                    'CODEX_TASK_WORKSPACE_VERIFYING_IDENTITY'):
-            env.pop(key, None)
-        configure_proxy(env)
+        env = task_environment()
         args = [find_codex(), '--no-daemon', 'exec', '--ignore-user-config', '--json', '--color', 'never',
                 '--skip-git-repo-check', '-C', task['cwd'],
                 '-m', task['model']]
+        for directory in task.get('directories', [task['cwd']])[1:]:
+            args.extend(['--add-dir', directory])
         for setting in ('model_provider="openai"', 'forced_login_method="chatgpt"',
                         'approval_policy="never"', 'service_tier="default"',
                         'default_permissions=":workspace"',
@@ -180,7 +294,7 @@ class TaskRunner:
                         'model_reasoning_effort=' + json.dumps(task['effort'])):
             args.extend(['-c', setting])
         if os.name == 'nt':
-            args.extend(['-c', 'windows.sandbox=' + json.dumps(windows_sandbox_mode(env))])
+            args.extend(['-c', 'windows.sandbox=' + json.dumps(task.get('sandboxBackend') or windows_sandbox_mode(env))])
         schema = {'type': 'object', 'properties': {
             'taskStatus': {'type': 'string', 'enum': ['completed', 'failed']},
             'summary': {'type': 'string'}}, 'required': ['taskStatus', 'summary'], 'additionalProperties': False}
@@ -321,7 +435,7 @@ class TaskScheduler:
             yield db
 
     def event(self, db, task, action, **extra):
-        detail = {key: task[key] for key in ('id', 'title', 'status', 'cwd', 'model', 'effort', 'mode', 'runAt') if key in task}
+        detail = {key: task[key] for key in ('id', 'title', 'status', 'cwd', 'directories', 'model', 'effort', 'mode', 'runAt') if key in task}
         detail.update(action=action, **extra)
         db.execute('INSERT INTO events(time,kind,detail) VALUES (?,?,?)',
                    (self.clock(), 'task', json.dumps(detail, ensure_ascii=False)))
@@ -444,9 +558,7 @@ class TaskScheduler:
                     self.default_directory.mkdir(parents=True, exist_ok=True)
                 path_value = str(Path(directory) / (time.strftime('%Y%m%d-%H%M%S') + '-' + task_id[:8] + '.md'))
             path = absolute_path(path_value)
-            if not isinstance(body.get('cwd'), str) or not body['cwd'].strip():
-                raise ValueError('请选择执行目录；任务只能修改该目录内的文件，文档保存目录不代表目标项目目录')
-            cwd = absolute_path(body['cwd'], directory=True)
+            directories = execution_directories(body)
             source = 'snapshot' if editing else body.get('source', 'new')
             if source == 'existing':
                 content = read_markdown(str(path))
@@ -462,7 +574,7 @@ class TaskScheduler:
                 raise ValueError('文档来源无效')
             task = dict(id=task_id, title=title.strip(), status='waiting', createdAt=now,
                         mode=mode, runAt=at if mode == 'time' else None, model=model, effort=effort,
-                        path=str(path), cwd=str(cwd), content=content, account=account,
+                        path=str(path), cwd=directories[0], directories=directories, content=content, account=account,
                         progress='等待开始时间' if mode == 'time' else '等待五小时额度回满', result='')
             if editing:
                 task['createdAt'] = original['createdAt']
@@ -509,6 +621,8 @@ class TaskScheduler:
                 self.event(db, task, 'submitted')
             elif fields.get('threadId') and fields['threadId'] != previous.get('threadId'):
                 self.event(db, task, 'session_started', threadId=fields['threadId'])
+            elif fields.get('sandboxBackend') and fields['sandboxBackend'] != previous.get('sandboxBackend'):
+                self.event(db, task, 'sandbox_ready', message='Windows 沙箱已就绪：' + fields['sandboxBackend'])
             elif fields.get('progress') in ('正在执行命令', '正在修改文件') and fields['progress'] != previous.get('progress'):
                 self.event(db, task, 'execution_step', message=fields['progress'])
 
@@ -527,9 +641,28 @@ class TaskScheduler:
                 raise ValueError('运行中的任务请先中断，结束后再删除')
             if task['status'] == 'deleted':
                 return
-            task.update(status='deleted', deletedAt=self.clock())
-            self.write(db, task)
-            self.event(db, task, 'deleted')
+            # Delete only the exact task documents. Never recurse into any
+            # execution directory or infer filenames with a broad glob.
+            paths = list(dict.fromkeys(task[key] for key in ('path', 'resultPath') if task.get(key)))
+            for path in paths:
+                document = Path(path)
+                if document.suffix.lower() != '.md' or not document.is_absolute():
+                    raise ValueError('任务文档路径无效，未删除任务')
+                try:
+                    document.unlink(missing_ok=True)
+                except OSError as exc:
+                    self.event(db, task, 'delete_failed', reason='无法删除文档：' + str(document) + '；' + str(exc)[:1000])
+                    # Commit this audit event before returning the failure.
+                    failure = '无法删除任务文档，请关闭占用文件或检查权限后重试：' + str(document) + '；' + str(exc)[:1000]
+                    break
+            else:
+                failure = None
+            if not failure:
+                task.update(status='deleted', deletedAt=self.clock(), content='', result='')
+                self.write(db, task)
+                self.event(db, task, 'deleted', documents=paths)
+        if failure:
+            raise OSError(failure)
 
     def due(self, task, current, now):
         if task.get('retryAt', 0) > now:
@@ -562,6 +695,8 @@ class TaskScheduler:
             cancelled = lambda: self.stop.is_set() or bool(self.snapshot(task_id).get('cancelRequested'))
             try:
                 self.runner.preflight(task)
+                if task.get('sandboxBackend'):
+                    self.update(task_id, sandboxBackend=task['sandboxBackend'])
                 if cancelled():
                     raise InterruptedError('已取消，任务未发送')
                 self.update(task_id, submittedAt=self.clock(), progress='正在启动 Codex')

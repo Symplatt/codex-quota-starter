@@ -33,6 +33,28 @@ async function setup(initial={tasks:[],settings:{directory:'E:\\tasks',models:['
 const sample=(state='waiting')=>({id:'a'.repeat(32),title:'<img src=x onerror=alert(1)>',status:state,
   model:'gpt-6-astra',effort:'ultra',mode:'time',runAt:1792701000,path:'E:\\tasks\\x.md',progress:'等待开始时间'});
 
+test('multi-directory selection appends without duplication and posts separate writable roots',async()=>{
+ const p=await setup(undefined,async(url)=>url.endsWith('/pick')?{ok:true,json:async()=>({paths:['C:\\project','D:\\reference']})}:null);
+ await p.event('task-new');p.get('task-cwd').value='C:\\project';
+ await p.event('task-pick-cwd');
+ assert.equal(p.get('task-cwd').value,'C:\\project\nD:\\reference');
+ assert.equal(JSON.parse(p.calls.find(c=>c.url.endsWith('/pick')).options.body).kind,'directories');
+ await p.event('task-form','submit');
+ const body=JSON.parse(p.calls.find(c=>c.url.endsWith('/create')).options.body);
+ assert.deepEqual(body.directories,['C:\\project','D:\\reference']);assert.equal(body.cwd,'C:\\project');
+});
+
+test('multi-directory detail opens only the selected saved directory and keeps selection across polling',async()=>{
+ const task={...sample('completed'),cwd:'C:\\project',directories:['C:\\project','D:\\shared'],content:'task'};
+ const p=await setup({tasks:[task]},async(url)=>url.endsWith('/detail')?{ok:true,json:async()=>({task})}:null);
+ await p.get('task-list').children[0].children[4].children.find(b=>b.textContent==='详情').events.click();
+ assert.equal(p.get('task-detail-directory-select').hidden,false);
+ p.get('task-detail-directory-select').value='D:\\shared';await p.event('task-detail-directory-select','change');
+ await p.poll();await p.event('task-open-cwd');
+ const body=JSON.parse(p.calls.find(c=>c.url.endsWith('/open-directory')).options.body);
+ assert.equal(body.index,1);assert.equal(body.id,task.id);
+});
+
 test('new tasks require an explicit execution directory before posting',async()=>{
  const p=await setup();await p.event('task-new');
  p.get('task-content').value='更新 C:\\project';await p.event('task-form','submit');

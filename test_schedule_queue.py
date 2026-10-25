@@ -19,6 +19,19 @@ class ScheduleQueueTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_pause_rejects_edits_clear_and_previously_queued_edits(self):
+        with self.engine.lock:
+            self.queue.submit(24000)
+        self.engine.set_paused(True)
+        with self.assertRaisesRegex(ValueError, '暂停'):
+            self.queue.submit(25200)
+        self.queue.drain()
+        self.assertIsNone(self.store.get('schedule'))
+        self.assertEqual(self.queue.status()['last']['status'], 'failed')
+        self.assertIn('暂停', self.queue.status()['last']['error'])
+        with self.assertRaisesRegex(ValueError, '暂停'):
+            self.queue.submit(clear=True)
+
     def test_detection_busy_queues_then_applies_once_without_error(self):
         with self.engine.lock:
             operation = self.queue.submit(24000)

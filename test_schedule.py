@@ -15,6 +15,65 @@ class ScheduleTests(unittest.TestCase):
         self.store.set('current', {'primary': {'resetsAt': 149}})
     tearDown = fixtures.QuotaTests.tearDown
     engine = fixtures.QuotaTests.engine
+    def test_pause_rejects_new_time_and_records_due_plan_without_polling(self):
+        fake = FakeRPC([raw(149)])
+        e = self.engine(fake, 100)
+        e.set_schedule(150)
+        e.set_paused(True)
+        with self.assertRaisesRegex(ValueError, '暂停'):
+            e.set_schedule(160)
+        with self.assertRaisesRegex(ValueError, '暂停'):
+            e.set_schedule()
+        self.assertEqual(self.store.get('schedule')['sendAt'], 150)
+        e = self.engine(fake, 150)
+        for _ in range(5):
+            e.audit_schedule_due()
+        events = [r for r in self.store.activity() if r['kind'] == 'schedule_run']
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['time'], 150)
+        self.assertIn('暂停', events[0]['detail']['message'])
+        self.assertEqual(fake.reads, 0)
+        self.assertEqual(fake.sent, 0)
+
+    def test_due_plan_logs_restriction_then_confirmed_send(self):
+        fake = FakeRPC([raw(149, 1, 100)])
+        self.engine(fake, 100).set_schedule(150)
+        e = self.engine(fake, 150)
+        e.tick()
+        events = [r for r in self.store.activity() if r['kind'] == 'schedule_run']
+        self.assertEqual(len(events), 1)
+        self.assertIn('额度受限', events[0]['detail']['message'])
+        for _ in range(5):
+            e.audit_schedule_due()
+        self.assertEqual(len([r for r in self.store.activity() if r['kind'] == 'schedule_run']), 1)
+        fake = FakeRPC([raw(149)])
+        self.engine(fake, 160).tick()
+        reports = [r['detail'] for r in self.store.activity() if r['kind'] == 'schedule_run']
+        self.assertEqual(reports[0]['status'], 'completed')
+        self.assertTrue(any(r['status'] == 'submitted' for r in reports))
+        self.assertEqual(fake.sent, 1)
+
+    def test_stopped_connection_records_due_reason_once_across_restarts(self):
+        fake = FakeRPC([raw(149)])
+        e = self.engine(fake, 100)
+        e.set_schedule(150)
+        self.store.set('connection', {'stopped': True, 'error': '测试断线'})
+        self.engine(fake, 150).audit_schedule_due()
+        self.engine(fake, 160).audit_schedule_due()
+        reports = [r for r in self.store.activity() if r['kind'] == 'schedule_run']
+        self.assertEqual(len(reports), 1)
+        self.assertIn('测试断线', reports[0]['detail']['message'])
+
+    def test_read_only_check_at_due_time_reports_why_no_request_was_sent(self):
+        fake = FakeRPC([raw(149)])
+        self.engine(fake, 100).set_schedule(150)
+        e = self.engine(fake, 150)
+        e.tick(check_only=True)
+        reports = [r for r in self.store.activity() if r['kind'] == 'schedule_run']
+        self.assertEqual(len(reports), 1)
+        self.assertIn('只读', reports[0]['detail']['message'])
+        self.assertEqual(fake.sent, 0)
+
     def test_schedule_waits_even_with_empty_quota(self):
         fake=FakeRPC([raw(149,0)])
         e=self.engine(fake,100); e.set_schedule(150); e.tick()

@@ -20,6 +20,7 @@
     editing = false,
     detailId = "",
     detailCwd = "",
+    detailDirectories = [],
     detailText = { content: "", result: "" },
     saving = false;
   let selectedModels = new Set(),
@@ -38,6 +39,7 @@
         }).format(new Date(at * 1000))
       : "—";
   const localTime = (at) => stamp(at).replace(" ", "T");
+  const directories = () => [...new Set(el("task-cwd").value.split(/\r?\n/).map(p => p.trim()).filter(Boolean))];
 
   async function request(route, body, timeout = 25000) {
     const controller = new AbortController(),
@@ -228,7 +230,7 @@
       (settings.directory
         ? `默认文档目录：${settings.directory}。`
         : "尚未设置默认目录，请选择文档路径或先保存任务设置。") +
-      " 执行目录须单独选择，Codex 只能修改该目录内的文件。暂停运行会阻止新任务开始。";
+      " 执行目录可多选，也可每行填写一个路径；首个目录作为工作目录。暂停运行会阻止新任务开始。";
   }
 
   function sourceChanged() {
@@ -277,7 +279,7 @@
       updateModels(task.model);
       for (const [field, value] of Object.entries({ title: task.title, model: task.model,
         effort: task.effort, mode: task.mode, time: task.runAt ? localTime(task.runAt) : "",
-        path: task.path, cwd: task.cwd, content: task.content }))
+        path: task.path, cwd: (task.directories || [task.cwd]).join("\n"), content: task.content }))
         el("task-" + field).value = value;
       el("task-time-field").hidden = task.mode !== "time";
       el("task-time").required = task.mode === "time";
@@ -309,7 +311,7 @@
   });
   for (const [button, input, kind] of [
     ["task-pick-file", "task-path", null],
-    ["task-pick-cwd", "task-cwd", "directory"],
+    ["task-pick-cwd", "task-cwd", "directories"],
     ["task-pick-directory", "task-directory", "directory"],
   ])
     el(button).addEventListener("click", async () => {
@@ -327,7 +329,9 @@
           },
           190000,
         );
-        if (data.path) {
+        if (input === "task-cwd" && data.paths?.length) {
+          el(input).value = [...new Set([...directories(), ...data.paths])].join("\n");
+        } else if (data.path) {
           el(input).value = data.path;
           if (input === "task-path" && el("task-source").value === "existing")
             await readDocument();
@@ -360,7 +364,8 @@
         effort: el("task-effort").value,
         source: el("task-source").value,
         path: el("task-path").value.trim(),
-        cwd: el("task-cwd").value.trim(),
+        cwd: directories()[0],
+        directories: directories(),
         content: el("task-content").value,
       };
       await request(editing ? "edit" : "create", body);
@@ -490,7 +495,21 @@
     const task = data.task;
     detailTextContent("task-detail-title", task.title);
     detailTextContent("task-detail-meta", `模型选择：${modelName(task.model)} · ${task.effort}`);
-    detailCwd = task.cwd || "";
+    const folders = task.directories || (task.cwd ? [task.cwd] : []);
+    const directorySelect = el("task-detail-directory-select");
+    const selected = folders.includes(detailCwd) ? detailCwd : folders[0] || "";
+    if (JSON.stringify(folders) !== JSON.stringify(detailDirectories)) {
+      directorySelect.replaceChildren(...folders.map(path => {
+        const option = make("option", path);
+        option.value = path;
+        return option;
+      }));
+      detailDirectories = folders;
+    }
+    directorySelect.value = selected;
+    directorySelect.hidden = folders.length <= 1;
+    el("task-detail-cwd").hidden = folders.length > 1;
+    detailCwd = selected;
     el("task-detail-directory").hidden = !detailCwd;
     detailTextContent("task-detail-cwd", detailCwd);
     detailTextContent("task-detail-files",
@@ -563,12 +582,19 @@
       if (detailId === id) el("task-path-feedback").textContent = "复制失败：" + error.message;
     }
   });
+  el("task-detail-directory-select").addEventListener("change", () => {
+    const selected = el("task-detail-directory-select").value;
+    if (detailDirectories.includes(selected)) detailCwd = selected;
+    el("task-copy-tooltip").textContent = "复制路径";
+    el("task-path-feedback").textContent = "";
+  });
   el("task-open-cwd").addEventListener("click", async () => {
     if (!detailCwd || el("task-open-cwd").disabled) return;
     const id = detailId;
     el("task-open-cwd").disabled = true;
     try {
-      await request("open-directory", { id });
+      await request("open-directory", { id, ...(detailDirectories.length > 1
+        ? { index: detailDirectories.indexOf(detailCwd) } : {}) });
       if (detailId === id) el("task-path-feedback").textContent = "";
     } catch (error) {
       if (detailId === id) el("task-path-feedback").textContent = error.message;

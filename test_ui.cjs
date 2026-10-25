@@ -13,6 +13,26 @@ function setup(storage={},preferences={}){
 }
 function status(){const at=Date.parse('2090-10-09T19:09:00+08:00')/1000;return {service:'quota-starter',version:'1.4.5',paused:false,busy:false,status:'等待重置时间',current:{primary:{usedPercent:20,resetsAt:at},checkedAt:at-3600},timing:{serverResetAt:at,minSendAt:at+1,minRefreshAt:at+18060,maxRefreshAt:at+366*86400,sendAt:at+2,estimatedResetAt:at+18002,schedule:null},nextPoll:at,attempts:[],events:[],autostart:{available:true,enabled:true}};}
 
+test('pause disables timing edits and grays all timeline events until resumed',async()=>{
+ const p=setup(),s=status();s.paused=true;s.timing.mode='manual';s.timing.schedule={status:'pending'};await p.respond(s);
+ assert.equal(p.e('choose-time').disabled,true);assert.equal(p.e('save-time').disabled,true);
+ assert.equal(p.e('auto-time').disabled,true);
+ assert.equal(p.e('timeline-handle').disabled,true);
+ assert.equal(p.e('schedule-timeline').attributes['data-paused'],'true');
+ p.run('refresh()');await p.respond({...s,paused:false});
+ assert.equal(p.e('choose-time').disabled,false);
+ assert.equal(p.e('auto-time').disabled,false);
+ assert.equal(p.e('schedule-timeline').attributes['data-paused'],'false');
+});
+
+test('scheduled refresh activity shows planned time and actual result or waiting reason',async()=>{
+ const p=setup();await p.respond(status());
+ p.c.event={kind:'schedule_run',detail:{status:'completed',sendAt:100,message:'请求完成；周期起点未验证'}};
+ assert.equal(p.run('activityText(event)[0]'),'定时刷新请求已完成');
+ assert.match(p.run('activityText(event)[1]'),/计划发送时间/);
+ assert.match(p.run('activityText(event)[1]'),/周期起点未验证/);
+});
+
 test('hour and minute wheels respond more quickly with bounded steps across delta modes',async()=>{
  const p=setup();await p.respond(status());
  for(const index of [0,1,2])assert.equal(p.run(`wheelSteps(${index},{deltaY:120,deltaMode:0})`),1);

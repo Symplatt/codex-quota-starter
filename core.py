@@ -384,6 +384,26 @@ class Store:
             rows = db.execute(f'SELECT * FROM {table} ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
         return [{**dict(row), 'detail': json.loads(row['detail'])} for row in rows]
 
+    def report_schedule(self, status, message, now, schedule_id=None, **extra):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute("SELECT value FROM state WHERE key='schedule'").fetchone()
+            schedule = json.loads(row[0]) if row else None
+            if (not schedule or schedule['sendAt'] > now or
+                    schedule_id and schedule['id'] != schedule_id or
+                    schedule['status'] not in ('pending', 'submitted') or
+                    status == 'waiting' and schedule['status'] != 'pending'):
+                return
+            report = [status, message]
+            if schedule.get('lastReport') == report:
+                return
+            schedule['lastReport'] = report
+            db.execute("UPDATE state SET value=? WHERE key='schedule'", (json.dumps(schedule),))
+            detail = dict(id=schedule['id'], sendAt=schedule['sendAt'], status=status,
+                          message=message, **extra)
+            db.execute('INSERT INTO events(time,kind,detail) VALUES (?,?,?)',
+                       (now, 'schedule_run', json.dumps(detail, ensure_ascii=False)))
+
     def activity(self, limit=50):
         with self.connect() as db:
             rows = db.execute("SELECT * FROM events WHERE kind != 'check' ORDER BY id DESC LIMIT ?",
@@ -656,6 +676,8 @@ class Engine:
         if not self.lock.acquire(blocking=False):
             raise RuntimeError('正在检测或发送，请稍后再修改时间')
         try:
+            if self.store.get('paused', False):
+                raise ValueError('软件已暂停，请先恢复运行再修改时间')
             if self.read_requested:
                 raise RuntimeError('正在等待检测，请稍后再修改时间')
             if send_at is not None:
@@ -695,6 +717,23 @@ class Engine:
                 'minRefreshAt': math.ceil((max(math.floor(max(server, self.clock())) + 1,
                                                self.store.guard_until()) + WINDOW) / 60) * 60 if server else None,
                 'maxRefreshAt': math.floor((self.clock() + 366 * 86400 + WINDOW) / 60) * 60}
+
+    def audit_schedule_due(self, reason=None):
+        plan = self.store.get('schedule')
+        if not plan or plan['status'] != 'pending' or self.clock() < plan['sendAt']:
+            return
+        if self.store.get('paused', False):
+            reason = '软件已暂停，定时请求尚未发送；恢复运行后重新校验'
+        elif self.connection().get('stopped'):
+            reason = '连接已停止，定时请求未发送：' + str(self.connection().get('error') or '请重新连接')
+        elif reason is None:
+            if self.connection().get('failures') or self.connection().get('recoveryAt'):
+                reason = '连接暂时不可用，等待重连后重新校验'
+            elif self.next_poll > self.clock() and not plan.get('lastReport'):
+                reason = '已到计划时间，等待下一轮额度检测后发送'
+            else:
+                return
+        self.store.report_schedule('waiting', reason, self.clock(), plan['id'])
 
     def select_candidate(self, snapshot, previous, now, manual):
         if self.store.cancel_invalid_schedule(snapshot['primary']['resetsAt'], now,
@@ -848,6 +887,7 @@ class Engine:
             return '检测或请求正在进行'
         attempt = None
         detail = {}
+        due_reason = None
         try:
             if not self.polling_enabled() and not (manual or check_only or self.read_requested):
                 self.status = '已暂停，自动额度检测已关闭'
@@ -887,6 +927,7 @@ class Engine:
             self.store.log('check', {**snap, 'durationSeconds': round(now - started, 3)}, now)
             if requested or check_only:
                 self.read_requested = None
+                due_reason = '本轮为只读额度检测，定时请求等待后续自动调度'
                 message = '已连接，额度已更新' if requested == 'reconnect' else '当前额度已更新'
                 if self.store.get('paused', False):
                     message = '已暂停；' + message
@@ -921,6 +962,8 @@ class Engine:
             attempt = self.store.claim(account_key, cycle, now, detail, schedule_id)
             if attempt is None:
                 return self._ok('本周期已处理')
+            if schedule_id:
+                self.store.report_schedule('submitted', '已到计划时间，正在发送小额请求', self.clock(), schedule_id, attempt=attempt)
             status = self._send_reserved(attempt, account_key, identity, fresh, prepared, detail)
             if status == 'completed':
                 # Persist the acknowledged send before the separate read-only check.
@@ -942,6 +985,10 @@ class Engine:
             detail['finishedAt'] = self.clock()
             self.store.finish(attempt, account_key, status, detail, after, self.clock())
             self.store.log('trigger', {'attempt': attempt, 'status': status, **detail})
+            if schedule_id:
+                self.store.report_schedule(status, detail.get('stoppedReason') or detail['evidence'],
+                                           self.clock(), schedule_id, attempt=attempt,
+                                           afterError=detail.get('afterError'))
             self.store.set('sending', False)
             attempt = None
             if self.connection().get('stopped') or detail.get('afterError'):
@@ -957,9 +1004,13 @@ class Engine:
                 self.failed_connection(exc)
             if attempt is not None:
                 self.store.log('error', {'message': self.status, 'error': str(exc)[:1200]})
+                if detail.get('scheduleId'):
+                    self.store.report_schedule('unknown', '请求结果未知，未自动重复提交：' + str(exc)[:1200],
+                                               self.clock(), detail['scheduleId'], attempt=attempt)
             return self.status
         finally:
             try:
+                self.audit_schedule_due(due_reason or self.status)
                 self.store.set('health', {'status': self.status, 'updatedAt': self.clock(), 'nextPoll': self.next_poll})
             finally:
                 self.lock.release()

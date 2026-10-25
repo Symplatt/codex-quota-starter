@@ -16,7 +16,7 @@ import uuid
 
 from app import create_server
 from core import Store, Engine
-from tasks import TaskRunner, TaskScheduler, QuotaNotFull, read_markdown, windows_sandbox_mode
+from tasks import TaskRunner, TaskScheduler, QuotaNotFull, read_markdown, windows_sandbox_mode, probe_windows_sandbox, task_environment
 from test_quota import FakeRPC, raw, csrf_token
 
 
@@ -226,14 +226,14 @@ class TaskTests(unittest.TestCase):
         TaskScheduler(self.store, self.runner, clock=lambda: self.now)
         self.assertTrue(any(e['detail'].get('action') == 'recovered' for e in self.store.recent('events', 100)))
 
-    def test_delete_keeps_documents_and_deduplication_and_blocks_running_tasks(self):
+    def test_delete_removes_documents_keeps_deduplication_and_blocks_running_tasks(self):
         body = self.body()
         task = self.tasks.create(body)
         self.tasks.delete(task['id'])
         self.tasks.delete(task['id'])
         self.assertEqual(self.tasks.snapshot()['total'], 0)
         self.assertEqual(self.tasks.snapshot()['counts'], {})
-        self.assertTrue(Path(task['path']).exists())
+        self.assertFalse(Path(task['path']).exists())
         with self.assertRaisesRegex(ValueError, '不存在'):
             self.tasks.snapshot(task['id'])
         self.assertEqual(self.tasks.create(body)['status'], 'deleted')
@@ -260,6 +260,44 @@ class TaskTests(unittest.TestCase):
         self.assertEqual(final['result'], '测试结果')
         self.assertIn('保存失败', final['progress'])
         self.assertEqual(result_path.read_text(encoding='utf-8'), '已有结果')
+
+    def test_delete_removes_prompt_result_and_preserves_project_files(self):
+        other = self.root / 'project-file.md'
+        other.write_text('project', encoding='utf-8')
+        task = self.create()
+        self.now += 1
+        self.tasks.tick()
+        task = self.tasks.snapshot(task['id'])
+        self.tasks.delete(task['id'])
+        self.assertFalse(Path(task['path']).exists())
+        self.assertFalse(Path(task['resultPath']).exists())
+        self.assertEqual(other.read_text(encoding='utf-8'), 'project')
+        Path(task['path']).write_text('reused path', encoding='utf-8')
+        self.tasks.delete(task['id'])
+        self.assertEqual(Path(task['path']).read_text(encoding='utf-8'), 'reused path')
+
+    def test_delete_failure_keeps_task_visible_and_supports_retry(self):
+        task = self.create()
+        with patch('tasks.Path.unlink', side_effect=PermissionError('occupied')):
+            with self.assertRaisesRegex(OSError, '关闭占用'):
+                self.tasks.delete(task['id'])
+        self.assertEqual(self.tasks.snapshot(task['id'])['status'], 'waiting')
+        self.assertTrue(any(e['detail'].get('action') == 'delete_failed' for e in self.store.activity()))
+        self.tasks.delete(task['id'])
+        self.assertFalse(Path(task['path']).exists())
+
+    def test_multiple_directories_are_validated_deduplicated_and_editable(self):
+        extra = self.root / 'extra'
+        extra.mkdir()
+        paths = [str(self.root), str(extra), str(self.root)]
+        task = self.create(directories=paths)
+        self.assertEqual(task['directories'], paths[:2])
+        self.assertEqual(task['cwd'], paths[0])
+        task = self.tasks.edit(dict(task, directories=[str(extra), str(self.root)]))
+        self.assertEqual(task['cwd'], str(extra))
+        for directories in ([], [str(extra), str(extra / 'missing')], 'invalid', [None]):
+            with self.assertRaises(ValueError):
+                self.create(directories=directories)
 
     def test_recheck_reconnect_and_resume_refresh_both_windows_in_one_read(self):
         for action in ('check', 'reconnect', 'resume'):
@@ -402,6 +440,37 @@ class TaskTests(unittest.TestCase):
 
 
 class RunnerTests(unittest.TestCase):
+    def test_sandbox_setup_failure_probes_mxc_before_any_model_submission(self):
+        with patch('tasks.windows_sandbox_mode', return_value='elevated'), \
+                patch('tasks.find_codex', return_value='codex.exe'), \
+                patch('tasks.subprocess.run', side_effect=[
+                    Mock(returncode=1, stderr='helper_unknown_error: setup refresh had errors'),
+                    Mock(returncode=0)]) as run:
+            self.assertEqual(probe_windows_sandbox({'cwd': str(Path.cwd())}, {}), 'mxc')
+            self.assertEqual(run.call_count, 2)
+            for call in run.call_args_list:
+                self.assertIn('sandbox', call.args[0])
+                self.assertIn(':workspace', call.args[0])
+                self.assertNotIn('exec', call.args[0])
+            self.assertIn('windows.sandbox="mxc"', run.call_args.args[0])
+        with patch('tasks.windows_sandbox_mode', return_value='elevated'), \
+                patch('tasks.find_codex', return_value='codex.exe'), \
+                patch('tasks.subprocess.run', return_value=Mock(returncode=1, stderr='unsupported profile')) as run:
+            with self.assertRaisesRegex(RuntimeError, '任务未提交'):
+                probe_windows_sandbox({'cwd': str(Path.cwd())}, {})
+            self.assertEqual(run.call_count, 1)
+
+    def test_standalone_environment_preserves_login_home_and_removes_desktop_runtime_handles(self):
+        with patch.dict(os.environ, {'CODEX_HOME': 'login-home', 'CODEX_MCP_NODE_PATH': 'desktop-node',
+                                    'CODEX_WINDOWS_SANDBOX_PACKAGE_FAMILY': 'desktop-family',
+                                    'CODEX_SANDBOX_NETWORK_DISABLED': '1',
+                                    'OPENAI_API_KEY': 'private'}, clear=False), patch('tasks.configure_proxy'):
+            env = task_environment()
+        self.assertEqual(env['CODEX_HOME'], 'login-home')
+        self.assertEqual(set(k for k in env if k.startswith('CODEX_')), {'CODEX_HOME', 'CODEX_SANDBOX_NETWORK_DISABLED'})
+        self.assertEqual(env['CODEX_SANDBOX_NETWORK_DISABLED'], '1')
+        self.assertNotIn('OPENAI_API_KEY', env)
+
     def test_windows_isolation_backend_is_preserved_without_loading_other_user_settings(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'config.toml'
@@ -431,7 +500,8 @@ class RunnerTests(unittest.TestCase):
         task = dict(cwd=str(Path.cwd()), account=hashlib.sha256(b'test@example.test').hexdigest()[:24],
                     mode='time', model='gpt-6-astra', effort='ultra')
         runner = TaskRunner(rpc_factory=lambda *_, **__: rpc)
-        runner.preflight(task)
+        with patch('tasks.probe_windows_sandbox', return_value='mxc'):
+            runner.preflight(task)
         rpc.close.assert_called_once()
         self.assertEqual([c.args[0] for c in rpc.call.call_args_list], ['model/list'])
         task['effort'] = 'low'
@@ -439,7 +509,7 @@ class RunnerTests(unittest.TestCase):
         task['account'] = 'changed'
         with self.assertRaisesRegex(ValueError, '账户'): runner.preflight(task)
 
-    def run_process(self, events, exit_code=0, cancelled=lambda: False):
+    def run_process(self, events, exit_code=0, cancelled=lambda: False, **fields):
         program = 'import sys,json;sys.stdin.read();' + ';'.join('print(' + repr(json.dumps(e)) + ',flush=True)' for e in events) + f';sys.exit({exit_code})'
         captured = {}
         def popen(args, **kwargs):
@@ -448,7 +518,7 @@ class RunnerTests(unittest.TestCase):
         runner = TaskRunner(popen=popen)
         updates = []
         with patch('tasks.find_codex', return_value='codex.exe'), patch('tasks.configure_proxy'), patch('tasks.windows_sandbox_mode', return_value='elevated'):
-            result = runner.run(dict(cwd=str(Path.cwd()), model='gpt-6-astra', effort='ultra', content='task'),
+            result = runner.run(dict(cwd=str(Path.cwd()), model='gpt-6-astra', effort='ultra', content='task') | fields,
                                 lambda **fields: updates.append(fields), cancelled)
         return result, updates, captured
 
@@ -470,6 +540,17 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn('CODEX_PERMISSION_PROFILE', captured['env'])
         self.assertNotIn('CODEX_APP_TOOLS_PIPE_PATH', captured['env'])
         self.assertIn('--output-schema', captured['args'])
+
+    def test_cli_passes_additional_selected_roots_and_verified_backend(self):
+        _, _, captured = self.run_process([
+            {'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps({'taskStatus': 'completed', 'summary': 'done'})}},
+            {'type': 'turn.completed'}], directories=[str(Path.cwd()), 'C:\\second project'], sandboxBackend='mxc')
+        args = captured['args']
+        self.assertEqual(args[args.index('--add-dir') + 1], 'C:\\second project')
+        self.assertEqual(args.count('--add-dir'), 1)
+        self.assertIn('default_permissions=":workspace"', args)
+        if os.name == 'nt':
+            self.assertIn('windows.sandbox="mxc"', args)
 
     def test_zero_exit_without_completion_and_explicit_failure_are_not_success(self):
         for events, code in [([], 0), ([{'type': 'turn.failed', 'error': {'message': 'bad model'}}], 0),
@@ -531,7 +612,7 @@ class TaskHTTPTests(unittest.TestCase):
         self.assertEqual(self.post('read', {'path': body['path']})[0], 200)
         self.assertEqual(self.request('POST', '/api/tasks/delete', json.dumps({'id': task_id}))[0], 403)
         self.assertEqual(self.post('delete', {'id': task_id})[0], 200)
-        self.assertTrue(Path(body['path']).exists())
+        self.assertFalse(Path(body['path']).exists())
         self.assertEqual(self.post('detail', {'id': task_id})[0], 400)
         self.assertEqual(json.loads(self.request('GET', '/api/tasks')[1])['total'], 0)
         self.assertEqual(self.request('POST', '/api/tasks/create', '{}', {**self.headers, 'Content-Length': '900000'})[0], 400)
@@ -544,6 +625,8 @@ class TaskHTTPTests(unittest.TestCase):
         self.assertEqual(self.post('read', {'path': 'relative.md'})[0], 400)
         with patch('app.choose_path', return_value=''):
             self.assertEqual(json.loads(self.post('pick', {'kind': 'open'})[1])['path'], '')
+        with patch('app.choose_path', return_value=[self.tmp.name]):
+            self.assertEqual(json.loads(self.post('pick', {'kind': 'directories'})[1])['paths'], [self.tmp.name])
         self.assertEqual(self.request('GET', '/tasks.js')[0], 200)
 
     def test_open_directory_uses_saved_task_and_rejects_missing_directory(self):
@@ -559,6 +642,15 @@ class TaskHTTPTests(unittest.TestCase):
             opened.assert_called_once_with(str(Path(self.tmp.name).resolve()))
             with patch('app.Path.is_dir', return_value=False):
                 self.assertEqual(self.post('open-directory', {'id': task_id})[0], 400)
+            self.assertEqual(opened.call_count, 1)
+        extra = Path(self.tmp.name) / 'extra'
+        extra.mkdir()
+        self.tasks.edit(dict(body, directories=[self.tmp.name, str(extra)]))
+        with patch('app.os.startfile', create=True) as opened:
+            self.assertEqual(self.post('open-directory', {'id': task_id, 'index': 1, 'path': 'C:\\untrusted'})[0], 200)
+            opened.assert_called_once_with(str(extra.resolve()))
+            for index in (True, -1, 2, '1'):
+                self.assertEqual(self.post('open-directory', {'id': task_id, 'index': index})[0], 400)
             self.assertEqual(opened.call_count, 1)
 
     def test_model_catalog_endpoint_and_time_edit_queue_while_checking(self):

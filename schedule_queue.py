@@ -13,6 +13,8 @@ class ScheduleQueue:
         self.lock = threading.Lock()
 
     def submit(self, refresh_at=None, *, clear=False):
+        if self.store.get('paused', False):
+            raise ValueError('软件已暂停，请先恢复运行再修改时间')
         if not clear and (isinstance(refresh_at, bool) or not isinstance(refresh_at, (int, float))
                           or not math.isfinite(refresh_at) or refresh_at % 60):
             raise ValueError('请选择整分钟的刷新时间')

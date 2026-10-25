@@ -116,7 +116,7 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None, tasks=None)
                         return self.send(200, {'task': tasks.edit(body), 'message': '已修改预设任务'})
                     if route == 'delete':
                         tasks.delete(body.get('id'))
-                        return self.send(200, {'message': '已删除任务，原文档保留'})
+                        return self.send(200, {'message': '已删除任务及任务文档、结果文档'})
                     if route == 'settings':
                         tasks.save_settings(body)
                         return self.send(200, {'message': '已保存任务设置'})
@@ -128,7 +128,11 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None, tasks=None)
                         return self.send(200, {'task': tasks.snapshot(body.get('id', 'invalid'))})
                     if route == 'open-directory':
                         task = tasks.snapshot(body.get('id', 'invalid'))
-                        folder = Path(task['cwd'])
+                        folders = task.get('directories', [task['cwd']])
+                        index = body.get('index', 0)
+                        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(folders):
+                            raise ValueError('执行目录序号无效')
+                        folder = Path(folders[index])
                         if not folder.is_absolute() or not folder.is_dir():
                             raise ValueError('执行目录不存在或无法访问')
                         os.startfile(str(folder))
@@ -139,7 +143,8 @@ def create_server(engine, host='127.0.0.1', port=8769, startup=None, tasks=None)
                     if route == 'read':
                         return self.send(200, {'content': read_markdown(body.get('path'))})
                     if route == 'pick':
-                        return self.send(200, {'path': choose_path(body.get('kind'))})
+                        selected = choose_path(body.get('kind'))
+                        return self.send(200, {'paths': selected} if body.get('kind') == 'directories' else {'path': selected})
                     return self.send(404, {'error': 'Not found'})
                 except (ValueError, TypeError, UnicodeError, OSError) as exc:
                     return self.send(400, {'error': str(exc)})
@@ -268,6 +273,7 @@ def main():
     stop = threading.Event()
     def run():
         while not stop.is_set():
+            engine.audit_schedule_due()
             if ((engine.polling_enabled() or engine.read_requested) and
                     not engine.connection().get('stopped') and time.time() >= engine.next_poll):
                 engine.tick()

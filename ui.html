@@ -2466,13 +2466,34 @@
       .schedule-row #pause:not(:disabled) {
         color: #54765f;
       }
-      .schedule-row #choose-time,
+      .schedule-row #choose-time:not(:disabled),
       .schedule-row #auto-time:not(:disabled) {
         color: #315c3b;
         font-weight: 400;
       }
       .timeline-send:after {
         display: none;
+      }
+      .schedule-row #choose-time:disabled,
+      .schedule-row #auto-time:disabled {
+        color: #92958f;
+        opacity: 1;
+        cursor: not-allowed;
+      }
+      #schedule-timeline[data-paused="true"] .timeline-label span,
+      #schedule-timeline[data-paused="true"] .timeline-label small {
+        color: #92958f;
+      }
+      #schedule-timeline[data-paused="true"] .timeline-event:before {
+        background: #a4a69f;
+      }
+      #schedule-timeline[data-paused="true"] .timeline-event:after {
+        border-color: #a4a69f;
+      }
+      #schedule-timeline[data-paused="true"] .timeline-send:after,
+      #schedule-timeline[data-paused="true"] .timeline-handle:before {
+        background: #a4a69f;
+        border-color: #a4a69f;
       }
       .timeline-handle {
         position: absolute;
@@ -2984,7 +3005,8 @@
         align-items: center;
         gap: 10px;
       }
-      .task-path-row input {
+      .task-path-row input,
+      .task-path-row textarea {
         flex: 1;
       }
       .task-model-picker-head {
@@ -3092,6 +3114,11 @@
       .task-directory-path {
         overflow-wrap: anywhere;
         min-width: 0;
+      }
+      #task-detail-directory-select {
+        max-width: 100%;
+        font: inherit;
+        color: inherit;
       }
       .task-path-action {
         position: relative;
@@ -3269,7 +3296,8 @@
         .task-path-row {
           flex-wrap: wrap;
         }
-        .task-path-row input {
+        .task-path-row input,
+        .task-path-row textarea {
           flex-basis: 100%;
         }
         .task-actions {
@@ -3824,11 +3852,12 @@
         </label>
         <label class="task-wide"
           >执行目录<span class="task-path-row"
-            ><input
+            ><textarea
               id="task-cwd"
               required
-              placeholder="选择需要读取或修改文件的项目目录"
-            /><button id="task-pick-cwd" type="button">选择目录</button></span
+              rows="3"
+              placeholder="每行一个完整路径；第一行作为工作目录"
+            ></textarea><button id="task-pick-cwd" type="button">选择目录</button></span
           ></label
         >
         <p class="small task-wide task-hint" id="task-default-hint"></p>
@@ -3922,7 +3951,7 @@
       <p id="task-detail-meta" class="small task-detail-meta"></p>
       <div id="task-detail-directory" class="small task-directory" hidden>
         <span class="task-directory-path"
-          >执行目录：<span id="task-detail-cwd"></span
+          >执行目录：<span id="task-detail-cwd"></span><select id="task-detail-directory-select" aria-label="选择执行目录" hidden></select
         ></span>
         <span class="task-path-action"
           ><button
@@ -4184,13 +4213,15 @@
           recheckBusy ||
           pendingActions.has("check");
         $("choose-time").disabled =
-          offline || changing || !snapshot?.timing?.minRefreshAt;
+          offline || paused || changing || !snapshot?.timing?.minRefreshAt;
+        $("schedule-timeline").setAttribute("data-paused", String(Boolean(paused)));
+        if (paused && refreshDialog.open) refreshDialog.close();
         const manualPlan =
           snapshot?.timing?.mode === "manual" ||
           snapshot?.timing?.schedule?.status === "pending";
-        $("auto-time").disabled = offline || changing || !manualPlan;
+        $("auto-time").disabled = offline || paused || changing || !manualPlan;
         $("save-time").disabled =
-          offline || changing || manualDirty || !snapshot?.timing?.minRefreshAt;
+          offline || paused || changing || manualDirty || !snapshot?.timing?.minRefreshAt;
         $("pause").disabled =
           offline ||
           pendingActions.has("pause") ||
@@ -4715,6 +4746,7 @@
           service: "服务启动",
           schedule: "设置定时请求",
           schedule_cancelled: "自动取消定时请求",
+          schedule_run: "定时刷新执行结果",
           connection_failure: "连接检测失败",
           connection_recovery: "等待自动重连",
           connection_recovered: "连接已恢复",
@@ -4748,6 +4780,12 @@
             details.push("发送时间：" + time(d.sendAt));
             details.push("预计刷新：" + time(d.refreshAt || d.sendAt + 18000));
           }
+        } else if (event.kind === "schedule_run") {
+          name = { waiting: "定时刷新暂未发送", submitted: "定时刷新开始发送",
+            completed: "定时刷新请求已完成", unknown: "定时刷新结果未知",
+            failed: "定时刷新未完成" }[d.status] || name;
+          if (d.sendAt) details.push("计划发送时间：" + time(d.sendAt));
+          if (d.afterError) details.push("额度核验失败：" + d.afterError);
         } else if (event.kind === "schedule_cancelled") {
           if (d.sendAt) details.push("原发送时间：" + time(d.sendAt));
           if (d.serverResetAt)
@@ -4766,6 +4804,7 @@
             started: "开始预设任务",
             submitted: "提交预设任务",
             session_started: "任务会话已启动",
+            sandbox_ready: "任务沙箱已就绪",
             execution_step: "执行预设任务",
             completed: "预设任务已完成",
             failed: "预设任务失败",
@@ -4776,6 +4815,7 @@
             settings: "修改任务设置",
             models: "检测任务模型",
             deleted: "删除预设任务",
+            delete_failed: "任务文档删除失败",
           };
           name = taskActions[d.action] || "预设任务";
           if (d.title) details.push("任务：" + d.title);
