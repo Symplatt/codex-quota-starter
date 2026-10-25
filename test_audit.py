@@ -452,6 +452,9 @@ class RecoveryTests(unittest.TestCase):
     def test_recovery_respects_pause_and_changed_server_window(self):
         for paused, end in [(True, 149), (False, 3000)]:
             with self.subTest(paused=paused):
+                # Each case creates its plan while running, then exercises
+                # recovery under its own pause state, independent of the prior case.
+                self.store.set('paused', False)
                 self.store.set('connection', {})
                 self.store.set('current', {'primary': {'resetsAt': 149}})
                 fake = FakeRPC([TimeoutError('offline')] * 5 + [raw(end)])

@@ -185,7 +185,7 @@ class QuotaTests(unittest.TestCase):
     def test_quota_only_read_never_prepares_or_sends(self):
         scenarios = [('idle', 100, 0, False, None),
                      ('reset_due', 20002, 10, False, None),
-                     ('schedule_due', 20002, 0, False, {'status': 'pending', 'sendAt': 19000}),
+                     ('schedule_due', 20002, 0, False, {'id': 'read-only-plan', 'status': 'pending', 'sendAt': 19000}),
                      ('paused', 20002, 0, True, None)]
         for name, now, used, paused, schedule in scenarios:
             with self.subTest(name=name):
