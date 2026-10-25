@@ -8,8 +8,8 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parent
-BASELINE = json.loads((ROOT / '差异文档' / '1.6.0' / 'connection-baseline.json').read_text(encoding='utf-8'))
-CHANGES = json.loads((ROOT / '差异文档' / '1.6.0-pre.3' / 'connection-changes.json').read_text(encoding='utf-8'))
+BASELINE = json.loads((ROOT / 'test_fixtures' / 'connection-baseline.json').read_text(encoding='utf-8'))
+CHANGES = json.loads((ROOT / 'test_fixtures' / 'connection-changes.json').read_text(encoding='utf-8'))
 
 
 def digest(text):
