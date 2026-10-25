@@ -12,7 +12,9 @@
 - 已审核：用户要求发布预览版；CHANGELOG已同步为1.7.2-pre.1。
 - 已完成：正式ZIP构建，48个文件，SHA256为92a7b48400a16150f7ce44ebdf3402e509429163376f6377674ee12f2eb06969。
 - 已完成：现有安装目录覆盖至1.7.2-pre.1，数据库完整性ok；手动计划、暂停/暂停检测、任务设置及任务/请求/防重复记录指纹一致，自启仍开启；桌面快捷方式指向现有安装并已实际启动。
-- 当前：提交并Push本次版本，创建Tag和GitHub Pre-release；最终远程核验后更新本记录。
+- 已完成：commit与Push、Tag v1.7.2-pre.1及GitHub Pre-release；发布URL：https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.2-pre.1。
+- 最终核验：远程Tag指向969a1dfcfc13f9b734ab3af2929d131781a82228；Tag内48个文件与ZIP逐字节一致，远程ZIP及SHA256SUMS的GitHub摘要与本地一致；已安装28个发布文件与ZIP一致，实际后台版本1.7.2-pre.1。
+- 已交付：D:/Quota-Starter-1.7.2-pre.1-更新日志.md，选框全部未选；ZIP仅保留项目dist并上传Release。发布验证记录位于dist/release-1.7.2-pre.1/。
 
 ## 上一轮 1.7.1 记录
 
