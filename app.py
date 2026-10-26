@@ -20,7 +20,7 @@ from schedule_queue import ScheduleQueue
 ROOT = Path(__file__).resolve().parent
 
 
-def create_server(engine, host='127.0.0.1', port=8769, startup=None, tasks=None):
+def create_server(engine, host='127.0.0.1', port=31026, startup=None, tasks=None):
     csrf = secrets.token_urlsafe(32)
     startup = startup or Autostart(ROOT)
     tasks = tasks or TaskScheduler(engine.store)

@@ -24,12 +24,12 @@ Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Wor
 
 ### 下载并安装
 
-1. 打开 [1.7.2-pre.2 预发布下载页](https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.2-pre.2)，在 **Assets** 中下载 `quota-starter-1.7.2-pre.2-windows.zip`，不要选择 `Source code`。
+1. 打开 [1.7.2-pre.3 预发布下载页](https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.2-pre.3)，在 **Assets** 中下载 `quota-starter-1.7.2-pre.3-windows.zip`，不要选择 `Source code`。
 2. 右键 ZIP，选择 **全部解压**。
 3. 打开解压后的 `quota-starter` 文件夹，双击 **Install.cmd**，等待安装完成。不要直接从压缩包窗口运行。
 4. 双击桌面或开始菜单中的 **Quota Starter**，打开软件界面。
 
-默认安装位置为 `%LOCALAPPDATA%\Programs\QuotaStarter`（通常为 `C:\Users\用户名\AppData\Local\Programs\QuotaStarter`），软件信息中可查看实际安装路径。安装后会在登录当前 Windows 用户时自动启动。当前使用脚本安装，没有 EXE 安装向导；安装报错时请保留窗口中的错误信息。
+默认安装位置为 `%LOCALAPPDATA%\Programs\QuotaStarter`（通常为 `C:\Users\用户名\AppData\Local\Programs\QuotaStarter`），软件信息中可查看实际安装路径。安装后会在登录当前 Windows 用户时自动启动。自启开启时，快捷方式也通过计划任务启动后台，使其退出后的失败重启设置生效；关闭自启后仍可手动启动。当前使用脚本安装，没有 EXE 安装向导；安装报错时请保留窗口中的错误信息。
 
 ### 从旧版本升级
 
@@ -39,7 +39,7 @@ Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Wor
 
 页面标题下方仅在发生错误时显示横幅，展示后台已有的连接错误、自启错误或操作错误；对应错误恢复后隐藏，不显示历史错误。CLI接口不兼容时显示当前程序路径、版本与升级命令；断联保留上次额度，并明确标注旧数据。
 
-通过 **Quota Starter** 快捷方式打开界面；后台运行时也可访问 [本地页面](http://127.0.0.1:8769)。主页显示定时刷新、运行状态、额度变化、预设任务、日志和设置，日期与时间按北京时间显示。
+通过 **Quota Starter** 快捷方式打开界面；后台运行时也可访问 [本地页面](http://127.0.0.1:31026)。旧版 8769 地址请更新为 31026。主页显示定时刷新、运行状态、额度变化、预设任务、日志和设置，日期与时间按北京时间显示。
 
 “日志”卡片汇总最近50条操作、连接及小额请求记录，包括计划变更、手动检测、重连、暂停、自启、连接故障与恢复，以及请求结果。每分钟自动额度读取不进入页面列表，可通过“打开日志文件夹”查看完整记录。日志内容较多时可在卡片内滚动。
 
@@ -159,7 +159,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Stop.ps1
 | 问题 | 处理方法 |
 | --- | --- |
 | 安装提示找不到 Python 或 Codex | 检查依赖安装，重新打开 PowerShell，执行 `python --version` 和 `codex --version` |
-| 页面打不开 | 从快捷方式重新启动，检查安装目录的 `data\supervisor.log`；确认本地端口 8769 未被占用 |
+| 页面打不开 | 从快捷方式重新启动，检查安装目录的 `data\supervisor.log`；确认本地端口 31026 未被占用 |
 | 提示不是 ChatGPT Plus 登录 | 用 `codex login status` 检查登录，运行 `codex login` 登录 Plus 账户 |
 | 无法获取额度 | 检查网络与官方服务；网络故障按30秒至5分钟退避后自动重连，也可点击“重新连接”立即重试 |
 | 到点仍未发送 | 检查暂停状态、每周额度和防重复记录；服务器仍报告额度用尽时会继续等待 |
@@ -179,7 +179,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Stop.ps1
 
 ## 项目信息
 
-当前版本：**v1.7.2-pre.2（预发布）**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
+当前版本：**v1.7.2-pre.3（预发布）**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
 
 - [版本更新记录](CHANGELOG.md)
 - [机制说明](MECHANISM.md)

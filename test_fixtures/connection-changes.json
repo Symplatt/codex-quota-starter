@@ -4,7 +4,8 @@
   "base": "v1.5.23",
   "files": {
     "rpc.py": "c6fec3b1ef72839f73f6f670d340d90bd83bea3b98682eab753c6e62a2ab4360",
-    "diagnose.py": "5ccceb48969e4674285832b3cb95def8831bc0ffde545468bdfe9d8524d85f10"
+    "diagnose.py": "4c254d3f2013fa855b62bd2152e4d53d8476f17ba8baedb93c3bfedb25559418",
+    "Start.ps1": "41d9c5a74f57415ca39e6335226694706d08d8186958c762e904b1732ec03d88"
   },
   "methods": {
     "transient_connection_error": "cd1186b978c5bfc6cf5a26f8738b14e966ab51675748ba373bce201e7a29a961",
@@ -17,5 +18,6 @@
     "RECOVERY_INTERVAL": "Constant(value=30)",
     "MAX_RECOVERY_INTERVAL": "Constant(value=300)"
   },
-  "tickRetryBlock": "7f9cc91b9c8cc388167aef7ae064c11b25ff0492e39e0b543585a05fee932d42"
+  "tickRetryBlock": "7f9cc91b9c8cc388167aef7ae064c11b25ff0492e39e0b543585a05fee932d42",
+  "startupAuthorization": "2026-10-26 user requested startup failure repair and future default web port 31026"
 }

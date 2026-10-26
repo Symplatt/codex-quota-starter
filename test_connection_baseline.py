@@ -55,11 +55,11 @@ class ConnectionBaselineTests(unittest.TestCase):
         end = tick.index('            self._phase(', start)
         self.assertEqual(digest(tick[start:end]), CHANGES['tickRetryBlock'])
 
-    def test_default_web_port_remains_8769(self):
+    def test_default_web_port_is_31026(self):
         source = (ROOT / 'app.py').read_text(encoding='utf-8')
         signature = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == 'create_server')
         defaults = dict(zip([a.arg for a in signature.args.args][-len(signature.args.defaults):], signature.args.defaults))
-        self.assertEqual(ast.literal_eval(defaults['port']), 8769)
+        self.assertEqual(ast.literal_eval(defaults['port']), 31026)
 
 
 if __name__ == '__main__':
