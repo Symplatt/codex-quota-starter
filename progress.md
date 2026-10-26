@@ -11,10 +11,13 @@
 - 已保存：D:/Quota-Starter-1.7.2-pre.2-更新日志.md，现仅保留功能更新与BUG修复，并保留用户自行勾选的状态；实际界面预览图片和验证记录dist/review-1.7.2-pre.2/validation.md。
 - 预览已恢复并保持运行：http://127.0.0.1:18779/；脚本dist/review-1.7.2-pre.2/preview_server.py，不启动预设任务执行线程。
 - 已审核：用户于2026-10-26明确通过，已同步CHANGELOG。
-- 已完成：正式ZIP构建，48个文件，SHA256为373d4b2e0d9b5049b92af9c91c8aa30571ccd4e6be3c7f9c85eba26ecee940f5；ZIP未放D盘。
+- 已完成：正式ZIP构建，48个文件，SHA256为12045c6d2030ceedf93fef8a619134c4fc79c84dafa6b7d1822e48c6359b468a；ZIP未放D盘。
 - 已完成：覆盖现有安装至1.7.2-pre.2，数据库完整性ok；手动计划、暂停/暂停检测、任务设置及任务/请求/防重复记录指纹一致，自启仍开启；28个安装文件与ZIP一致。桌面快捷方式指向现有安装并已实际启动。
-- 当前状态：准备commit、Push、Tag及GitHub Pre-release；发布验证记录保存在dist/release-1.7.2-pre.2/。
-- 预期安装目录：C:/Users/CJZ/AppData/Local/Programs/QuotaStarter；版本1.7.2-pre.2，ZIP仅放项目dist并上传Release。
+- 已完成：源码提交bcdf5aa1cff3e30ed2cfee8310ff79009123f034、Push、Tag v1.7.2-pre.2及GitHub Pre-release：https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.2-pre.2。
+- 最终核验：远程ZIP与SHA256SUMS的摘要和本地一致；Tag内48个文件与ZIP逐字节一致，已安装28个文件与ZIP一致；实际后台版本1.7.2-pre.2，桌面快捷方式已启动核验，浏览器页面无脚本错误。
+- 已完成：GitHub Windows检查通过（run 40247200570），覆盖Python检查、两组Node检查和正式构建。修正了两项旧测试的准备数据，仅测试文件变化，28个安装文件保持不变；本轮初次Tag对象和ZIP已在dist/release-1.7.2-pre.2/备份，原Tag对象保留于本地archive/v1.7.2-pre.2-initial。
+- 当前状态：1.7.2-pre.2预发布及本机交付全部完成。发布验证记录保存在dist/release-1.7.2-pre.2/。
+- 已安装目录：C:/Users/CJZ/AppData/Local/Programs/QuotaStarter；版本1.7.2-pre.2，ZIP仅放项目dist并上传Release。
 
 # 1.7.2-pre.1 开发交付状态（2026-10-25）
 
