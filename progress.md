@@ -4,11 +4,15 @@
 - 已完成：默认端口统一31026，更新后台、启动脚本、诊断、README和项目长期约定。
 - 已完成：手动启动优先使用本安装目录已启用的计划任务，以启用失败重启；关闭自启、无任务或其他安装目录时仍可直接手动启动。
 - 验证：5项连接基线、启动脚本6个场景、默认31026网页/API与Host校验通过；Windows PowerShell 5.1和PowerShell 7均已检查启动分支。
-- 审核预览：http://127.0.0.1:31026/，数据库副本、禁用POST及执行线程；进程35828，脚本dist/review-1.7.2-pre.3/preview_server.py，截图preview.png，检查记录validation.md。
+- 审核预览已关闭（原进程35828）；审核材料保留在dist/review-1.7.2-pre.3/。31026现为正式安装版，使用原有用户数据运行。
 - 已保存D:/Quota-Starter-1.7.2-pre.3-更新日志.md，全部未选；CHANGELOG待审核条目位于dist/review-1.7.2-pre.3/changelog-pending.md。
 - 用户已确认审核通过；已同步CHANGELOG、构建48文件正式ZIP并覆盖当前安装目录。实际后台1.7.2-pre.3、端口31026、linked=true；计划任务Running。
 - 已停止31026审核预览；安装前数据库及程序文件备份位于dist/release-1.7.2-pre.3/。数据库完整性ok，手动计划、暂停/暂停检测、任务设置及attempts/claims/scheduled_tasks指纹一致，自启保持开启，28个安装文件与ZIP逐字节一致。桌面快捷方式已核验并实际启动，统计偏好已从8769迁移至31026。
-- 当前待完成：commit、Push、Tag、GitHub预发布及远程资产核验；ZIP不放D盘，D盘独立日志保持现有勾选状态。
+- 已完成：源码提交0d952b51e58cc0cde545178b0c81ec611d61c144、Push、新Tag v1.7.2-pre.3及GitHub预发布：https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.2-pre.3。
+- 远程核验：ZIP与SHA256SUMS的GitHub摘要、大小及本地一致，Tag内48个文件与ZIP逐字节一致，28个安装文件与ZIP一致。ZIP SHA256为d12c1138cd450d5ddbeef1ee4967a7922bfc9b807f8468fe865c58423358c0cb，未放D盘；D盘日志保留原有状态。
+- 浏览器：31026实际安装版v1.7.2-pre.3，统计选项迁移保持300分钟/五小时剩余额度；最终重载无pageerror。实际截图dist/release-1.7.2-pre.3/installed.png。
+- GitHub自动Windows检查全部通过：40332103327及40332096970（分支/Tag推送），覆盖Python检查、两组Node检查和正式构建。
+- 当前状态：1.7.2-pre.3预发布及本机覆盖安装交付完成，默认端口31026；本次未确定原进程停止的具体原因。发布及安装核验记录位于dist/release-1.7.2-pre.3/。
 
 # 1.7.2-pre.2 开发审核状态（2026-10-26）
 
