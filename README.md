@@ -24,7 +24,7 @@ Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Wor
 
 ### 下载并安装
 
-1. 打开 [1.7.2-pre.3 预发布下载页](https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.2-pre.3)，在 **Assets** 中下载 `quota-starter-1.7.2-pre.3-windows.zip`，不要选择 `Source code`。
+1. 打开 [1.7.3-pre.1 预发布下载页](https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.3-pre.1)，在 **Assets** 中下载 `quota-starter-1.7.3-pre.1-windows.zip`，不要选择 `Source code`。
 2. 右键 ZIP，选择 **全部解压**。
 3. 打开解压后的 `quota-starter` 文件夹，双击 **Install.cmd**，等待安装完成。不要直接从压缩包窗口运行。
 4. 双击桌面或开始菜单中的 **Quota Starter**，打开软件界面。
@@ -179,7 +179,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Stop.ps1
 
 ## 项目信息
 
-当前版本：**v1.7.2-pre.3（预发布）**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
+当前版本：**v1.7.3-pre.1（预发布）**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
 
 - [版本更新记录](CHANGELOG.md)
 - [机制说明](MECHANISM.md)
