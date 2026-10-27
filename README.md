@@ -24,7 +24,7 @@ Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Wor
 
 ### 下载并安装
 
-1. 打开 [1.7.2-pre.3 预发布下载页](https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.2-pre.3)，在 **Assets** 中下载 `quota-starter-1.7.2-pre.3-windows.zip`，不要选择 `Source code`。
+1. 打开 [1.7.3-pre.2 预发布下载页](https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.3-pre.2)，在 **Assets** 中下载 `quota-starter-1.7.3-pre.2-windows.zip`，不要选择 `Source code`。
 2. 右键 ZIP，选择 **全部解压**。
 3. 打开解压后的 `quota-starter` 文件夹，双击 **Install.cmd**，等待安装完成。不要直接从压缩包窗口运行。
 4. 双击桌面或开始菜单中的 **Quota Starter**，打开软件界面。
@@ -131,7 +131,7 @@ Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Wor
 
 自动运行需要电脑开机并登录当前 Windows 用户。锁屏时可继续运行；休眠、关机或断网时无法发送。无需一直打开网页或 Codex 桌面窗口。
 
-每轮连接、检测或发送最多尝试5次（含首次），失败后间隔10秒，从首次尝试起最多1分钟。只读连接的临时故障在一轮耗尽后，按30、60、120、240、300秒退避，之后最长每5分钟再发起一轮有界恢复；成功后清零并恢复每轮结束后60秒检测。重启后保留等待时间。恢复轮先只读校验，下一轮才处理仍有效的计划。身份、数据或CLI接口不兼容错误不进入无限自动恢复；未知发送结果继续停止并保留防重复保护。
+每轮连接、检测或发送最多尝试5次（含首次），失败后间隔10秒，每轮最多1分钟。只读准备和发送前校验成功后，发送单独开始1分钟计时；发送重试共用该时限，不逐次延长。只读连接的临时故障在一轮耗尽后，按30、60、120、240、300秒退避，之后最长每5分钟再发起一轮有界恢复；成功后清零并恢复每轮结束后60秒检测。重启后保留等待时间。恢复轮先只读校验，下一轮才处理仍有效的计划。身份、数据或CLI接口不兼容错误不进入无限自动恢复；未知发送结果继续停止并保留防重复保护。
 
 连接完成后即更新额度，另行显示准备、发送及核验请求的状态。重新检测在后台执行，不等待小额请求完成；自启动状态查询不会阻塞额度显示。
 
@@ -179,7 +179,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Stop.ps1
 
 ## 项目信息
 
-当前版本：**v1.7.2-pre.3（预发布）**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
+当前版本：**v1.7.3-pre.2（预发布）**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
 
 - [版本更新记录](CHANGELOG.md)
 - [机制说明](MECHANISM.md)

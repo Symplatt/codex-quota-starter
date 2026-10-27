@@ -347,6 +347,68 @@ class RetryTests(unittest.TestCase):
         self.assertEqual(fake.sent, 1)
         self.assertTrue(e.connection()['stopped'])
 
+    def test_slow_read_only_setup_does_not_consume_send_budget(self):
+        fake = FakeRPC([raw(20000, 0)])
+        e = self.engine(fake, 100)
+        prepare = fake.prepare
+        remaining = []
+        def slow_prepare(cwd):
+            e.sleeper(57)
+            return prepare(cwd)
+        def send(prepared):
+            fake.sent += 1
+            remaining.append(fake.deadline - e.clock())
+            e.sleeper(10)
+            if e.clock() >= fake.deadline:
+                raise TimeoutError('重试总时长已达到上限')
+            return {'status': 'completed'}
+        fake.prepare = slow_prepare
+        fake.send_minimal = send
+        e.tick()
+        self.assertEqual(remaining, [60])
+        self.assertEqual(fake.sent, 1)
+        self.assertEqual(self.store.recent('attempts')[0]['status'], 'completed')
+        self.assertFalse(e.connection())
+
+    def test_send_budget_remains_bounded_after_slow_setup(self):
+        fake = FakeRPC([raw(20000, 0)])
+        e = self.engine(fake, 100)
+        prepare = fake.prepare
+        deadlines = []
+        def slow_prepare(cwd):
+            e.sleeper(57)
+            return prepare(cwd)
+        def send(prepared):
+            fake.sent += 1
+            deadlines.append(fake.deadline)
+            e.sleeper(60)
+            raise TimeoutError('重试总时长已达到上限')
+        fake.prepare = slow_prepare
+        fake.send_minimal = send
+        e.tick()
+        self.assertEqual(deadlines, [217])
+        self.assertEqual(fake.sent, 1)
+        self.assertTrue(e.connection()['stopped'])
+        self.assertEqual(self.store.recent('attempts')[0]['status'], 'unknown')
+        guard = self.store.guard_until()
+        e.reconnect()
+        e.tick()
+        self.assertEqual(fake.sent, 1)
+        self.assertEqual(self.store.guard_until(), guard)
+
+    def test_read_only_setup_timeout_never_submits(self):
+        fake = FakeRPC([raw(20000, 0)])
+        e = self.engine(fake, 100)
+        def prepare(cwd):
+            e.sleeper(60)
+            raise TimeoutError('account/read 超时')
+        fake.prepare = prepare
+        e.tick()
+        self.assertEqual(fake.sent, 0)
+        self.assertEqual(self.store.recent('attempts'), [])
+        self.assertFalse(e.connection()['stopped'])
+        self.assertIn('recoveryAt', e.connection())
+
     def test_retry_checks_weekly_limit(self):
         fake = FakeRPC([raw(), raw(), raw(20000, 10, 100)], send_error=True)
         e = self.engine(fake); e.tick()

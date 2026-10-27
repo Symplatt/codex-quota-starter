@@ -957,6 +957,11 @@ class Engine:
             cycle, reason, schedule_id = self.select_candidate(fresh, snap, now, manual)
             if not cycle or self.store.get('paused', False):
                 return self._ok(reason if cycle is None else '已暂停')
+            # Read-only setup has completed successfully. Start the bounded send
+            # round here so slow quota/routing reads cannot leave a newly
+            # submitted turn with only the tail of the setup timeout.
+            self._ok('已连接，正在准备小额请求')
+            self.connect()
             detail = {'before': fresh, 'prepared': prepared, 'reason': reason,
                       'manual': manual, 'scheduleId': schedule_id}
             attempt = self.store.claim(account_key, cycle, now, detail, schedule_id)
