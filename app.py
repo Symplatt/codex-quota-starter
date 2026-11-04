@@ -1,5 +1,6 @@
 """Loopback-only dashboard + background scheduler (Python 3.11+, standard library)."""
 import argparse
+import errno
 import json
 import os
 import secrets
@@ -8,6 +9,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -268,19 +270,33 @@ def main():
     tasks = TaskScheduler(store)
     try:
         server = create_server(engine, tasks=tasks)
-    except OSError:
-        return 42  # Existing instance or occupied fixed port; supervisor must not loop.
+    except OSError as exc:
+        if exc.errno == errno.EADDRINUSE or getattr(exc, 'winerror', None) in (10013, 10048):
+            return 42  # A fixed-port conflict must not start a supervisor retry loop.
+        raise
     stop = threading.Event()
+    scheduler_failed = threading.Event()
+
     def run():
-        while not stop.is_set():
-            engine.audit_schedule_due()
-            if ((engine.polling_enabled() or engine.read_requested) and
-                    not engine.connection().get('stopped') and time.time() >= engine.next_poll):
-                engine.tick()
-            stop.wait(0.5)
-    threading.Thread(target=run, daemon=True).start()
+        try:
+            while not stop.is_set():
+                engine.audit_schedule_due()
+                if ((engine.polling_enabled() or engine.read_requested) and
+                        not engine.connection().get('stopped') and time.time() >= engine.next_poll):
+                    engine.tick()
+                stop.wait(0.5)
+        except Exception:
+            # Restart through the supervisor so startup also reconciles any
+            # request that was in flight when storage or memory failed.
+            scheduler_failed.set()
+            try:
+                traceback.print_exc()
+            finally:
+                server.shutdown()
+
     tasks.start()
     store.log('service', {'action': 'start', 'pid': __import__('os').getpid()})
+    threading.Thread(target=run, daemon=True, name='quota-scheduler').start()
     try:
         server.serve_forever(poll_interval=0.5)
     except KeyboardInterrupt:
@@ -290,7 +306,7 @@ def main():
         server.server_close()
         tasks.close()
         engine.close()
-    return 0
+    return 1 if scheduler_failed.is_set() else 0
 
 
 if __name__ == '__main__':

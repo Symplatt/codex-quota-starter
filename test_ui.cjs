@@ -101,28 +101,30 @@ test('minute chart keeps gaps unknown and reports consumption separately from re
  s.quotaHistory=[{minute:Math.floor(Date.now()/60000)*60,primaryRemaining:60,secondaryRemaining:null}];
  p.run('refresh()');await p.respond(s);
  assert.equal(p.e('chart-empty').hidden,true);assert.match(p.e('quota-chart-svg').attributes['aria-label'],/已记录 1 分钟/);
- assert.ok(p.e('quota-chart-svg').children.some(c=>c.attributes.fill==='#315c43'));
+ assert.ok(p.e('quota-chart-svg').children.some(c=>c.attributes.class==='chart-line'&&c.attributes.d.endsWith('l0 0')));
  p.e('chart-quota').value='secondaryRemaining';p.run('renderChart()');assert.equal(p.e('chart-empty').hidden,false);
 });
 
 test('smooth line preserves steep drops, extrema, and disconnect gaps',async()=>{
  const p=setup();await p.respond(status());
- p.c.points=[{minute:0,value:90,delta:null},{minute:60,value:89,delta:-1},{minute:120,value:60,delta:-29},{minute:180,value:61,delta:1},{minute:300,value:40,delta:null}];
- const paths=JSON.parse(p.run('JSON.stringify(chartSegments(points,v=>v,v=>v))'));
+ p.c.points=[{at:0,value:90,delta:null},{at:60,value:89,delta:-1},{at:120,value:60,delta:-29},{at:180,value:61,delta:1},{at:300,value:40,delta:null}];
+ const path=p.run('chartPath(points,v=>v,v=>v)');
+ const paths=path.match(/C[^MC]+/g);
  assert.equal(paths.length,3);
- assert.match(paths[1].d,/M60 89 C/);assert.ok(paths[1].d.endsWith(',120 60'));
+ assert.ok(path.startsWith('M0 90 C'));assert.ok(path.endsWith('M300 40 l0 0'));
+ assert.ok(paths[1].trim().endsWith(',120 60'));
  // Every control stays between the true endpoints; there is no invented peak/trough.
  for(let i=0;i<paths.length;i++){
-  const numbers=paths[i].d.match(/-?[\d.]+/g).map(Number),min=Math.min(p.c.points[i].value,p.c.points[i+1].value),max=Math.max(p.c.points[i].value,p.c.points[i+1].value);
-  assert.ok(numbers[3]>=min&&numbers[3]<=max);assert.ok(numbers[5]>=min&&numbers[5]<=max);
+  const numbers=paths[i].match(/-?[\d.]+/g).map(Number),min=Math.min(p.c.points[i].value,p.c.points[i+1].value),max=Math.max(p.c.points[i].value,p.c.points[i+1].value);
+  assert.ok(numbers[1]>=min&&numbers[1]<=max);assert.ok(numbers[3]>=min&&numbers[3]<=max);
  }
 });
 
 test('chart fixes zero-to-hundred bounds and switches tick density below 200px plot height',async()=>{
  const p=setup(),s=status(),end=Math.floor(Date.now()/60000)*60;await p.respond(s);
- for(const height of [60,180,236,237,238,600])for(const quota of ['primaryRemaining','secondaryRemaining'])for(const range of ['60','300','1440'])for(const values of [[],[98,99],[0,100],[40,90]]){
+ for(const height of [60,180,236,237,238,600])for(const quota of ['primaryRemaining','secondaryRemaining'])for(const values of [[],[98,99],[0,100],[40,90]]){
   const step=height-37<200?20:10,expected=Array.from({length:100/step+1},(_,i)=>i*step+'%');
-  p.e('quota-chart').clientHeight=height;p.e('chart-quota').value=quota;p.e('chart-window').value=range;
+  p.e('quota-chart').clientHeight=height;p.e('chart-quota').value=quota;
   p.c.history=values.map((value,i)=>({minute:end-(values.length-1-i)*60,[quota]:value}));
   p.run('snapshot.quotaHistory=history;renderChart()');
   assert.deepEqual(p.e('quota-chart-svg').children.filter(n=>String(n.textContent).endsWith('%')).map(n=>n.textContent),expected);
@@ -153,16 +155,16 @@ test('paused badge never claims background running even when still connected',as
 
 test('chart selections survive reload and a new browser session',async()=>{
  const preferences={},p=setup({},preferences);await p.respond(status());
- p.e('chart-window').value='1440';p.e('chart-quota').value='secondaryRemaining';p.run('rememberChartPreferences()');
+ p.e('chart-mode').value='plan';p.e('chart-quota').value='secondaryRemaining';p.run('rememberChartPreferences()');
  const reopened=setup({},preferences);await reopened.respond(status());
- assert.equal(reopened.e('chart-window').value,'1440');assert.equal(reopened.e('chart-quota').value,'secondaryRemaining');
- reopened.e('chart-window').value='60';reopened.run('rememberChartPreferences()');
- const again=setup({},preferences);await again.respond(status());assert.equal(again.e('chart-window').value,'60');assert.equal(again.e('chart-quota').value,'secondaryRemaining');
+ assert.equal(reopened.e('chart-mode').value,'plan');assert.equal(reopened.e('chart-quota').value,'secondaryRemaining');
+ reopened.e('chart-mode').value='history';reopened.run('rememberChartPreferences()');
+ const again=setup({},preferences);await again.respond(status());assert.notEqual(again.e('chart-mode').value,'plan');assert.equal(again.e('chart-quota').value,'secondaryRemaining');
 });
 
 test('invalid or unavailable chart storage never breaks the dashboard',async()=>{
  const preferences={'quota-starter:chart-preferences:v1':'{"window":"invalid","quota":"invalid"}'},p=setup({},preferences);await p.respond(status());
- assert.notEqual(p.e('chart-window').value,'invalid');assert.notEqual(p.e('chart-quota').value,'invalid');
+ assert.notEqual(p.e('chart-mode').value,'invalid');assert.notEqual(p.e('chart-quota').value,'invalid');
  p.run('localStorage.setItem=()=>{throw Error("blocked")};rememberChartPreferences()');assert.ok(p.e('quota-chart-svg').children.length>0);
  const corrupt=setup({},{'quota-starter:chart-preferences:v1':'{broken'});await corrupt.respond(status());assert.equal(corrupt.e('version').textContent,'v1.4.5');
 });
@@ -515,10 +517,32 @@ test('disconnected quota labels never claim requests can currently be sent',asyn
 });
 
 
-test('seven-day chart restores its range and renders readable date ticks',async()=>{
- const p=setup({},{'quota-starter:chart-preferences:v1':'{"window":"10080","quota":"primaryRemaining"}'});
- await p.respond(status());assert.equal(p.e('chart-window').value,'10080');
+test('seven-day chart restores the legacy quota selection and draws an hour at a time',async()=>{
+ const p=setup({},{'quota-starter:chart-preferences:v1':'{"window":"1440","quota":"secondaryRemaining"}'});
+ const s=status(),end=Math.floor(Date.now()/60000)*60;
+ s.quotaHistory=Array.from({length:10081},(_,i)=>({minute:end-(10080-i)*60,secondaryRemaining:80}));
+ await p.respond(s);assert.equal(p.e('chart-quota').value,'secondaryRemaining');
  const labels=p.e('quota-chart-svg').children.filter(n=>/^\d{2}\/\d{2}$/.test(n.textContent));
- assert.ok(labels.length>=6 && labels.length<=8);
+ assert.ok(labels.length>=6 && labels.length<=9);
  assert.ok(p.e('quota-chart-svg').children.length<200);
+ assert.equal(p.e('quota-chart-svg').children.filter(n=>n.attributes.class==='chart-hit').length,1);
+ p.c.rows=[{minute:60,secondaryRemaining:95},{minute:120,secondaryRemaining:92},{minute:3660,secondaryRemaining:80},{minute:10860,secondaryRemaining:75}];
+ const points=JSON.parse(p.run("JSON.stringify(chartData(rows,0,14400,'secondaryRemaining'))"));
+ assert.deepEqual(points.map(({at,value,delta})=>[at,value,delta]),[[3600,92,null],[7200,80,-12],[14400,75,null]]);
+});
+
+test('planning anchors to the quota reset and splits the axis at the current time',async()=>{
+ const p=setup(),s=status(),now=1800000000,reset=now+3600,start=reset-18000;
+ p.c.Date.now=()=>now*1000;
+ s.current.primary.resetsAt=reset;
+ s.quotaHistory=[{minute:start-60,primaryRemaining:20},{minute:start+60,primaryRemaining:93},{minute:now+60,primaryRemaining:45}];
+ await p.respond(s);
+ p.e('chart-mode').value='plan';p.run('renderChart()');
+ const svg=p.e('quota-chart-svg'),pace=svg.children.find(n=>n.attributes.class==='chart-pace').attributes;
+ const elapsed=svg.children.find(n=>n.attributes.class==='chart-axis-line').attributes;
+ const future=svg.children.find(n=>n.attributes.class==='chart-axis-line chart-axis-future').attributes;
+ assert.equal(pace.x1,elapsed.x1);assert.equal(pace.x2,future.x2);assert.equal(pace.y1,12);
+ assert.equal(pace.y2,future.y2);assert.equal(elapsed.x2,future.x1);
+ assert.equal((elapsed.x2-pace.x1)/(pace.x2-pace.x1),0.8);
+ assert.match(svg.attributes['aria-label'],/已记录 1 分钟/);
 });

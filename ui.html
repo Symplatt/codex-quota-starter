@@ -2541,6 +2541,8 @@
       .chart-options {
         display: flex;
         align-items: center;
+        justify-content: flex-end;
+        margin-left: auto;
         gap: 10px;
         flex-wrap: wrap;
       }
@@ -2592,6 +2594,21 @@
         stroke: #b9c8b7;
         stroke-width: 1;
       }
+      .chart-axis-line {
+        stroke: #7e8e84;
+        stroke-width: 1.5;
+      }
+      .chart-axis-future, .chart-pace {
+        stroke: #a1a5a3;
+      }
+      .chart-pace {
+        stroke-width: 1;
+        stroke-dasharray: 4 4;
+      }
+      .chart-axis.chart-axis-future {
+        stroke: none;
+        fill: #858987;
+      }
       .chart-hit {
         fill: transparent;
       }
@@ -2618,7 +2635,7 @@
           gap: 8px;
         }
         .chart-options select {
-          max-width: 135px;
+          max-width: 100%;
         }
       }
       :root {
@@ -3628,21 +3645,20 @@
             </button>
           </h2>
           <div class="chart-options">
-            <select id="chart-window" aria-label="统计时间范围">
-              <option value="60">最近一小时</option>
-              <option value="300" selected>最近五小时</option>
-              <option value="1440">最近二十四小时</option>
-              <option value="10080">最近7天</option></select
-            ><select id="chart-quota" aria-label="统计额度类型">
+            <select id="chart-quota" aria-label="统计目标">
               <option value="primaryRemaining">五小时额度</option>
               <option value="secondaryRemaining">周额度</option>
+            </select>
+            <select id="chart-mode" aria-label="统计方式">
+              <option value="history">历程统计</option>
+              <option value="plan">规划统计</option>
             </select>
           </div>
         </div>
         <div class="quota-chart" id="quota-chart">
           <svg
             id="quota-chart-svg"
-            role="img"
+            role="group"
             aria-label="Codex每分钟额度变化，等待检测"
           ></svg>
           <div id="chart-empty" class="chart-empty">等待额度检测</div>
@@ -4099,19 +4115,20 @@
       let operationError = "";
       const pendingActions = new Set();
       const $ = (id) => document.getElementById(id);
-      const time = (s) =>
-        s
-          ? new Intl.DateTimeFormat("zh-CN", {
-              timeZone: "Asia/Shanghai",
-              year: "numeric",
-              month: "2-digit",
-              day: "2-digit",
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-              hour12: false,
-            }).format(new Date(s * 1000))
-          : "—";
+      const timeFormat = new Intl.DateTimeFormat("zh-CN", {
+        timeZone: "Asia/Shanghai",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+      const chartDateFormat = new Intl.DateTimeFormat("zh-CN", {
+        timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit",
+      });
+      const time = (s) => s ? timeFormat.format(new Date(s * 1000)) : "—";
       const inputTime = (s) =>
         new Date(s * 1000 + 8 * 3600000).toISOString().slice(0, 19);
       const labels = {
@@ -4884,13 +4901,12 @@
       function restoreChartPreferences() {
         try {
           const saved = JSON.parse(localStorage.getItem(chartPreferencesKey));
-          if (saved && ["60", "300", "1440", "10080"].includes(saved.window))
-            $("chart-window").value = saved.window;
           if (
             saved &&
             ["primaryRemaining", "secondaryRemaining"].includes(saved.quota)
           )
             $("chart-quota").value = saved.quota;
+          if (saved?.mode === "plan") $("chart-mode").value = "plan";
         } catch {}
       }
       function rememberChartPreferences() {
@@ -4898,8 +4914,8 @@
           localStorage.setItem(
             chartPreferencesKey,
             JSON.stringify({
-              window: $("chart-window").value,
               quota: $("chart-quota").value,
+              mode: $("chart-mode").value,
             }),
           );
         } catch {}
@@ -4916,53 +4932,60 @@
         if (text !== undefined) node.textContent = text;
         return node;
       }
-      function chartData(history, start, end, key) {
-        return history
-          .filter(
-            (p) =>
-              p.minute >= start && p.minute <= end && Number.isFinite(p[key]),
-          )
-          .map((p, i, rows) => {
-            const previous = rows[i - 1],
-              delta =
-                previous && p.minute - previous.minute === 60
-                  ? p[key] - previous[key]
-                  : null;
-            return { ...p, value: p[key], delta };
-          });
+      function chartData(history, start, end, key, planning = false) {
+        const weekly = key === "secondaryRemaining";
+        const samples = new Map();
+        for (const point of history) {
+          const sampledAt = planning ? (point.checkedAt ?? point.minute) : point.minute;
+          if (sampledAt < start || sampledAt > end || !Number.isFinite(point[key])) continue;
+          const bucket = weekly ? Math.ceil(sampledAt / 3600) - 1 : point.minute / 60;
+          const at = weekly ? Math.min(end, (bucket + 1) * 3600) : sampledAt;
+          samples.set(bucket, { at, sampledAt, bucket, value: point[key] });
+        }
+        const points = [...samples.values()];
+        for (let i = 0; i < points.length; i++) {
+          const previous = points[i - 1], point = points[i];
+          point.delta = previous && point.bucket - previous.bucket === 1
+            ? point.value - previous.value
+            : null;
+        }
+        return points;
       }
       function chartScale(plotHeight) {
         return { low: 0, high: 100, step: plotHeight < 200 ? 20 : 10 };
       }
-      function chartSegments(points, x, y) {
-        const segments = [];
+      function chartPath(points, x, y) {
+        const commands = [];
         // Monotone Hermite interpolation passes through every measurement. Opposing
         // slopes flatten at the sample, so smoothing cannot invent overshoot or hide drops.
-        const slope = (a, b) => (b.value - a.value) / (b.minute - a.minute);
+        const slope = (a, b) => (b.value - a.value) / (b.at - a.at);
         const tangent = (i) => {
           const a = points[i - 1],
             b = points[i],
             c = points[i + 1];
-          const before = a && b.minute - a.minute === 60 ? slope(a, b) : null,
-            after = c && c.minute - b.minute === 60 ? slope(b, c) : null;
+          const before = a && b.delta !== null ? slope(a, b) : null,
+            after = c && c.delta !== null ? slope(b, c) : null;
           if (before === null) return after || 0;
           if (after === null) return before;
           return before * after <= 0
             ? 0
             : (2 * before * after) / (before + after);
         };
-        for (let i = 1; i < points.length; i++) {
+        for (let i = 0; i < points.length; i++) {
           const a = points[i - 1],
-            b = points[i];
-          if (b.minute - a.minute !== 60) continue;
-          const h = (b.minute - a.minute) / 3,
-            ax = x(a.minute),
-            bx = x(b.minute);
-          segments.push({
-            d: `M${ax} ${y(a.value)} C${ax + (bx - ax) / 3} ${y(a.value + tangent(i - 1) * h)},${bx - (bx - ax) / 3} ${y(b.value - tangent(i) * h)},${bx} ${y(b.value)}`,
-          });
+            b = points[i],
+            bx = x(b.at);
+          if (b.delta === null) {
+            commands.push(`M${bx} ${y(b.value)}`);
+            if (!points[i + 1] || points[i + 1].delta === null)
+              commands.push("l0 0");
+            continue;
+          }
+          const h = (b.at - a.at) / 3,
+            ax = x(a.at);
+          commands.push(`C${ax + (bx - ax) / 3} ${y(a.value + tangent(i - 1) * h)},${bx - (bx - ax) / 3} ${y(b.value - tangent(i) * h)},${bx} ${y(b.value)}`);
         }
-        return segments;
+        return commands.join(" ");
       }
       function fitChartCard() {
         if (typeof window === "undefined") return;
@@ -4991,14 +5014,11 @@
       function hideChartTooltip() {
         $("chart-tooltip").hidden = true;
       }
-      function showChartTooltip(event, minute, statistics, hit) {
+      function showChartTooltip(at, statistics, x, y) {
         const tip = $("chart-tooltip");
-        $("tooltip-time").textContent = time(minute);
+        $("tooltip-time").textContent = time(at);
         $("tooltip-statistics").textContent = statistics;
         tip.hidden = false;
-        const rect = hit.getBoundingClientRect(),
-          x = event.clientX ?? rect.left + rect.width / 2,
-          y = event.clientY ?? rect.top + rect.height / 2;
         const bounds = tip.getBoundingClientRect();
         tip.style.left =
           Math.max(
@@ -5018,25 +5038,25 @@
       function renderChart() {
         fitChartCard();
         const history = snapshot?.quotaHistory || [],
-          key = $("chart-quota").value || "primaryRemaining";
-        const minutes = Number($("chart-window").value) || 300,
-          end = Math.floor(Date.now() / 60000) * 60,
-          start = end - minutes * 60;
+          key = $("chart-quota").value || "primaryRemaining",
+          weekly = key === "secondaryRemaining",
+          planning = $("chart-mode").value === "plan",
+          duration = weekly ? 7 * 86400 : 5 * 3600,
+          now = Date.now() / 1000,
+          minute = Math.floor(now / 60) * 60,
+          reset = snapshot?.current?.[weekly ? "secondary" : "primary"]?.resetsAt,
+          hasCycle = Number.isFinite(reset) && reset > duration,
+          end = planning && hasCycle ? reset : minute,
+          start = end - duration;
+        const points = planning && !hasCycle ? []
+          : chartData(history, start, planning ? Math.min(now, end) : end, key, planning);
         const height = Math.max(60, $("quota-chart").clientHeight || 180),
           width = Math.max(280, $("quota-chart").clientWidth || 960),
-          signature = JSON.stringify([
-            history,
-            key,
-            minutes,
-            end,
-            width,
-            height,
-          ]);
+          signature = JSON.stringify([points, history.length > 0, key, planning, hasCycle, end, minute, width, height]);
         if (signature === chartSignature) return;
         chartSignature = signature;
         hideChartTooltip();
-        const points = chartData(history, start, end, key),
-          svg = $("quota-chart-svg");
+        const svg = $("quota-chart-svg");
         svg.replaceChildren();
         svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
         svg.setAttribute("preserveAspectRatio", "none");
@@ -5048,6 +5068,12 @@
           { low, high, step } = chartScale(plotHeight);
         const x = (minute) => left + ((minute - start) / (end - start)) * plot,
           y = (value) => bottom - ((value - low) / (high - low)) * plotHeight;
+        if (planning && !hasCycle) {
+          $("chart-empty").hidden = false;
+          $("chart-empty").textContent = "暂无额度周期";
+          svg.setAttribute("aria-label", "暂无额度周期");
+          return;
+        }
         for (let value = low; value <= high; value += step) {
           svg.append(
             svgPart("line", {
@@ -5071,42 +5097,41 @@
             ),
           );
         }
-        const minor =
-          (minutes <= 60
-            ? 1
-            : minutes <= 300
-              ? 5
-              : minutes <= 1440
-                ? 30
-                : 240) * 60;
-        const major =
-          (minutes <= 60
-            ? width < 500
-              ? 15
-              : 10
-            : minutes <= 300
-              ? width < 500
-                ? 60
-                : 30
-              : minutes > 1440
-                ? 1440
-                : width < 500
-                  ? 240
-                  : 120) * 60;
+        const minor = weekly ? 4 * 3600 : 5 * 60;
+        const major = weekly ? 86400 : width < 500 ? 3600 : 1800;
+        const dayOffset = 8 * 3600;
+        const addTimeLabel = (at, anchor) => {
+          svg.append(svgPart("text", {
+            x: x(at), y: height - 5, "text-anchor": anchor,
+            class: "chart-axis" + (planning && at > now ? " chart-axis-future" : ""),
+          }, weekly ? chartDateFormat.format(new Date(at * 1000)) : clockTime(at).slice(0, 5)));
+        };
+        if (planning) {
+          const elapsed = x(Math.min(end, Math.max(start, now)));
+          svg.append(svgPart("line", {
+            x1: left, x2: elapsed, y1: bottom, y2: bottom, class: "chart-axis-line",
+          }));
+          svg.append(svgPart("line", {
+            x1: elapsed, x2: right, y1: bottom, y2: bottom, class: "chart-axis-line chart-axis-future",
+          }));
+          svg.append(svgPart("line", {
+            x1: left, x2: right, y1: y(100), y2: y(0), class: "chart-pace",
+          }));
+        }
         for (
           let at = Math.ceil(start / minor) * minor;
           at <= end;
           at += minor
         ) {
-          const majorTick =
-            (at + (minutes > 1440 ? 8 * 3600 : 0)) % major === 0;
+          const majorTick = (at + (weekly ? dayOffset : 0)) % major === 0;
+          const future = planning && at > now ? " chart-axis-future" : "";
           svg.append(
             svgPart("line", {
               x1: x(at),
               x2: x(at),
               y1: bottom,
               y2: bottom + (majorTick ? 7 : 4),
-              class: "chart-tick",
+              class: "chart-tick" + future,
             }),
           );
           if (majorTick) {
@@ -5119,92 +5144,87 @@
                 class: "chart-grid",
               }),
             );
-            svg.append(
-              svgPart(
-                "text",
-                {
-                  x: x(at),
-                  y: height - 5,
-                  "text-anchor":
-                    x(at) - left < 16
-                      ? "start"
-                      : right - x(at) < 16
-                        ? "end"
-                        : "middle",
-                  class: "chart-axis",
-                },
-                minutes > 1440
-                  ? new Intl.DateTimeFormat("zh-CN", {
-                      timeZone: "Asia/Shanghai",
-                      month: "2-digit",
-                      day: "2-digit",
-                    }).format(new Date(at * 1000))
-                  : clockTime(at).slice(0, 5),
-              ),
-            );
+            const repeatsEnd = weekly && end - at < 86400;
+            if (!repeatsEnd && x(at) - left >= 44 && right - x(at) >= 44)
+              addTimeLabel(at, "middle");
           }
         }
-        for (const segment of chartSegments(points, x, y))
-          svg.append(svgPart("path", { d: segment.d, class: "chart-line" }));
+        addTimeLabel(start, "start");
+        addTimeLabel(end, "end");
+        if (planning && start <= now)
+          svg.append(svgPart("circle", { cx: left, cy: y(100), r: 2, fill: "#315c43" }));
+        if (points.length) {
+          svg.append(svgPart("path", { d: chartPath(points, x, y), class: "chart-line" }));
+          const hit = svgPart("rect", {
+            x: left, y: 8, width: plot, height: plotHeight + 6,
+            class: "chart-hit", tabindex: 0, "aria-label": "额度采样，使用方向键查看",
+          });
+          let selected = points.length - 1;
+          const showPoint = (index, event) => {
+            selected = index;
+            const point = points[index], delta = point.delta;
+            const change = delta === null
+              ? "无连续检测，变化未知"
+              : delta < 0
+                ? "消耗 " + (-delta).toFixed(0) + " 个百分点"
+                : delta > 0 ? "恢复 " + delta.toFixed(0) + " 个百分点" : "无变化";
+            const statistics = "剩余 " + point.value + "% " + change;
+            const bounds = svg.getBoundingClientRect();
+            hit.setAttribute("aria-label", time(point.sampledAt) + " " + statistics);
+            showChartTooltip(point.sampledAt, statistics,
+              event?.clientX ?? bounds.left + x(point.at) / width * bounds.width,
+              event?.clientY ?? bounds.top + y(point.value) / height * bounds.height);
+          };
+          hit.addEventListener("pointermove", (event) => {
+            const bounds = svg.getBoundingClientRect();
+            const cursor = (event.clientX - bounds.left) / bounds.width * width;
+            let lo = 0, hi = points.length - 1;
+            while (lo < hi) {
+              const mid = Math.floor((lo + hi) / 2);
+              if (cursor > (x(points[mid].at) + x(points[mid + 1].at)) / 2) lo = mid + 1;
+              else hi = mid;
+            }
+            const radius = Math.max(4, (weekly ? 3600 : 60) / duration * plot / 2);
+            if (Math.abs(cursor - x(points[lo].at)) <= radius) showPoint(lo, event);
+            else hideChartTooltip();
+          });
+          hit.addEventListener("focus", () => showPoint(selected));
+          hit.addEventListener("keydown", (event) => {
+            const index = {
+              ArrowLeft: Math.max(0, selected - 1),
+              ArrowRight: Math.min(points.length - 1, selected + 1),
+              Home: 0, End: points.length - 1,
+            }[event.key];
+            if (!Number.isInteger(index)) return;
+            event.preventDefault();
+            showPoint(index);
+          });
+          hit.addEventListener("pointerleave", hideChartTooltip);
+          hit.addEventListener("blur", hideChartTooltip);
+          svg.append(hit);
+        }
         let consumed = 0,
           recovered = 0;
         for (const point of points) {
           if (point.delta < 0) consumed -= point.delta;
           else if (point.delta > 0) recovered += point.delta;
-          svg.append(
-            svgPart("circle", {
-              cx: x(point.minute),
-              cy: y(point.value),
-              r: 1,
-              fill: "#315c43",
-            }),
-          );
-          const hit = svgPart("rect", {
-            x: Math.max(
-              left,
-              x(point.minute) - Math.max(4, plot / minutes / 2),
-            ),
-            y: 8,
-            width: Math.max(8, plot / minutes),
-            height: plotHeight + 6,
-            class: "chart-hit",
-          });
-          const change =
-            point.delta === null
-              ? "无连续检测，变化未知"
-              : point.delta < 0
-                ? "消耗 " + (-point.delta).toFixed(0) + " 个百分点"
-                : point.delta > 0
-                  ? "恢复 " + point.delta.toFixed(0) + " 个百分点"
-                  : "无变化";
-          const statistics = "剩余 " + point.value + "% " + change;
-          hit.setAttribute("tabindex", "0");
-          hit.setAttribute("aria-label", time(point.minute) + " " + statistics);
-          const show = (e) =>
-            showChartTooltip(e, point.minute, statistics, hit);
-          hit.addEventListener("pointerenter", show);
-          hit.addEventListener("pointermove", show);
-          hit.addEventListener("focus", show);
-          hit.addEventListener("pointerleave", hideChartTooltip);
-          hit.addEventListener("blur", hideChartTooltip);
-          svg.append(hit);
         }
         $("chart-empty").hidden = points.length > 0;
         $("chart-empty").textContent = history.length
           ? "所选范围暂无额度数据"
           : "等待额度检测";
         const description = points.length
-          ? `已记录 ${points.length} 分钟 · 消耗 ${Number(consumed.toFixed(0))} 个百分点 · 恢复 ${Number(recovered.toFixed(0))} 个百分点`
-          : "每分钟记录一次；未检测时留空";
+          ? `已记录 ${points.length} ${weekly ? "小时" : "分钟"} · 消耗 ${Number(consumed.toFixed(0))} 个百分点 · 恢复 ${Number(recovered.toFixed(0))} 个百分点`
+          : "未检测时留空";
         svg.setAttribute(
           "aria-label",
           "Codex" +
-            (key === "primaryRemaining" ? "五小时" : "周") +
+            (weekly ? "周" : "五小时") +
             "额度变化，" +
             description,
         );
       }
-      $("chart-window").addEventListener("change", rememberChartPreferences);
+      $("chart-mode").addEventListener("change", rememberChartPreferences);
       $("chart-quota").addEventListener("change", rememberChartPreferences);
       if (typeof ResizeObserver !== "undefined")
         new ResizeObserver(renderChart).observe($("quota-chart"));
