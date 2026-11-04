@@ -14,6 +14,10 @@ from app import create_server
 from rpc import RPC
 
 
+def csrf_token(page):
+    return re.search(r'\b(?:const|let)\s+token\s*=\s*([\'\"])(.*?)\1', page)[2]
+
+
 def raw(end=20000, used=10, weekly=20):
     bucket = {'limitId': 'codex', 'planType': 'plus',
               'primary': {'resetsAt': end, 'usedPercent': used, 'windowDurationMins': 300},
@@ -181,7 +185,7 @@ class QuotaTests(unittest.TestCase):
     def test_quota_only_read_never_prepares_or_sends(self):
         scenarios = [('idle', 100, 0, False, None),
                      ('reset_due', 20002, 10, False, None),
-                     ('schedule_due', 20002, 0, False, {'status': 'pending', 'sendAt': 19000}),
+                     ('schedule_due', 20002, 0, False, {'id': 'read-only-plan', 'status': 'pending', 'sendAt': 19000}),
                      ('paused', 20002, 0, True, None)]
         for name, now, used, paused, schedule in scenarios:
             with self.subTest(name=name):
@@ -194,10 +198,12 @@ class QuotaTests(unittest.TestCase):
                 e.next_poll = 22000
                 result = e.tick(check_only=True)
                 self.assertIn('当前额度已更新', result)
-                self.assertEqual(fake.reads, 1)
+                self.assertEqual(fake.reads, 2 if used == 0 else 1)
                 fake.prepare.assert_not_called()
                 self.assertEqual(fake.sent, 0)
-                self.assertEqual(e.next_poll, 0 if paused else now + 60)
+                # The 1.5.23 completion cadence is unchanged; paused polling is
+                # suppressed by the outer scheduler and hidden in /api/status.
+                self.assertEqual(e.next_poll, now + 60)
                 self.assertEqual(self.store.get('current')['primary']['usedPercent'], used)
                 self.assertEqual(self.store.get('current')['checkedAt'], now)
                 self.assertEqual(self.store.get('schedule')['status'], 'pending') if schedule else self.assertIsNone(self.store.get('schedule'))
@@ -263,10 +269,10 @@ class RetryTests(unittest.TestCase):
         for now in (100, 110, 120, 130, 140):
             self.engine(fake, now).tick()
         self.assertFalse(self.store.get('connection')['stopped'])
-        self.assertEqual(self.store.get('connection')['recoveryAt'], 1340)
-        self.engine(fake, 1339).tick(check_only=True)
+        self.assertEqual(self.store.get('connection')['recoveryAt'], 170)
+        self.engine(fake, 169).tick(check_only=True)
         self.assertEqual(fake.reads, 5)
-        self.engine(fake, 1340).tick()
+        self.engine(fake, 170).tick()
         self.assertEqual(fake.reads, 6)
         self.assertEqual(self.store.get('connection')['failures'], 1)
 
@@ -276,7 +282,7 @@ class RetryTests(unittest.TestCase):
         self.engine(fake, 160).tick()
         self.assertEqual(fake.reads, 1)
         self.assertFalse(self.store.get('connection')['stopped'])
-        self.assertEqual(self.store.get('connection')['recoveryAt'], 1360)
+        self.assertEqual(self.store.get('connection')['recoveryAt'], 190)
 
     def test_interval_cannot_be_bypassed_by_recheck(self):
         fake = FakeRPC([TimeoutError('offline')])
@@ -341,6 +347,68 @@ class RetryTests(unittest.TestCase):
         self.assertEqual(fake.sent, 1)
         self.assertTrue(e.connection()['stopped'])
 
+    def test_slow_read_only_setup_does_not_consume_send_budget(self):
+        fake = FakeRPC([raw(20000, 0)])
+        e = self.engine(fake, 100)
+        prepare = fake.prepare
+        remaining = []
+        def slow_prepare(cwd):
+            e.sleeper(57)
+            return prepare(cwd)
+        def send(prepared):
+            fake.sent += 1
+            remaining.append(fake.deadline - e.clock())
+            e.sleeper(10)
+            if e.clock() >= fake.deadline:
+                raise TimeoutError('重试总时长已达到上限')
+            return {'status': 'completed'}
+        fake.prepare = slow_prepare
+        fake.send_minimal = send
+        e.tick()
+        self.assertEqual(remaining, [60])
+        self.assertEqual(fake.sent, 1)
+        self.assertEqual(self.store.recent('attempts')[0]['status'], 'completed')
+        self.assertFalse(e.connection())
+
+    def test_send_budget_remains_bounded_after_slow_setup(self):
+        fake = FakeRPC([raw(20000, 0)])
+        e = self.engine(fake, 100)
+        prepare = fake.prepare
+        deadlines = []
+        def slow_prepare(cwd):
+            e.sleeper(57)
+            return prepare(cwd)
+        def send(prepared):
+            fake.sent += 1
+            deadlines.append(fake.deadline)
+            e.sleeper(60)
+            raise TimeoutError('重试总时长已达到上限')
+        fake.prepare = slow_prepare
+        fake.send_minimal = send
+        e.tick()
+        self.assertEqual(deadlines, [217])
+        self.assertEqual(fake.sent, 1)
+        self.assertTrue(e.connection()['stopped'])
+        self.assertEqual(self.store.recent('attempts')[0]['status'], 'unknown')
+        guard = self.store.guard_until()
+        e.reconnect()
+        e.tick()
+        self.assertEqual(fake.sent, 1)
+        self.assertEqual(self.store.guard_until(), guard)
+
+    def test_read_only_setup_timeout_never_submits(self):
+        fake = FakeRPC([raw(20000, 0)])
+        e = self.engine(fake, 100)
+        def prepare(cwd):
+            e.sleeper(60)
+            raise TimeoutError('account/read 超时')
+        fake.prepare = prepare
+        e.tick()
+        self.assertEqual(fake.sent, 0)
+        self.assertEqual(self.store.recent('attempts'), [])
+        self.assertFalse(e.connection()['stopped'])
+        self.assertIn('recoveryAt', e.connection())
+
     def test_retry_checks_weekly_limit(self):
         fake = FakeRPC([raw(), raw(), raw(20000, 10, 100)], send_error=True)
         e = self.engine(fake); e.tick()
@@ -387,9 +455,24 @@ class HTTPTests(unittest.TestCase):
         c.request(method,path,headers=headers or {},body=body)
         r=c.getresponse(); result=(r.status,r.read().decode()); c.close(); return result
 
+    def test_open_installation_uses_backend_directory_and_requires_session(self):
+        from app import ROOT
+        _, page = self.request('GET', '/')
+        headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': csrf_token(page)}
+        with patch('app.os.startfile', create=True) as open_folder:
+            self.assertEqual(self.request('POST', '/api/installation/open')[0], 403)
+            self.assertEqual(self.request('POST', '/api/installation/open', {**headers, 'Origin': 'https://example.com'})[0], 403)
+            open_folder.assert_not_called()
+            self.assertEqual(self.request('POST', '/api/installation/open', headers, '{"path":"C:/other"}')[0], 200)
+            open_folder.assert_called_once_with(str(ROOT))
+        with patch('app.os.startfile', side_effect=OSError('denied'), create=True):
+            code, body = self.request('POST', '/api/installation/open', headers)
+            self.assertEqual(code, 500)
+            self.assertIn('无法打开安装目录', json.loads(body)['error'])
+
     def test_open_logs_uses_fixed_directory_and_records_result(self):
         _, page = self.request('GET', '/')
-        token = re.search("(?:const|let) token='([^']+)'", page)[1]
+        token = csrf_token(page)
         headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
         with patch('app.os.startfile', create=True) as open_folder:
             self.assertEqual(self.request('POST', '/api/logs/open')[0], 403)
@@ -404,7 +487,7 @@ class HTTPTests(unittest.TestCase):
 
     def test_open_triggers_uses_fixed_directory_and_requires_valid_origin_and_token(self):
         _, page = self.request('GET', '/')
-        token = re.search("(?:const|let) token='([^']+)'", page)[1]
+        token = csrf_token(page)
         headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
         with patch('app.os.startfile', create=True) as open_folder:
             self.assertEqual(self.request('POST', '/api/triggers/open')[0], 403)
@@ -418,6 +501,8 @@ class HTTPTests(unittest.TestCase):
     def test_status_and_no_secret(self):
         status,body=self.request('GET','/api/status')
         self.assertEqual(status,200); self.assertEqual(json.loads(body)['service'],'quota-starter')
+        from app import ROOT
+        self.assertEqual(json.loads(body)['installationPath'], str(ROOT))
 
     def test_cross_origin_rejected(self):
         self.assertEqual(self.request('POST','/api/pause',{'Origin':'https://evil.example'})[0],403)
@@ -427,7 +512,7 @@ class HTTPTests(unittest.TestCase):
 
     def test_pause_resume_persists(self):
         _,page=self.request('GET','/')
-        token=re.search("(?:const|let) token='([^']+)'",page)[1]
+        token=csrf_token(page)
         headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':token}
         self.assertEqual(self.request('POST','/api/pause',headers)[0],200)
         self.assertTrue(self.engine.store.get('paused'))
@@ -437,7 +522,7 @@ class HTTPTests(unittest.TestCase):
 
     def test_check_endpoint_queues_a_read_without_blocking(self):
         _, page = self.request('GET', '/')
-        token = re.search("(?:const|let) token='([^']+)'", page)[1]
+        token = csrf_token(page)
         headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
         with patch.object(self.engine, 'tick') as tick:
             code, body = self.request('POST', '/api/check', headers)
@@ -454,7 +539,7 @@ class HTTPTests(unittest.TestCase):
     def test_manual_trigger_returns_result_without_queue(self):
         from unittest.mock import patch
         _,page=self.request('GET','/')
-        token=re.search("(?:const|let) token='([^']+)'",page)[1]
+        token=csrf_token(page)
         headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':token}
         self.engine.store.set('paused',False)
         with patch.object(self.engine,'tick',return_value='本周期已处理') as tick:
@@ -470,7 +555,7 @@ class HTTPTests(unittest.TestCase):
     def test_reconnect_endpoint_requires_token_and_preserves_pause(self):
         self.assertEqual(self.request('POST', '/api/reconnect')[0], 403)
         _, page = self.request('GET', '/')
-        token = re.search("(?:const|let) token='([^']+)'", page)[1]
+        token = csrf_token(page)
         headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token}
         self.engine.store.set('connection', {'stopped': True})
         self.engine.store.set('paused', True)
@@ -499,7 +584,7 @@ class HTTPTests(unittest.TestCase):
 
     def test_autostart_toggle(self):
         _,page=self.request('GET','/')
-        token=re.search("(?:const|let) token='([^']+)'",page)[1]
+        token=csrf_token(page)
         headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':token}
         self.assertEqual(self.request('POST','/api/autostart/disable',headers)[0],200)
         self.assertFalse(json.loads(self.request('GET','/api/status')[1])['autostart']['enabled'])

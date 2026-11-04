@@ -3,6 +3,7 @@ import json
 import re
 import time
 import unittest
+from test_quota import csrf_token
 import test_quota as fixtures
 
 FakeRPC, raw = fixtures.FakeRPC, fixtures.raw
@@ -14,6 +15,65 @@ class ScheduleTests(unittest.TestCase):
         self.store.set('current', {'primary': {'resetsAt': 149}})
     tearDown = fixtures.QuotaTests.tearDown
     engine = fixtures.QuotaTests.engine
+    def test_pause_rejects_new_time_and_records_due_plan_without_polling(self):
+        fake = FakeRPC([raw(149)])
+        e = self.engine(fake, 100)
+        e.set_schedule(150)
+        e.set_paused(True)
+        with self.assertRaisesRegex(ValueError, '暂停'):
+            e.set_schedule(160)
+        with self.assertRaisesRegex(ValueError, '暂停'):
+            e.set_schedule()
+        self.assertEqual(self.store.get('schedule')['sendAt'], 150)
+        e = self.engine(fake, 150)
+        for _ in range(5):
+            e.audit_schedule_due()
+        events = [r for r in self.store.activity() if r['kind'] == 'schedule_run']
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['time'], 150)
+        self.assertIn('暂停', events[0]['detail']['message'])
+        self.assertEqual(fake.reads, 0)
+        self.assertEqual(fake.sent, 0)
+
+    def test_due_plan_logs_restriction_then_confirmed_send(self):
+        fake = FakeRPC([raw(149, 1, 100)])
+        self.engine(fake, 100).set_schedule(150)
+        e = self.engine(fake, 150)
+        e.tick()
+        events = [r for r in self.store.activity() if r['kind'] == 'schedule_run']
+        self.assertEqual(len(events), 1)
+        self.assertIn('额度受限', events[0]['detail']['message'])
+        for _ in range(5):
+            e.audit_schedule_due()
+        self.assertEqual(len([r for r in self.store.activity() if r['kind'] == 'schedule_run']), 1)
+        fake = FakeRPC([raw(149)])
+        self.engine(fake, 160).tick()
+        reports = [r['detail'] for r in self.store.activity() if r['kind'] == 'schedule_run']
+        self.assertEqual(reports[0]['status'], 'completed')
+        self.assertTrue(any(r['status'] == 'submitted' for r in reports))
+        self.assertEqual(fake.sent, 1)
+
+    def test_stopped_connection_records_due_reason_once_across_restarts(self):
+        fake = FakeRPC([raw(149)])
+        e = self.engine(fake, 100)
+        e.set_schedule(150)
+        self.store.set('connection', {'stopped': True, 'error': '测试断线'})
+        self.engine(fake, 150).audit_schedule_due()
+        self.engine(fake, 160).audit_schedule_due()
+        reports = [r for r in self.store.activity() if r['kind'] == 'schedule_run']
+        self.assertEqual(len(reports), 1)
+        self.assertIn('测试断线', reports[0]['detail']['message'])
+
+    def test_read_only_check_at_due_time_reports_why_no_request_was_sent(self):
+        fake = FakeRPC([raw(149)])
+        self.engine(fake, 100).set_schedule(150)
+        e = self.engine(fake, 150)
+        e.tick(check_only=True)
+        reports = [r for r in self.store.activity() if r['kind'] == 'schedule_run']
+        self.assertEqual(len(reports), 1)
+        self.assertIn('只读', reports[0]['detail']['message'])
+        self.assertEqual(fake.sent, 0)
+
     def test_schedule_waits_even_with_empty_quota(self):
         fake=FakeRPC([raw(149,0)])
         e=self.engine(fake,100); e.set_schedule(150); e.tick()
@@ -25,8 +85,11 @@ class ScheduleTests(unittest.TestCase):
         reset_at, send_at, refresh_at = 3 * 3600, 3 * 3600 + 30 * 60, 8 * 3600 + 30 * 60
         self.store.set('current', {'primary': {'resetsAt': reset_at, 'usedPercent': 10}})
         # Empty quota may report a moving now + 5h timestamp until a request starts it.
-        values = [raw(reset_at)] + [raw(now + 18000, 0) for now in range(reset_at, send_at, 60)]
-        values += [raw(refresh_at, 0), raw(refresh_at + 1, 0), raw(refresh_at, 1)]
+        # Each full sample includes its immediate weekly follow-up; time itself
+        # advances only at the original sixty-second polling boundary.
+        values = [raw(reset_at)] + [raw(now + 18000, 0) for now in range(reset_at, send_at, 60) for _ in range(2)]
+        values += [raw(refresh_at, 0), raw(refresh_at, 0),
+                   raw(refresh_at + 1, 0), raw(refresh_at + 1, 0), raw(refresh_at, 1)]
         fake = FakeRPC(values)
         e = self.engine(fake, reset_at - 60)
         plan = e.set_schedule(refresh_at=refresh_at)
@@ -71,9 +134,69 @@ class ScheduleTests(unittest.TestCase):
                     self.assertEqual(self.store.get('schedule')['id'], plan['id'])
                     self.assertEqual(self.store.get('schedule')['status'], 'pending')
                     restarted.tick()
-                    self.assertEqual(fake.reads, 0 if stopped else 1)
+                    self.assertEqual(fake.reads, 0 if stopped else 2)
                     self.assertEqual(fake.sent, 0)
                     self.assertEqual(self.store.get('schedule')['status'], 'pending')
+
+    def test_reconnect_clears_idle_plan_behind_reset_without_sending(self):
+        fake = FakeRPC([raw(300, 0)])
+        e = self.engine(fake, 100)
+        plan = e.set_schedule(200)
+        e.reconnect()
+        e.tick()
+        self.assertEqual(e.timing()['mode'], 'auto')
+        self.assertEqual(self.store.get('scheduleNotice')['id'], plan['id'])
+        self.assertIn('恢复自动', self.store.get('scheduleNotice')['message'])
+        self.assertEqual(fake.reads, 2)
+        self.assertEqual(fake.sent, 0)
+        self.assertEqual(e.next_poll, 160)
+        e.reconnect()
+        e.tick()
+        self.assertEqual(len([r for r in self.store.recent('events') if r['kind'] == 'schedule_cancelled']), 1)
+
+    def test_reconnect_preserves_idle_plan_equal_to_or_after_reset(self):
+        for end in (199, 200):
+            with self.subTest(end=end):
+                self.store.set('current', {'primary': {'resetsAt': 149}})
+                e = self.engine(FakeRPC([raw(end, 0)]), 100)
+                e.set_schedule(200)
+                e.reconnect()
+                e.tick()
+                self.assertEqual(e.timing()['mode'], 'manual')
+
+    def test_ordinary_poll_keeps_idle_plan_but_reconnect_revalidates(self):
+        fake = FakeRPC([raw(149, 0), raw(300, 0)])
+        e = self.engine(fake, 100)
+        e.set_schedule(200)
+        e.tick(check_only=True)
+        e.tick(check_only=True)
+        self.assertEqual(e.timing()['mode'], 'manual')
+        e.reconnect()
+        e.tick()
+        self.assertEqual(e.timing()['mode'], 'auto')
+        self.assertEqual(fake.sent, 0)
+
+    def test_failed_reconnect_leaves_plan_and_notice_untouched(self):
+        e = self.engine(FakeRPC([TimeoutError('offline')]), 100)
+        e.set_schedule(200)
+        e.reconnect()
+        e.tick()
+        self.assertEqual(e.timing()['mode'], 'manual')
+        self.assertIsNone(self.store.get('scheduleNotice'))
+
+    def test_manual_check_network_recovery_also_revalidates_idle_plan(self):
+        fake = FakeRPC([TimeoutError('offline'), raw(300, 0)])
+        e = self.engine(fake, 100)
+        e.set_schedule(200)
+        e.request_check()
+        e.tick()
+        self.assertEqual(e.connection()['failures'], 1)
+        e.sleeper(10)
+        e.tick()
+        self.assertEqual(e.timing()['mode'], 'auto')
+        self.assertTrue(e.linked)
+        self.assertEqual(fake.sent, 0)
+        self.assertEqual(e.next_poll, 170)
 
     def test_due_schedule_sends_once_and_survives_restart(self):
         fake=FakeRPC([raw(149)]); self.engine(fake,100).set_schedule(150)
@@ -192,7 +315,7 @@ class ScheduleHTTPTests(unittest.TestCase):
         self.engine.store.set('current',{'primary':{'resetsAt':int(time.time())+3600}})
     def test_schedule_save_clear_and_status(self):
         _,page=self.request('GET','/')
-        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':re.search("(?:const|let) token='([^']+)'",page)[1]}
+        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':csrf_token(page)}
         target=(int(time.time())//60+1440)*60
         self.assertEqual(self.request('POST','/api/schedule',headers,json.dumps({'refreshAt':target}))[0],200)
         status=json.loads(self.request('GET','/api/status')[1])
@@ -204,14 +327,14 @@ class ScheduleHTTPTests(unittest.TestCase):
 
     def test_schedule_endpoint_validation(self):
         _,page=self.request('GET','/')
-        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':re.search("(?:const|let) token='([^']+)'",page)[1]}
+        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':csrf_token(page)}
         for body in ['{}','null','[]','bad','{"sendAt":null}','{"sendAt":-1}']:
             self.assertEqual(self.request('POST','/api/schedule',headers,body)[0],400)
         self.assertEqual(self.request('POST','/api/schedule',body='{}')[0],403)
 
     def test_http_rejects_before_and_equal_reset(self):
         _,page=self.request('GET','/')
-        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':re.search("(?:const|let) token='([^']+)'",page)[1]}
+        headers={'Origin':'http://127.0.0.1:18769','X-Quota-Token':csrf_token(page)}
         reset=self.engine.store.get('current')['primary']['resetsAt']
         for value in [(reset+18000)//60*60-60,(reset+18000)//60*60]:
             code,body=self.request('POST','/api/schedule',headers,json.dumps({'refreshAt':value}))

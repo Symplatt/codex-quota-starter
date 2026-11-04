@@ -1,24 +1,32 @@
 """Loopback-only dashboard + background scheduler (Python 3.11+, standard library)."""
 import argparse
+import errno
 import json
 import os
 import secrets
 import socket
+import sqlite3
+import subprocess
 import threading
 import time
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from core import Engine, Store
 from windows_settings import Autostart
 from version import VERSION
+from tasks import TaskScheduler, choose_path, read_markdown
+from schedule_queue import ScheduleQueue
 
 ROOT = Path(__file__).resolve().parent
 
 
-def create_server(engine, host='127.0.0.1', port=8770, startup=None):
+def create_server(engine, host='127.0.0.1', port=31026, startup=None, tasks=None):
     csrf = secrets.token_urlsafe(32)
     startup = startup or Autostart(ROOT)
+    tasks = tasks or TaskScheduler(engine.store)
+    schedule_queue = ScheduleQueue(engine)
     origin = f'http://127.0.0.1:{port}'
     page = (ROOT / 'ui.html').read_text(encoding='utf-8').replace('__CSRF__', csrf)
     help_page = (ROOT / 'help.html').read_text(encoding='utf-8').replace('__VERSION__', VERSION)
@@ -40,7 +48,7 @@ def create_server(engine, host='127.0.0.1', port=8770, startup=None):
             self.send_header('Cache-Control', 'no-store')
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.send_header('X-Frame-Options', 'DENY')
-            self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
+            self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
             self.end_headers()
             try:
                 self.wfile.write(body)
@@ -59,6 +67,10 @@ def create_server(engine, host='127.0.0.1', port=8770, startup=None):
                 return self.send(200, help_page, 'text/html; charset=utf-8')
             if self.path == '/favicon.svg':
                 return self.send(200, (ROOT / 'favicon.svg').read_text(encoding='utf-8'), 'image/svg+xml')
+            if self.path == '/tasks.js':
+                return self.send(200, (ROOT / 'tasks.js').read_text(encoding='utf-8'), 'text/javascript; charset=utf-8')
+            if self.path == '/api/tasks':
+                return self.send(200, tasks.snapshot())
             if self.path == '/api/session':
                 if (self.headers.get('X-Quota-Session') != 'refresh'
                         or self.headers.get('Origin') not in (None, origin)
@@ -67,11 +79,14 @@ def create_server(engine, host='127.0.0.1', port=8770, startup=None):
                 return self.send(200, {'token': csrf})
             if self.path == '/api/status':
                 return self.send(200, {'service': 'quota-starter', 'version': VERSION,
+                     'installationPath': str(ROOT),
                      'status': engine.status, 'busy': engine.lock.locked() or bool(engine.read_requested),
                      'phase': engine.phase, 'linked': engine.linked,
                      'paused': engine.store.get('paused', False),
                      'pollWhilePaused': engine.store.get('pollWhilePaused', False),
                      'connection': engine.connection(),
+                     'scheduleNotice': engine.store.get('scheduleNotice'),
+                     'scheduleQueue': schedule_queue.status(),
                      'current': engine.store.get('current'), 'nextPoll': (engine.next_poll if engine.polling_enabled() and not engine.connection().get('stopped') else None),
                      'autostart': startup.apply('status'),
                      'timing': engine.timing(),
@@ -87,6 +102,63 @@ def create_server(engine, host='127.0.0.1', port=8770, startup=None):
                 return self.send(403, {'error': '请求来源校验失败，请从本机软件页面操作'})
             if not secrets.compare_digest(self.headers.get('X-Quota-Token', ''), csrf):
                 return self.send(403, {'code': 'stale_session', 'error': '页面连接凭据已过期，请刷新页面后重试'})
+            if self.path.startswith('/api/tasks/'):
+                try:
+                    length = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < length <= 850_000:
+                        raise ValueError('任务数据大小无效')
+                    body = json.loads(self.rfile.read(length))
+                    if not isinstance(body, dict):
+                        raise ValueError('任务数据格式无效')
+                    route = self.path.removeprefix('/api/tasks/')
+                    if route == 'create':
+                        task = tasks.create(body)
+                        return self.send(200, {'task': task, 'message': '已添加预设任务'})
+                    if route == 'edit':
+                        return self.send(200, {'task': tasks.edit(body), 'message': '已修改预设任务'})
+                    if route == 'delete':
+                        tasks.delete(body.get('id'))
+                        return self.send(200, {'message': '已删除任务及任务文档、结果文档'})
+                    if route == 'settings':
+                        tasks.save_settings(body)
+                        return self.send(200, {'message': '已保存任务设置'})
+                    if route == 'models':
+                        if not isinstance(body.get('force', False), bool):
+                            raise ValueError('模型检测参数无效')
+                        return self.send(200, {'models': tasks.catalog(body.get('force', False))})
+                    if route == 'detail':
+                        return self.send(200, {'task': tasks.snapshot(body.get('id', 'invalid'))})
+                    if route == 'open-directory':
+                        task = tasks.snapshot(body.get('id', 'invalid'))
+                        folders = task.get('directories', [task['cwd']])
+                        index = body.get('index', 0)
+                        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(folders):
+                            raise ValueError('执行目录序号无效')
+                        folder = Path(folders[index])
+                        if not folder.is_absolute() or not folder.is_dir():
+                            raise ValueError('执行目录不存在或无法访问')
+                        os.startfile(str(folder))
+                        return self.send(200, {'message': '已打开执行目录'})
+                    if route == 'cancel':
+                        tasks.cancel(body.get('id'))
+                        return self.send(200, {'message': '已取消或正在中断任务'})
+                    if route == 'read':
+                        return self.send(200, {'content': read_markdown(body.get('path'))})
+                    if route == 'pick':
+                        selected = choose_path(body.get('kind'))
+                        return self.send(200, {'paths': selected} if body.get('kind') == 'directories' else {'path': selected})
+                    return self.send(404, {'error': 'Not found'})
+                except (ValueError, TypeError, UnicodeError, OSError) as exc:
+                    return self.send(400, {'error': str(exc)})
+                except (RuntimeError, subprocess.TimeoutExpired) as exc:
+                    return self.send(409, {'error': str(exc)})
+            if self.path == '/api/installation/open':
+                # Resolve the backend's own directory; never accept a path from the browser.
+                try:
+                    os.startfile(str(ROOT))
+                except OSError as exc:
+                    return self.send(500, {'error': '无法打开安装目录：' + str(exc)})
+                return self.send(200, {'message': '已打开安装目录'})
             if self.path in ('/api/logs/open', '/api/triggers/open'):
                 triggers = self.path == '/api/triggers/open'
                 folder = engine.store.log_dir.resolve()
@@ -109,7 +181,7 @@ def create_server(engine, host='127.0.0.1', port=8770, startup=None):
             if self.path in ('/api/schedule', '/api/schedule/clear'):
                 try:
                     if self.path.endswith('/clear'):
-                        engine.set_schedule()
+                        operation = schedule_queue.submit(clear=True)
                     else:
                         length = int(self.headers.get('Content-Length', '0'))
                         if not 0 < length <= 1024:
@@ -117,8 +189,13 @@ def create_server(engine, host='127.0.0.1', port=8770, startup=None):
                         body = json.loads(self.rfile.read(length))
                         if not isinstance(body, dict) or 'refreshAt' not in body or body['refreshAt'] is None:
                             raise ValueError('请选择时间')
-                        engine.set_schedule(refresh_at=body['refreshAt'])
-                    return self.send(200, {'message': '已恢复自动时间' if self.path.endswith('/clear') else '已保存时间'})
+                        operation = schedule_queue.submit(body['refreshAt'])
+                    if operation['status'] == 'failed':
+                        return self.send(400, {'error': operation['error']})
+                    queued = operation['status'] == 'queued'
+                    return self.send(202 if queued else 200, {'queued': queued, 'message':
+                                     '已排队，检测结束后保存' if queued else
+                                     '已恢复自动时间' if self.path.endswith('/clear') else '已保存时间'})
                 except (json.JSONDecodeError, TypeError, UnicodeError):
                     return self.send(400, {'error': '时间格式无效'})
                 except ValueError as exc:
@@ -141,10 +218,10 @@ def create_server(engine, host='127.0.0.1', port=8770, startup=None):
                 except (ValueError, TypeError, UnicodeError) as exc:
                     return self.send(400, {'error': str(exc)})
             if self.path == '/api/resume':
-                engine.set_paused(False)
+                engine.resume()
                 if engine.connection().get('stopped'):
                     return self.send(200, {'message': '已解除暂停；连接仍已停止，请点击重新连接'})
-                return self.send(200, {'message': '已恢复运行，按原计划继续检测与发送'})
+                return self.send(200, {'message': '已恢复运行，正在检测五小时及周额度'})
             if self.path == '/api/trigger':
                 if engine.connection().get('stopped') or engine.read_requested:
                     return self.send(409, {'error': '连接已停止或正在检测，请稍后重试'})
@@ -171,6 +248,12 @@ def create_server(engine, host='127.0.0.1', port=8770, startup=None):
             return self.send(404, {'error': 'Not found'})
     class LocalServer(ThreadingHTTPServer):
         allow_reuse_address = False
+        def service_actions(self):
+            try:
+                schedule_queue.drain()
+            except (OSError, sqlite3.Error):
+                # Durable edits remain queued during transient storage failures.
+                pass
         def server_bind(self):
             if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
                 self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
@@ -184,19 +267,36 @@ def main():
     args = parser.parse_args()
     store = Store(args.data / 'quota.sqlite3')
     engine = Engine(store, args.data / 'empty-workspace')
+    tasks = TaskScheduler(store)
     try:
-        server = create_server(engine)
-    except OSError:
-        return 42  # Existing instance or occupied fixed port; supervisor must not loop.
+        server = create_server(engine, tasks=tasks)
+    except OSError as exc:
+        if exc.errno == errno.EADDRINUSE or getattr(exc, 'winerror', None) in (10013, 10048):
+            return 42  # A fixed-port conflict must not start a supervisor retry loop.
+        raise
     stop = threading.Event()
+    scheduler_failed = threading.Event()
+
     def run():
-        while not stop.is_set():
-            if ((engine.polling_enabled() or engine.read_requested) and
-                    not engine.connection().get('stopped') and time.time() >= engine.next_poll):
-                engine.tick()
-            stop.wait(0.5)
-    threading.Thread(target=run, daemon=True).start()
+        try:
+            while not stop.is_set():
+                engine.audit_schedule_due()
+                if ((engine.polling_enabled() or engine.read_requested) and
+                        not engine.connection().get('stopped') and time.time() >= engine.next_poll):
+                    engine.tick()
+                stop.wait(0.5)
+        except Exception:
+            # Restart through the supervisor so startup also reconciles any
+            # request that was in flight when storage or memory failed.
+            scheduler_failed.set()
+            try:
+                traceback.print_exc()
+            finally:
+                server.shutdown()
+
+    tasks.start()
     store.log('service', {'action': 'start', 'pid': __import__('os').getpid()})
+    threading.Thread(target=run, daemon=True, name='quota-scheduler').start()
     try:
         server.serve_forever(poll_interval=0.5)
     except KeyboardInterrupt:
@@ -204,8 +304,9 @@ def main():
     finally:
         stop.set()
         server.server_close()
+        tasks.close()
         engine.close()
-    return 0
+    return 1 if scheduler_failed.is_set() else 0
 
 
 if __name__ == '__main__':

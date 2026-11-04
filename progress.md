@@ -1,116 +1,104 @@
-# 待解决问题
+# 1.8.1 规划统计周期（2026-11-04）
 
-## 1.7.0 远程发布完成（2026-10-21）
+- 周额度按卡片显示的下次更新时间向前推 7 天，五小时额度按服务器给出的更新时间向前推 5 小时。横轴两端显示北京时间的日期和时分。
+- 进入规划统计或切换目标时，所选额度的下次更新时间缺失或已过期，则调用一次现有只读检测。忙碌时先等待状态更新。
+- 9 项相关检查通过。Edge 使用隔离后台验证了周额度与五小时额度的时间边界，并确认更新时间缺失时只发起一次检测。截图位于 `dist/review-1.8.1/`。
+- D 盘独立日志已保存。1.8.1 已覆盖安装并核验 31026 端口、额度连接、自启与数据库。
 
-- 用户已明确批准“Push and release”；代码提交`7e056740d26d959d64af2849edfdb78e4e809da6`已推送至origin/main，v1.7.0 Tag指向同一发布代码。
-- 正式Release：https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.0；非草稿、非预发布，内容与CHANGELOG一致，包含Windows ZIP及SHA256SUMS.txt。
-- main与v1.7.0的Windows CI均成功：39551328081、39551328329，Python/Node回归及构建通过。
-- 发布资产重新下载核验成功；ZIP SHA256为`dbdf6e48584df306d44edb79d65a97177a7ce11e43504a2cde83a6ffbfea37f5`，与本地dist一致，25个已安装文件与该ZIP一致；安装版1.7.0，数据库完整性ok，当前真实连接正常。
-- 本次更新日志与UI自行调整说明在D盘；ZIP未放D盘。代理间歇超时仍保留此前验证限制，不将发布完成等同于已根治所有网络故障。
-- 下文审核/未发布说明是发布前的历史记录；本节为最新交付状态。本发布记录单独提交，不修改发布代码、Tag或资产。
+# 1.8.0 额度统计与后台故障恢复（2026-11-04）
 
+- Windows 系统日志记录了虚拟内存耗尽。本机旧版日志另有 SQLite I/O 异常导致额度检测线程退出的记录。本机已重启既有安装，重新连接后已取得新额度采样，自启仍启用。
+- 新版修复额度检测线程异常退出后后台长期失效的问题，交由守护进程重启，并复用启动时对在途请求的恢复保护。
+- 额度统计合并为「五小时额度」「周额度」，右侧可切换「历程统计」「规划统计」。周额度每小时取最后一次有效采样，规划图显示周期起点、已过与未来的横轴以及灰色细虚线。
+- 验证：7 项图表检查、22 项统计与连接基线检查通过。Edge 实际界面核对了选项、虚线、键盘交互、记忆和窄屏布局。模拟 SQLite I/O 错误与 OOM 后均退出故障服务，实际守护进程从模拟 OOM 自动重启并保留设置。
+- 已覆盖安装 1.8.0，后台监听 31026 且额度连接正常。安装文件与包一致，数据库、手动计划、预设任务、防重复记录、暂停和自启偏好已核验。安装及发布核验材料保存在 `dist/release-1.8.0/`，D 盘正式版本独立复选框日志已保存。
 
-## 1.7.0 本地更新与审核状态
+# 2026-10-27 正式化、预发布重编号与断连修复——已完成
 
-- 最新状态（2026-10-21 13:41，北京时间）：追加断联处理已覆盖安装到1.7.0，真实读取恢复；165项Python、40项Node回归通过。暂不宣称间歇断联已经根治，见文末本次安装结论。Push与Release仍等待审核。
+- 用户授权的版本对应关系已完成：原1.7.2-pre.2 → 正式版1.7.2；原pre.3 → 1.7.3-pre.1；本次pre.4 → 1.7.3-pre.2。
+- 发布提交：1.7.2为f93874bfa31e6996965455eda4b8b61bbded0d84；1.7.3-pre.1为e82cad52308edf4898b40a72e6405af2a1fcfa38；1.7.3-pre.2为7d24fddf9c1eef92fe71bd18fd517864ba47c0c3。三个新附注Tag及对应发布分支已推送，Tag内48文件和Release安装包逐字节一致，附件摘要与本地一致。
+- GitHub：1.7.2为最新正式版，1.7.3-pre.1/pre.2保持预发布；旧1.7.2-pre.3 Release在说明及全部附件备份、新版本核验后撤下。旧Tag及提交历史保留，main未改写。7次Windows CI全部通过，详情见dist/renumber-20261027/ci-final.json。
+- 本机已覆盖安装1.7.3-pre.2，地址http://127.0.0.1:31026，linked=true；28个安装文件与包逐字节一致，数据库完整性ok，设置、任务、请求及防重复记录指纹保持一致，自启开启。快捷方式目标及实际启动脚本已核验。
+- 最新版发送计时修复通过24项相关检查；正式化及重编号版本各通过5项连接基线检查，运行代码与对应原Tag一致。无UI变更，未发送真实模型测试请求。
+- 重新检测慢已排查：本地约0.03秒受理，一次实际只读检测约2.22秒完成；独立CLI账户路由/上游额度HTTP请求偶发10–27秒，暂未发现本地队列阻塞，未修改网络策略。
+- Git操作中，本地分支改名保留旧上游，首次推送使原远程pre.3分支快进到修复提交。随后通过显式source:destination推送建立新pre.2远程分支并正确绑定上游；原远程分支保留快进状态，未强制回退，旧Tag不变。此情况写入桌面Git操作文档。
+- 桌面Git文档：C:/Users/CJZ/Desktop/Quota-Starter-Git操作记录-2026-10-27.md。D盘三个对应版本的独立复选框日志已保存，原历史日志的用户勾选状态保留，ZIP未放D盘。
+- 备份、发布核验、安装核验、CI、Git提交命令记录及发布工具存放于dist/renumber-20261027/。正式化及pre.1的两个工作树保留便于核对；本记录后续提交不移动发布Tag或改变安装包。
 
-- 已完成：全部界面修改、设置开关、统一JSONL及旧归档校验迁移、代理选择与有界重连处理、版本及说明更新。
-- 已验证：156项Python、40项Node回归；真实后台连接成功，页面及390px窄窗口检查；日志完整占据一屏，三列首行对齐，节点启用/禁用均保持不透明，悬浮标签分两行且百分点取整数。
-- 已保留：27条发送、49条防重复记录，数据库完整性ok，以及每次安装前的最新计划、暂停和暂停检测偏好；开机启动设置与桌面快捷方式。旧04:30计划仅是20日安装时状态，不可用来覆盖21日用户修改。
-- 本地交付：覆盖安装1.7.0；Windows ZIP及校验文件保留dist，更新日志及简明UI调整说明交付D盘，本次及后续ZIP不放D盘；实际预览保存在项目外quota-ui-review目录。
-- 连接限制：本机7897代理链路已确认，启动即注入明确代理、优先npm CLI并减少重复冷启动；仍观察到上游路由发现/额度HTTP间歇超时，不宣称长期无断线。原5次/60秒及20分钟恢复规则保留。
-- 待用户统一审核：已创建本地commit和Tag；只有Push（含Tag推送）与GitHub Release等待明确通过；尚未远程发布，不作正式发布完成声明。本次例外不延续到其他更新。
+# 1.7.2-pre.4 断连排查与待审核修复（2026-10-27）
 
-#### 断联调查交接（2026-10-21，继续处理中）
+- 已定位：10:04:56只读重连成功；10:05:57开始下一轮，检测、准备及最终校验耗时约57秒；10:06:53.885提交，10:06:57.151触发总时限，结果unknown并停止连接。13:50:43手动重新连接后恢复。
+- 软件问题：只读准备与发送共用60秒预算，使本次提交后仅剩约3.2秒；停止连接本身属于未知结果保护，不能自动当作未发送重试。
+- 外部故障：此前account/read路由发现及额度HTTP请求反复超时，使用Windows代理127.0.0.1:7897；代理无当天有效日志，无法进一步归因本地代理或上游服务。09:00–10:10无对应System/NetworkProfile事件，应用及守护进程持续运行，未发现电脑休眠、重启或应用崩溃证据。
+- 已修复：只读准备和发送前校验成功后，为发送单独开始60秒预算；发送重试继续共用该预算，未知结果停止及防重复保留。
+- 验证：3项新增模拟场景；19项重试/连接基线与5项结果保护检查通过；未发送真实模型请求。
+- 已准备：版本1.7.2-pre.4、README、VALIDATION、dist/review-1.7.2-pre.4/审核材料及D:/Quota-Starter-1.7.2-pre.4-更新日志.md（未选复选框）。CHANGELOG待审核条目单独保存。
+- 当前安装版1.7.2-pre.3连接正常；未覆盖安装、构建正式包、commit、Push、Tag或Release。按项目规定待用户审核后继续。
 
-#### 当前源码、安装与授权
+# 1.7.2-pre.3 开发审核状态（2026-10-26）
 
-- 用户明确要求继续解决断联；2026-10-21明确选择“接到 master 的 1.7.0 更新”。已从main切回master，main的用户UI备份不覆盖、不合并。
-- master当前基线：`e34ef088fcaf440b8dd1153fdd0b281e523fd445`（用户提交“改到一半先备份”）；包含下述尚未安装的恢复逻辑修改。main的`45972b5`是另一份UI修改备份。
-- 前一安装交付代码为`e28c1106d7d4c692cb80de994f683eb0378f4aa4`；本地v1.7.0 Tag仍指向它。断联追加修改完成后需更新本地commit/Tag/发布包及安装，不能把旧包视作最新修复。
-- 实际安装目录：`C:\Users\HP\AppData\Local\Programs\QuotaStarter`；服务`http://127.0.0.1:8770/`，已安装版本1.7.0。源码目录`E:\work-space\quota-starter`。
-- 本次全部开发、验证、覆盖安装、本地commit/Tag、D盘文档须先完成；Push（包括Tag）与GitHub Release等待用户统一审核。没有批准远程发布。
-- 本次及今后ZIP均不放D盘。构建包留在dist；D盘保留更新日志及UI自行调整说明。
-- 不为诊断额外发送模型请求；只读账户与额度，避免读取或复制认证文件。保留用户最新计划、暂停、暂停检测、自启及防重复记录。
-- 必须保持原策略：正常完成后60秒；失败间隔10秒，一轮最多5次/60秒；耗尽后每20分钟单次恢复；发送结果未知仍停止保护。
+- 已恢复：旧安装版1.7.2-pre.2，经计划任务运行，地址http://127.0.0.1:8769/，linked=true；数据库完整性ok。原进程最后检测记录17:09:04，无退出日志，停止原因未确定。
+- 已完成：默认端口统一31026，更新后台、启动脚本、诊断、README和项目长期约定。
+- 已完成：手动启动优先使用本安装目录已启用的计划任务，以启用失败重启；关闭自启、无任务或其他安装目录时仍可直接手动启动。
+- 验证：5项连接基线、启动脚本6个场景、默认31026网页/API与Host校验通过；Windows PowerShell 5.1和PowerShell 7均已检查启动分支。
+- 审核预览已关闭（原进程35828）；审核材料保留在dist/review-1.7.2-pre.3/。31026现为正式安装版，使用原有用户数据运行。
+- 已保存D:/Quota-Starter-1.7.2-pre.3-更新日志.md，全部未选；CHANGELOG待审核条目位于dist/review-1.7.2-pre.3/changelog-pending.md。
+- 用户已确认审核通过；已同步CHANGELOG、构建48文件正式ZIP并覆盖当前安装目录。实际后台1.7.2-pre.3、端口31026、linked=true；计划任务Running。
+- 已停止31026审核预览；安装前数据库及程序文件备份位于dist/release-1.7.2-pre.3/。数据库完整性ok，手动计划、暂停/暂停检测、任务设置及attempts/claims/scheduled_tasks指纹一致，自启保持开启，28个安装文件与ZIP逐字节一致。桌面快捷方式已核验并实际启动，统计偏好已从8769迁移至31026。
+- 已完成：源码提交0d952b51e58cc0cde545178b0c81ec611d61c144、Push、新Tag v1.7.2-pre.3及GitHub预发布：https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.2-pre.3。
+- 远程核验：ZIP与SHA256SUMS的GitHub摘要、大小及本地一致，Tag内48个文件与ZIP逐字节一致，28个安装文件与ZIP一致。ZIP SHA256为d12c1138cd450d5ddbeef1ee4967a7922bfc9b807f8468fe865c58423358c0cb，未放D盘；D盘日志保留原有状态。
+- 浏览器：31026实际安装版v1.7.2-pre.3，统计选项迁移保持300分钟/五小时剩余额度；最终重载无pageerror。实际截图dist/release-1.7.2-pre.3/installed.png。
+- GitHub自动Windows检查全部通过：40332103327及40332096970（分支/Tag推送），覆盖Python检查、两组Node检查和正式构建。
+- 当前状态：1.7.2-pre.3预发布及本机覆盖安装交付完成，默认端口31026；本次未确定原进程停止的具体原因。发布及安装核验记录位于dist/release-1.7.2-pre.3/。
 
-#### 已确认的真实失败模式
+# 1.7.2-pre.2 开发审核状态（2026-10-26）
 
-- 10月20日21:51、22:04、22:09、22:10、22:19等多次额度接口失败：`account/rateLimits/read`返回`failed to fetch codex rate limits: error sending request for url (https://chatgpt.com/backend-api/wham/usage)`。
-- 请求通常约15.4–15.9秒失败；`processAlive=true`，明确代理为`http://127.0.0.1:7897`。不是每次都未走代理，也不是Python后台退出。
-- 官方CLI独立只读诊断同样复现：22:16–22:17共4轮，1为`account/read: workspace routing discovery timed out`（15秒）、2成功8.375秒、3额度读取失败15.484秒、4成功0.875秒。
-- reqwest连接日志确认首次连接就进入7897（连接本机端口仅毫秒），随后才失败；与应用页面/统计渲染无关。
-- 无凭据curl对照：HTTP代理同端口TLS握手失败，15.616685秒，`schannel: failed to receive handshake`；紧接SOCKS5h同端口取得预期401，TLS3.342629秒、总3.531646秒。只各一次，不能据此断言改SOCKS就能根治，仍可能是随机目标IP或出口差异。
-- 最后20日22:20:21日志：第二次额度错误后重建CLI，第三次account/read仅剩8.047秒预算，被本地总预算截断；然后安排22:40:21恢复。
-- 21日02:23:58至02:27:01安装版连续4个正常分钟采样（0.8–0.9秒），说明故障间歇存在；短时恢复不代表根因消失。
+- 已完成：暂停时禁用选择时间、恢复自动、保存及时间轴拖动；三个时间标签和圆点变灰，保留圆点原有空心/实心样式。两个禁用按钮统一#92958f、opacity:1，实际显示灰色一致。后端拒绝暂停期间的时间修改。
+- 已完成：定时刷新到点日志记录计划时间、发送及核验结果，暂未发送时说明原因，相同等待原因不反复记录；暂停关闭检测和断线时仍记录到点原因。
+- 已完成：删除任务同时删除对应MD及结果文档，保留项目文件、日志和防重复墓碑；删除失败保留任务并记录具体错误，可重试。
+- 已完成：目录多选窗口绑定点击时的浏览器窗口，直接在浏览器前方弹出，不再作为独立Python任务栏窗口置于后台；连续两次打开和取消实测通过。
+- 已完成：执行目录原生多选、每行输入、追加去重、编辑兼容；首目录作为cwd，额外目录通过--add-dir传入，详情可切换复制/打开。
+- 已完成：Windows任务提交前预检沙箱；复现elevated因占用node_repl.exe初始化失败后，MXC命令启动通过。保留workspace权限和未知结果防重复，不重新运行原任务。
+- 验证：90项相关Python检查、74项Node检查通过；最后两项细节的定向检查通过，连接基线和diff检查通过。
+- 实测：暂停前后圆点的尺寸、边框宽度和圆角一致；两个固定点保持空心，拖动点保持实心，仅颜色变化。原生多选窗口打开/取消通过；Cmd、PowerShell启动通过；两个选定目录可写、未选目录拒绝；网页创建双目录任务、详情切换、删除MD通过，390px无横向溢出。
+- 已保存：D:/Quota-Starter-1.7.2-pre.2-更新日志.md，现仅保留功能更新与BUG修复，并保留用户自行勾选的状态；实际界面预览图片和验证记录dist/review-1.7.2-pre.2/validation.md。
+- 预览已恢复并保持运行：http://127.0.0.1:18779/；脚本dist/review-1.7.2-pre.2/preview_server.py，不启动预设任务执行线程。
+- 已审核：用户于2026-10-26明确通过，已同步CHANGELOG。
+- 已完成：正式ZIP构建，48个文件，SHA256为12045c6d2030ceedf93fef8a619134c4fc79c84dafa6b7d1822e48c6359b468a；ZIP未放D盘。
+- 已完成：覆盖现有安装至1.7.2-pre.2，数据库完整性ok；手动计划、暂停/暂停检测、任务设置及任务/请求/防重复记录指纹一致，自启仍开启；28个安装文件与ZIP一致。桌面快捷方式指向现有安装并已实际启动。
+- 已完成：源码提交bcdf5aa1cff3e30ed2cfee8310ff79009123f034、Push、Tag v1.7.2-pre.2及GitHub Pre-release：https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.2-pre.2。
+- 最终核验：远程ZIP与SHA256SUMS的摘要和本地一致；Tag内48个文件与ZIP逐字节一致，已安装28个文件与ZIP一致；实际后台版本1.7.2-pre.2，桌面快捷方式已启动核验，浏览器页面无脚本错误。
+- 已完成：GitHub Windows检查通过（run 40247200570），覆盖Python检查、两组Node检查和正式构建。修正了两项旧测试的准备数据，仅测试文件变化，28个安装文件保持不变；本轮初次Tag对象和ZIP已在dist/release-1.7.2-pre.2/备份，原Tag对象保留于本地archive/v1.7.2-pre.2-initial。
+- 当前状态：1.7.2-pre.2预发布及本机交付全部完成。发布验证记录保存在dist/release-1.7.2-pre.2/。
+- 已安装目录：C:/Users/CJZ/AppData/Local/Programs/QuotaStarter；版本1.7.2-pre.2，ZIP仅放项目dist并上传Release。
 
-#### 代理侧的关键线索（尚未修改代理配置）
+# 1.7.2-pre.1 开发交付状态（2026-10-25）
 
-- 7897由Clash Verge的`verge-mihomo.exe`监听；调查时PID15264，实际mihomo版本v1.19.32。后续必须重新确认PID和管道。
-- 代理配置根目录：`C:\Users\HP\AppData\Roaming\io.github.clash-verge-rev.clash-verge-rev`。
-- `clash-verge.yaml`中的controller pipe含`sidecar-release`，但真实运行管道为`\\.\pipe\verge-mihomo-production-bf6eee0a383fba97d65e64f1811909a6ff1c5e75e246fbdbfcc31fdd3e662bec`；可经此只读HTTP GET访问`/connections`、`/rules`、`/proxies`、`/version`、`/dns/query?name=chatgpt.com&type=A`。
-- 实际ChatGPT连接匹配`Match → TIGR → 日本02-TX-IEPL → 日本02TX-LB1..5`，并非DIRECT。TIGR是Selector，日本02是5节点LoadBalance，各节点AnyTLS。
-- 部分chatgpt.com连接只有167B上传、0下载；目标IP曾落在157.240、162.125、199.59等异常地址段。当前DNS查询更直接返回`128.242.245.189`（21日只读查询，TTL172）。需与可信DoH返回及TLS结果对照后才能正式判定污染来源。
-- `/rules`共538条，没有chatgpt.com/openai.com专用规则；倒数第二条（index536）是`GeoIP cn → DIRECT`，最后`Match → TIGR`。因此匹配GeoIP前可能先走本地DNS，取得错误真实IP后再带往代理，是目前重点假设。
-- DNS：enable=true、ipv6=false、fake-ip；nameserver为doh.pub与dns.alidns.com；fallback含doh-pure.onedns.net、ada.openbld.net、223.5.5.5、223.6.6.6；fallback-filter geoip=true，ipcidr仅240.0.0.0/4与0.0.0.0/32。proxy-server-nameserver也是doh.pub/dns.alidns.com。
-- 当前订阅UID`RXK9cUgiVlXA`；对应持久规则文件`profiles/rZ6Y7UE8h4zP.yaml`，merge为`profiles/mhmf2BWitcme.yaml`，script为`profiles/sJq1d0KJRjve.js`；全局还有`profiles/Merge.yaml`和`profiles/Script.js`。
-- 全局Script包含rules但不包含DNS或proxy-groups修改；只检查过关键字，具体内容及规则合并顺序仍需读代码确认。
-- 候选最小修复：将chatgpt.com专用域名代理规则置于GeoIP之前，沿用当前代理组，避免为分流先解析错误真实IP；必要时只为相关域名增加经代理的可信DoH策略。此方案尚未应用/验证，不能写成已修复。
-- 任何代理配置修改前备份原文件，限制到相关域名，保留其他规则、节点、订阅和全局选择；验证重载及重启/订阅刷新后仍持久，保留回滚办法。不要把订阅、节点认证或代理secret写入仓库/日志。
+- 已完成：预设任务强制选择执行目录，避免误用 MD 保存目录；保持 workspace-write 和越界拒绝策略。
+- 已完成：卡片及导航标题固定为“额度刷新”，取消标题切换和动画；年月日、时、分滚轮按低、中、高三档响应。
+- 已完成：详情的正文和结果复制按钮；保留鼠标选区，变化的选中文本延迟到取消选择后更新。
+- 已完成：任务关键行为写入现有 SQLite 与月度 JSONL 日志，两秒状态轮询不新增日志。
+- 已完成：状态胶囊与任务计数右对齐；详情右侧新增垃圾桶，与新建任务右对齐。删除保留文档、日志和防重复记录；运行中禁止删除。
+- 已完成：时间窗口底部灰字，与左侧输入区、右侧按钮居中对齐；按用户最新要求删除选择时间按钮的黑底白字浮窗。
+- 验证：43 项相关 Python 检查、70 项 Node 检查通过；删除 HTTP 来源校验及文档保留检查通过。
+- 浏览器：1280px 状态/计数右边缘均946px，垃圾桶/新建任务均1126px；390px四者均339px。鼠标文字选区跨3轮详情轮询保持；复制两个区域成功；相同滚轮事件时滚轮2格、分滚轮3格。
+- 已完成：最终灰字布局核验，左边缘与标题和输入区一致，垂直中心与按钮差0px；确认按钮悬停浮窗已删除。D盘独立复选框日志已保存。
+- 已审核：用户要求发布预览版；CHANGELOG已同步为1.7.2-pre.1。
+- 已完成：正式ZIP构建，48个文件，SHA256为92a7b48400a16150f7ce44ebdf3402e509429163376f6377674ee12f2eb06969。
+- 已完成：现有安装目录覆盖至1.7.2-pre.1，数据库完整性ok；手动计划、暂停/暂停检测、任务设置及任务/请求/防重复记录指纹一致，自启仍开启；桌面快捷方式指向现有安装并已实际启动。
+- 已完成：commit与Push、Tag v1.7.2-pre.1及GitHub Pre-release；发布URL：https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.7.2-pre.1。
+- 最终核验：远程Tag指向969a1dfcfc13f9b734ab3af2929d131781a82228；Tag内48个文件与ZIP逐字节一致，远程ZIP及SHA256SUMS的GitHub摘要与本地一致；已安装28个发布文件与ZIP一致，实际后台版本1.7.2-pre.1。
+- 已交付：D:/Quota-Starter-1.7.2-pre.1-更新日志.md，选框全部未选；ZIP仅保留项目dist并上传Release。发布验证记录位于dist/release-1.7.2-pre.1/。
 
-#### 已完成的追加代码修改与测试
+## 上一轮 1.7.1 记录
 
-- `core.py::transient_connection_error`：只读account/read、account/rateLimits/read的明确HTTP408/425/429/500/502/503/504识别为临时故障，继续原有恢复；401/403及永久HTTP错误优先停止，账号/格式与未知发送保护保留。
-- 新`test_connection_errors.py`共8项：多种明确HTTP状态格式、只读method识别、永久错误优先、普通数字不误判、重启存档识别、5次后20分钟恢复、401停止、未知发送停止。
-- `core.py::failed_connection`：在同一有界重试轮内复用仍健康的只读RPC进程，不再第二次HTTP错误就冷启动；本地TimeoutError、ConnectionError、进程死亡以及重试耗尽仍关闭。
-- `test_update.py`对应验证5次错误前保留进程，耗尽后关闭并进入20分钟恢复；`build_release.py`已把新测试加入发布allowlist。Install.ps1本就不安装测试文件，无需为测试修改它。
-- 最新全量结果：`python -X utf8 -m unittest discover -q` **164项通过（19.881秒）**；`node --test test_ui.cjs` **40项通过**。测试用正常Windows环境执行，需要localhost socket和原子replace；故意制造的归档blocked/locked/冲突stderr是通过用例，不是未处理失败。
-- 上述代码只补恢复逻辑，尚未证明解决当前代理TLS错误；尚未重建发布包或覆盖安装这些追加修改。README/CHANGELOG/VALIDATION的“一次后重建”说明也待同步。
+本次用户要求增加安装目录按钮、清理冗余文件，并提供桌面发布教程，由用户按教程执行发布。
 
-#### 可复用诊断脚本（均在仓库外）
-
-- `E:\work-space\tmp\quota-network-trace.py`：只读官方RPC4轮，筛选reqwest连接/连接池目标日志；不输出账户数据或请求头。已执行完毕，无后台会话遗留。
-- `E:\work-space\tmp\quota-proxy-pipe.py`：controller管道GET /connections，只输出OpenAI/ChatGPT/Codex相关连接的路由、目标IP和字节数。
-- `E:\work-space\tmp\quota-proxy-inspect.py`：可导入get(path)，带content-length/chunked解析；main输出特定代理组、版本及chatgpt DNS查询。
-- `E:\work-space\tmp\quota-proxy-rules-safe.py`：脱敏输出相关规则及当前订阅的merge/script/rules文件引用；不输出订阅URL或密码。
-- `E:\work-space\tmp\quota-proxy-dns-config.py`：只读取生成配置中的dns/sniffer段。
-- 旧探针`quota-final-probe.py`、`quota-explicit-probe.py`、`quota-live-probe.py`也在同目录。CLI只读诊断需正常用户环境；沙箱localhost会报WinError10013，应使用已授权的提权/沙箱外执行。
-- 目前官方CLI选择为npm稳定版0.163.0：`C:\Users\HP\AppData\Roaming\npm\node_modules\@openai\codex\node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe`；桌面另有0.163.0-alpha.10.2，两者均曾出现间歇错误，不应归因成单一版本问题。
-- 正式日志位置：安装目录`data/logs/quota-starter-2026-10.jsonl`；逐条含durationSeconds或rpc diagnostics。不要输出账户/认证相关数据。
-
-#### 下一步
-
-1. 对照Clash DNS结果、经代理的可信DoH及真实TLS连接，证明异常IP来源；确认域名规则能避免GeoIP前的错误解析。
-2. 备份后最小范围修复持久规则/DNS并重载，检查实际连接命中、IP及握手，不盲目切换代理节点或改变全部网络设置。
-3. 用只读CLI连续查询与安装版正常60秒采样验证，记录成功/失败数与时延；若仍失败继续追踪节点，不以一次连接成功宣称修复。
-4. 更新README、CHANGELOG、VALIDATION和本文件，必要测试通过后重新打包/覆盖安装，保留最新用户数据、计划、自启及记录；核验安装文件与ZIP一致。
-5. 更新D盘的1.7.0更新日志（必要时UI说明），本地commit/Tag完成后供用户审核；不Push、不发布Release。
-
-#### 21日继续调查补充
-
-- 经相同7897代理查询Cloudflare和Google两个DoH均返回chatgpt.com的A记录`172.64.155.209`、`104.18.32.47`，与Clash的`128.242.245.189`明显不同，证实本地解析结果异常。
-- 但异常`destinationIP`的部分现有连接仍有大量正常双向数据，不能把它直接当作最终上游目标。核对Mihomo v1.19.32 AnyTLS源码：`metadata.String()`优先Host；仅特定DNSMapping/DNSHosts路径的`Pure()`会清Host。因此“错误IP一定直接导致TLS失败”的判断不成立，根因仍待实测。
-- 最前域名规则可避免GeoIP前的本地DNS查询；是否能解决握手超时需对照。当前持久规则文件的prepend/append/delete为空，订阅merge/script未改，全局Script只增加局域网/no-resolve和部分直连域名。
-- 新诊断`E:\work-space\tmp\quota-tls-probe.py`将无凭据CONNECT、TLS、HTTP分阶段计时，并按本机源端口关联Clash路由；另由子任务逐个检测当前5个AnyTLS节点，不更改节点选择。所有代理配置此时仍未修改。
-
-## 5小时额度刷新后，预定发送时间未自动调整
-
-- 记录日期：2026-10-21。
-- 现象（用户反馈及截图）：5小时额度刷新时间已变为2026-10-21 07:25:47（早上7点半左右），但此前设置的发送请求时间仍停留在当天05:00:00，定时状态没有随额度刷新而自动调整。
-- 状态：待解决；按用户要求，等到2026年11月再排查和修复，本次仅记录问题。
-- 后续排查：核对额度刷新时间变化后，已保存发送计划的重算与定时状态同步逻辑；具体原因尚未验证。
-- 验收要求：额度刷新时间变化后，发送计划和界面定时状态按预期同步调整，不再停留在旧时间。
-
-## 断联追加修复：本次安装结论（2026-10-21 13:41）
-
-- 已按用户选择在master上完成1.7.0追加修复的覆盖安装；main的用户UI备份未修改。全部165项Python和40项Node回归通过。
-- 安装前备份：`E:\work-space\tmp\quota-debug-20261021-install-backup`；27条attempts、49条claims的数量及哈希完全一致，SQLite完整性ok，最新schedule/paused/pollWhilePaused/sending保持原值。当前用户暂停发送、开启暂停检测，自启启用，桌面快捷方式指向安装版Start.cmd。
-- 13:40:33安装版真实额度读取成功，2.649秒；13:41:34分钟采样成功，0.907秒。25个安装文件与发布ZIP逐字节一致。只读验证未发送模型请求。
-- 02:37:18已实际修改代理：当前订阅`profiles/rZ6Y7UE8h4zP.yaml`的prepend加入`DOMAIN-SUFFIX,chatgpt.com,TIGR`；生成配置同步仅增此一条，通过production控制管道的`PUT /configs?force=true`、JSON payload形式重载成功。规则538→539，当前选择不变，新的连接命中DomainSuffix且不再在分流阶段解析目标IP。
-- 原字节备份：`C:\Users\HP\AppData\Roaming\io.github.clash-verge-rev.clash-verge-rev\quota-starter-backup-20261021-023718`，含原持久规则与生成配置。回滚需恢复这两个文件，再通过相同官方payload接口重载；不要将包含代理认证的完整配置放入仓库或D盘交付文档。
-- 该Clash服务使用私有runtime配置，AppData文件是生成输入；payload重载不改变controller pipe。持久规则已存盘且13:41仍有效，但未通过重启Clash/整机实际验证Verge重新生成；官方prepend合并顺序已核对。应用安装包不会替其他用户修改Clash。
-- 对照证据：`E:\work-space\tmp\quota-tls-baseline.json`（原规则8/8无凭据探针成功）；`quota-tls-domain-rule.json`（新规则8/8成功，0.344–4.016秒）；`quota-proxy-node-probe-20261021-023234.jsonl`（5个节点各2次，10/10成功）；两次真实CLI冷启动2.344/1.781秒成功。前后均有短时成功，不能据此证明域名规则就是根治方案。
-- **重要反证：** 代理规则生效后到13:40，安装版记录94次成功读取及19条连接失败，最近仍有13:16/13:17额度HTTP失败、13:37路由发现超时。因此“前置域名规则已根治断联”不成立；这些记录发生于追加恢复代码安装前，本次修复的长时稳定性尚未验证。
-- 已修的软件问题：有界重试中第二次只读HTTP错误过早冷启动、明确HTTP临时错误可能被永久停止。仅修改本次已验证范围，不改变5次/60秒及20分钟恢复规则，不掩盖错误状态。
-- 后续若继续出现失败：优先在实际故障瞬间关联CLI源端口、Clash节点、CONNECT/TLS阶段和代理错误日志；不要再把metadata异常目标IP或一次测速成功当成根因结论。单节点当前检测均正常，尚无证据支持固定某个坏节点。11月待办的计划调整问题按用户要求另行处理。
-- 本次交付只保留本地commit/Tag及dist包，D盘同步更新日志，原UI自行调整说明保留。Push（含Tag）与GitHub Release仍未执行，待用户审核。
+- 已完成：安装路径后新增等高对齐的文件夹按钮，使用后端实际目录；沿用来源与会话校验。
+- 已完成：删除旧 docs 教程及配图、重复解压目录和过时临时发布脚本；保留正式 ZIP、备份及测试基线。
+- 已完成：源码版本改为 1.7.1，README 更新按钮用途；Install.ps1 无修改。
+- 验证：新增 HTTP 检查通过，涵盖来源/会话拒绝、后台固定目录与打开失败反馈；原有安装路径前端检查通过。
+- 浏览器核验：1100px、390px 均无横向溢出；按钮高度约16.89px、文本17px，中心差约0.20px；真实点击返回200并打开目录，悬停提示可见。
+- 交付：发布教程保存到桌面，独立更新日志保存到D盘；真实隔离后台软件信息截图保存在本次visualizations目录。
+- 未执行：正式打包、覆盖安装、commit、push、Tag、Release；操作顺序、CHANGELOG待追加条目及安装脚本原理已写入教程。
+- 下一步：用户按桌面教程完成正式发布；正式发布时同步CHANGELOG并核对版本、包、安装和远程资产一致。

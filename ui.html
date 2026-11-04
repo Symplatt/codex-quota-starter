@@ -1329,11 +1329,21 @@
       .refresh-footer {
         display: flex;
         justify-content: flex-end;
+        align-items: center;
         gap: 10px;
         margin-top: 22px;
       }
       .refresh-footer button {
         min-width: 80px;
+        flex: none;
+      }
+      .refresh-drag-hint {
+        flex: 1;
+        min-width: 0;
+        margin: 0;
+        color: #819087;
+        font-size: 12px;
+        line-height: 1.6;
       }
       #refresh-error:empty {
         display: none;
@@ -2199,6 +2209,7 @@
       }
       .timeline-event:after {
         top: 78px;
+        box-sizing: border-box;
         width: 14px;
         height: 14px;
         border-color: #7e8e84;
@@ -2296,6 +2307,9 @@
         line-height: 18px;
         color: #7e8e84;
         margin: 7px 0 0;
+      }
+      #weekly-copy {
+        white-space: nowrap;
       }
       .schedule-row > .run-panel {
         grid-template-rows: 33px 99px 87px 32px;
@@ -2452,8 +2466,34 @@
       .schedule-row #pause:not(:disabled) {
         color: #54765f;
       }
+      .schedule-row #choose-time:not(:disabled),
+      .schedule-row #auto-time:not(:disabled) {
+        color: #315c3b;
+        font-weight: 400;
+      }
       .timeline-send:after {
         display: none;
+      }
+      .schedule-row #choose-time:disabled,
+      .schedule-row #auto-time:disabled {
+        color: #92958f;
+        opacity: 1;
+        cursor: not-allowed;
+      }
+      #schedule-timeline[data-paused="true"] .timeline-label span,
+      #schedule-timeline[data-paused="true"] .timeline-label small {
+        color: #92958f;
+      }
+      #schedule-timeline[data-paused="true"] .timeline-event:before {
+        background: #a4a69f;
+      }
+      #schedule-timeline[data-paused="true"] .timeline-event:after {
+        border-color: #a4a69f;
+      }
+      #schedule-timeline[data-paused="true"] .timeline-send:after,
+      #schedule-timeline[data-paused="true"] .timeline-handle:before {
+        background: #a4a69f;
+        border-color: #a4a69f;
       }
       .timeline-handle {
         position: absolute;
@@ -2501,6 +2541,8 @@
       .chart-options {
         display: flex;
         align-items: center;
+        justify-content: flex-end;
+        margin-left: auto;
         gap: 10px;
         flex-wrap: wrap;
       }
@@ -2511,6 +2553,7 @@
       #quota-chart-panel {
         display: flex;
         flex-direction: column;
+        min-height: 0;
       }
       #quota-chart-panel .chart-head {
         height: auto;
@@ -2519,7 +2562,7 @@
       }
       .quota-chart {
         height: 180px;
-        min-height: 40px;
+        min-height: 0;
         flex: 1 1 auto;
         position: relative;
       }
@@ -2551,6 +2594,21 @@
         stroke: #b9c8b7;
         stroke-width: 1;
       }
+      .chart-axis-line {
+        stroke: #7e8e84;
+        stroke-width: 1.5;
+      }
+      .chart-axis-future, .chart-pace {
+        stroke: #a1a5a3;
+      }
+      .chart-pace {
+        stroke-width: 1;
+        stroke-dasharray: 4 4;
+      }
+      .chart-axis.chart-axis-future {
+        stroke: none;
+        fill: #858987;
+      }
       .chart-hit {
         fill: transparent;
       }
@@ -2577,7 +2635,7 @@
           gap: 8px;
         }
         .chart-options select {
-          max-width: 135px;
+          max-width: 100%;
         }
       }
       :root {
@@ -2651,9 +2709,10 @@
         white-space: nowrap;
       }
       #activity-panel {
-        height: calc(100vh - 2 * var(--card-gap));
-        height: calc(100dvh - 2 * var(--card-gap));
-        min-height: 200px;
+        height: auto;
+        max-height: calc(100vh - 2 * var(--card-gap));
+        max-height: calc(100dvh - 2 * var(--card-gap));
+        min-height: 0;
         display: flex;
         flex-direction: column;
         scroll-margin-top: var(--card-gap);
@@ -2674,7 +2733,7 @@
       .activity-table {
         min-height: 0;
         max-height: none;
-        flex: 1 1 auto;
+        flex: 0 1 auto;
         overflow: auto;
         overscroll-behavior: contain;
       }
@@ -2719,6 +2778,558 @@
           scroll-behavior: auto;
         }
       }
+      /* Preset jobs use the same card spacing, typography and muted green. */
+      .panel,
+      .schedule-row {
+        scroll-margin-top: var(--card-gap);
+      }
+      .timeline-rail {
+        right: 8px;
+      }
+      /* The rotated 8px arrow extends 8px beyond the shortened rail. */
+      .timeline-rail:after {
+        right: -6.343px;
+      }
+      #tasks-panel {
+        --task-action-width: 78px;
+      }
+      #tasks-panel .section-head {
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 28px;
+        align-items: flex-start;
+      }
+      #task-settings-open,
+      #task-new {
+        width: var(--task-action-width);
+      }
+      .task-actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .task-actions button,
+      .task-path-row button {
+        padding: 7px 12px;
+        font-size: 13px;
+        white-space: nowrap;
+      }
+      .task-empty {
+        margin: 0;
+        padding: 28px 0;
+        color: #819087;
+        text-align: center;
+        font-size: 14px;
+      }
+      .task-subtitle {
+        margin: 6px 0 0;
+        font-size: 12px;
+      }
+      #task-count {
+        text-align: right;
+      }
+      .task-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 170px 190px 86px calc(
+            var(--task-action-width) * 2 + 12px
+          );
+        gap: 12px;
+        align-items: center;
+        padding: 18px 0;
+        border-top: 1px solid #edf0e9;
+      }
+      .task-row:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+      .task-row:last-child {
+        padding-bottom: 0;
+      }
+      .task-name {
+        font-size: 14px;
+        font-weight: 600;
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+      .task-model,
+      .task-plan {
+        font-size: 12px;
+        line-height: 1.8;
+        color: #54765f;
+        overflow-wrap: anywhere;
+      }
+      .task-status {
+        font-size: 12px;
+        border-radius: 20px;
+        padding: 5px 10px;
+        white-space: nowrap;
+        justify-self: end;
+        background: #f0f3ed;
+        color: #718274;
+      }
+      .task-status[data-state="running"] {
+        background: #e8f0e3;
+        color: #42663f;
+      }
+      .task-status[data-state="completed"] {
+        background: #e7f0e8;
+        color: #315c43;
+      }
+      .task-status[data-state="failed"] {
+        background: #f9eee9;
+        color: #a0634a;
+      }
+      .task-row-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+        justify-self: end;
+      }
+      .task-row-actions button {
+        border: 0;
+        background: transparent;
+        padding: 5px 0;
+        font-size: 13px;
+        color: #54765f;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .task-row-actions .task-delete-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        padding: 0;
+      }
+      .task-delete-button svg {
+        width: 16px;
+        height: 16px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .task-delete-button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      dialog.task-dialog {
+        width: min(720px, calc(100vw - 32px));
+        max-height: calc(100dvh - 40px);
+        padding: 26px;
+        border: 1px solid #dfe5da;
+        border-radius: 18px;
+        color: #203b34;
+        overflow: auto;
+      }
+      .task-dialog::backdrop {
+        background: #1b332c55;
+      }
+      .task-dialog-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      .task-dialog-head h2 {
+        font-size: 18px;
+        margin: 0;
+      }
+      .task-detail-heading {
+        display: flex;
+        align-items: stretch;
+        gap: 12px;
+        flex: 1;
+        min-width: 0;
+      }
+      .task-detail-heading h2 {
+        line-height: 24px;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .task-detail-status {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 24px;
+        padding: 0 10px;
+        font-size: 12px;
+        line-height: 1;
+        flex: none;
+      }
+      .task-dialog-head button {
+        font-size: 24px;
+        padding: 0 6px;
+        border: 0;
+        line-height: 1;
+        background: transparent;
+      }
+      .task-form {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 18px;
+      }
+      #task-form {
+        row-gap: 26px;
+      }
+      .task-form label {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        font-size: 13px;
+        min-width: 0;
+      }
+      #task-form > label {
+        font-weight: 600;
+      }
+      .task-form input,
+      .task-form textarea,
+      .task-form select {
+        font: inherit;
+        font-size: 13px;
+        padding: 10px 12px;
+        border: 1px solid #d8e1d4;
+        border-radius: 8px;
+        background: #fff;
+        color: #203b34;
+        width: 100%;
+        min-width: 0;
+      }
+      .task-form input,
+      .task-form textarea,
+      .task-form select,
+      .task-form button {
+        font-weight: 400;
+      }
+      .task-form input:focus-visible,
+      .task-form textarea:focus-visible,
+      .task-form select:focus-visible {
+        outline: 2px solid #a4b5a3;
+        outline-offset: 2px;
+      }
+      .task-form textarea {
+        resize: vertical;
+        line-height: 1.7;
+      }
+      .task-wide {
+        grid-column: 1 / -1;
+      }
+      .task-path-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .task-path-row input,
+      .task-path-row textarea {
+        flex: 1;
+      }
+      .task-model-picker-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        font-size: 13px;
+        margin-bottom: 10px;
+      }
+      .task-model-picker-head button {
+        padding: 5px 10px;
+        font-size: 12px;
+      }
+      .task-model-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .task-form .task-model-tag {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 7px;
+        padding: 8px 12px;
+        border: 1px solid #d8e1d4;
+        border-radius: 20px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      .task-model-tag:has(input:checked) {
+        background: #edf3e8;
+        border-color: #91aa88;
+        color: #315c43;
+      }
+      .task-form .task-model-tag input {
+        width: 14px;
+        height: 14px;
+        padding: 0;
+        margin: 0;
+        accent-color: #54765f;
+      }
+      .task-form [hidden] {
+        display: none;
+      }
+      .task-hint {
+        margin: 0;
+        font-size: 12px;
+      }
+      .task-error {
+        color: #a0634a;
+        font-size: 13px;
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+      .task-error:empty {
+        display: none;
+      }
+      .task-dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+      }
+      .task-dialog h3 {
+        font-size: 13px;
+        font-weight: 500;
+        margin: 22px 0 10px;
+      }
+      .task-dialog h3.task-text-heading {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .task-copy-feedback {
+        font-size: 12px;
+        font-weight: 400;
+      }
+      .task-dialog pre {
+        font: inherit;
+        font-size: 13px;
+        line-height: 1.8;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        padding: 16px;
+        background: #f7f9f5;
+        border-radius: 8px;
+        max-height: 300px;
+        overflow: auto;
+        margin: 0;
+      }
+      .task-detail-meta {
+        white-space: pre-line;
+        overflow-wrap: anywhere;
+        margin: 0;
+      }
+      .task-directory {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin: 0;
+      }
+      .task-directory[hidden] {
+        display: none;
+      }
+      .task-directory-path {
+        overflow-wrap: anywhere;
+        min-width: 0;
+      }
+      #task-detail-directory-select {
+        max-width: 100%;
+        font: inherit;
+        color: inherit;
+      }
+      .task-path-action {
+        position: relative;
+        display: inline-flex;
+        flex: none;
+        align-self: center;
+      }
+      .task-path-action button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        padding: 4px;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        border-radius: 4px;
+      }
+      .task-path-action button:hover {
+        background: #e5e9e3;
+      }
+      .task-path-action svg {
+        width: 16px;
+        height: 16px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.7;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .task-path-tooltip {
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 0;
+        z-index: 2;
+        width: max-content;
+        padding: 5px 9px;
+        border-radius: 4px;
+        background: #111;
+        color: #fff;
+        font-size: 12px;
+        line-height: 18px;
+        white-space: nowrap;
+        pointer-events: none;
+        visibility: hidden;
+      }
+      .task-path-action:hover .task-path-tooltip,
+      .task-path-action:focus-within .task-path-tooltip {
+        visibility: visible;
+      }
+      .installation-directory {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 12px;
+        overflow-wrap: anywhere;
+      }
+      .installation-directory > span:first-child {
+        min-width: 0;
+      }
+      .installation-directory button {
+        width: 1.3em;
+        height: 1.3em;
+        padding: 0;
+        font-size: inherit;
+      }
+      .installation-directory svg {
+        width: 1em;
+        height: 1em;
+      }
+      #task-detail-progress {
+        font-size: 13px;
+        line-height: 1.8;
+        overflow-wrap: anywhere;
+      }
+      .page-nodes {
+        position: fixed;
+        right: max(18px, calc((100vw - 1080px) / 4 - 42px));
+        top: 50%;
+        transform: translateY(-50%);
+        width: 92px;
+        z-index: 15;
+      }
+      .page-nodes button {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        height: 44px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #94a391;
+        font-size: 12px;
+      }
+      .node-dot {
+        width: 9px;
+        height: 9px;
+        border: 1px solid #b8c7b3;
+        background: #f5f6f2;
+        border-radius: 50%;
+        flex: none;
+        z-index: 1;
+      }
+      .page-nodes button[aria-current="location"] {
+        color: #315c43;
+      }
+      .page-nodes button[aria-current="location"] .node-dot {
+        background: #54765f;
+        border-color: #54765f;
+        box-shadow: 0 0 0 4px #54765f14;
+      }
+      .page-nodes button[data-passed="true"] .node-dot {
+        border-color: #789574;
+        background: #dfe8d9;
+      }
+      .page-nodes button:hover {
+        color: #315c43;
+      }
+      .node-track {
+        position: absolute;
+        left: 4px;
+        top: 22px;
+        bottom: 22px;
+        width: 1px;
+        background: #dce3d7;
+      }
+      #node-progress {
+        display: block;
+        width: 1px;
+        height: 0;
+        background: #789574;
+      }
+      body.page-scrolled:before {
+        content: "";
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: var(--card-gap);
+        background: #f5f6f2;
+        z-index: 10;
+        pointer-events: none;
+      }
+      @media (max-width: 1300px) {
+        .page-nodes {
+          display: none;
+        }
+      }
+      @media (max-width: 700px) {
+        .task-row {
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 10px;
+        }
+        .task-row > :first-child {
+          grid-column: 1 / -1;
+        }
+        .task-row .task-model {
+          grid-column: 1 / -1;
+        }
+        .task-row .task-plan {
+          grid-column: 1 / -1;
+        }
+        .task-form {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .task-wide {
+          grid-column: auto;
+        }
+        dialog.task-dialog {
+          padding: 20px;
+        }
+        .task-path-row {
+          flex-wrap: wrap;
+        }
+        .task-path-row input,
+        .task-path-row textarea {
+          flex-basis: 100%;
+        }
+        .task-actions {
+          gap: 10px;
+          width: 100%;
+          justify-content: flex-end;
+        }
+        .task-row .task-status,
+        .task-row-actions {
+          grid-column: 1 / -1;
+        }
+        #task-count {
+          width: 100%;
+        }
+      }
     </style>
   </head>
   <body>
@@ -2747,9 +3358,11 @@
         </div>
       </header>
       <div class="error-banner" id="error-banner" role="alert" hidden></div>
-      <div class="schedule-row">
+      <div class="schedule-row" id="schedule-panel">
         <section class="panel time-panel">
-          <div class="section-head"><h2 class="card-title">定时刷新</h2></div>
+          <div class="section-head">
+            <h2 class="card-title" id="schedule-title">额度刷新</h2>
+          </div>
           <div id="schedule-form">
             <div class="schedule-buttons">
               <button id="choose-time" type="button" disabled>选择时间</button
@@ -2913,6 +3526,9 @@
             <div class="wheel-grid" id="wheel-grid"></div>
             <div id="refresh-error" class="feedback" role="status"></div>
             <footer class="refresh-footer">
+              <p id="refresh-drag-hint" class="refresh-drag-hint">
+                可拖动墨绿色节点，进行时间选择
+              </p>
               <button type="button" id="cancel-refresh">取消</button
               ><button type="button" class="primary" id="save-time">
                 确定
@@ -3025,28 +3641,50 @@
         <div class="section-head chart-head">
           <h2 class="card-title">
             <button type="button" class="panel-jump" id="quota-chart-jump">
-              额度变化统计
+              额度统计
             </button>
           </h2>
           <div class="chart-options">
-            <select id="chart-window" aria-label="统计时间范围">
-              <option value="60">最近一小时</option>
-              <option value="300" selected>最近五小时</option>
-              <option value="1440">最近二十四小时</option></select
-            ><select id="chart-quota" aria-label="统计额度类型">
+            <select id="chart-quota" aria-label="统计目标">
               <option value="primaryRemaining">五小时额度</option>
               <option value="secondaryRemaining">周额度</option>
+            </select>
+            <select id="chart-mode" aria-label="统计方式">
+              <option value="history">历程统计</option>
+              <option value="plan">规划统计</option>
             </select>
           </div>
         </div>
         <div class="quota-chart" id="quota-chart">
           <svg
             id="quota-chart-svg"
-            role="img"
+            role="group"
             aria-label="Codex每分钟额度变化，等待检测"
           ></svg>
           <div id="chart-empty" class="chart-empty">等待额度检测</div>
         </div>
+      </section>
+      <section class="panel" id="tasks-panel" aria-labelledby="tasks-title">
+        <div class="section-head">
+          <div class="task-heading">
+            <h2 class="card-title" id="tasks-title">
+              <button class="panel-jump" id="tasks-jump" type="button">
+                预设任务
+              </button>
+            </h2>
+            <p class="small task-subtitle" id="task-sync" role="status">
+              任务状态每 2 秒更新
+            </p>
+          </div>
+          <div class="task-actions">
+            <span class="small" id="task-count" role="status"></span>
+            <button id="task-settings-open" type="button">任务设置</button>
+            <button id="task-new" class="primary" type="button">
+              新建任务
+            </button>
+          </div>
+        </div>
+        <div id="task-list"><p class="task-empty">正在读取任务</p></div>
       </section>
       <section class="panel" id="activity-panel">
         <div class="section-head">
@@ -3078,8 +3716,12 @@
           </table>
         </div>
       </section>
-      <section class="panel">
-        <h2 class="card-title">设置</h2>
+      <section class="panel" id="settings-panel">
+        <h2 class="card-title">
+          <button class="panel-jump" id="settings-jump" type="button">
+            设置
+          </button>
+        </h2>
         <div class="settings-list">
           <label
             ><input
@@ -3106,8 +3748,315 @@
           ><span>版本：<strong id="version">—</strong></span
           ><span>版权所有 © 2026 Symplatt</span>
         </div>
+        <div class="small installation-directory">
+          <span>安装路径：<span id="installation-path">—</span></span
+          ><span class="task-path-action"
+            ><button
+              id="open-installation"
+              type="button"
+              aria-label="打开目录"
+              aria-describedby="installation-open-tooltip"
+              onclick="action('installation/open')"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v1M3 7h18l-3 14H3z"
+                />
+              </svg></button
+            ><span
+              id="installation-open-tooltip"
+              class="task-path-tooltip"
+              role="tooltip"
+              >打开目录</span
+            ></span
+          >
+        </div>
       </section>
     </main>
+    <nav class="page-nodes" aria-label="卡片导航">
+      <span class="node-track" aria-hidden="true"
+        ><span id="node-progress"></span
+      ></span>
+      <button type="button" data-target="schedule-panel">
+        <span class="node-dot"></span
+        ><span id="schedule-node-title">额度刷新</span>
+      </button>
+      <button type="button" data-target="quota-chart-panel">
+        <span class="node-dot"></span><span>额度变化</span>
+      </button>
+      <button type="button" data-target="tasks-panel">
+        <span class="node-dot"></span><span>预设任务</span>
+      </button>
+      <button type="button" data-target="activity-panel">
+        <span class="node-dot"></span><span>日志</span>
+      </button>
+      <button type="button" data-target="settings-panel">
+        <span class="node-dot"></span><span>设置</span>
+      </button>
+    </nav>
+    <dialog
+      id="task-dialog"
+      class="task-dialog"
+      aria-labelledby="task-dialog-title"
+    >
+      <div class="task-dialog-head">
+        <h2 id="task-dialog-title">新建预设任务</h2>
+        <button type="button" data-close="task-dialog" aria-label="关闭">
+          ×
+        </button>
+      </div>
+      <form id="task-form" class="task-form">
+        <label class="task-wide"
+          >任务名称<input
+            id="task-title"
+            required
+            maxlength="100"
+            placeholder="例如：整理研究笔记"
+        /></label>
+        <label
+          >模型<select id="task-model">
+            <option value="gpt-6-astra">GPT-6 Astra</option>
+            <option value="gpt-6.1-sol">GPT-6.1 Sol</option>
+          </select></label
+        >
+        <label
+          >推理强度<select id="task-effort">
+            <option value="low">轻度 · low</option>
+            <option value="medium" selected>中度 · medium</option>
+            <option value="high">高度 · high</option>
+            <option value="xhigh">更高 · xhigh</option>
+            <option value="max">最高 · max</option>
+            <option value="ultra">极高 · ultra</option>
+          </select></label
+        >
+        <label
+          >开始方式<select id="task-mode">
+            <option value="time">指定时间</option>
+            <option value="quota">五小时额度回满后立即执行</option>
+          </select></label
+        >
+        <label id="task-time-field"
+          >开始时间（北京时间）<input
+            id="task-time"
+            type="datetime-local"
+            step="1"
+            required
+        /></label>
+        <label class="task-wide"
+          >文档来源<select id="task-source">
+            <option value="new">填写内容，生成新 MD</option>
+            <option value="existing">读取已有 MD</option>
+            <option value="snapshot" hidden disabled>修改任务快照</option>
+          </select></label
+        >
+        <label class="task-wide"
+          >任务文档路径<span class="task-path-row"
+            ><input
+              id="task-path"
+              placeholder="留空使用默认目录，自动生成独立 MD 文件"
+            /><button id="task-pick-file" type="button">选择文件</button
+            ><button id="task-read" type="button" hidden>读取文档</button></span
+          ></label
+        >
+        <label class="task-wide"
+          >任务内容<textarea
+            id="task-content"
+            rows="6"
+            required
+            placeholder="填写 Codex 需要执行的任务"
+          ></textarea>
+        </label>
+        <label class="task-wide"
+          >执行目录<span class="task-path-row"
+            ><textarea
+              id="task-cwd"
+              required
+              rows="3"
+              placeholder="每行一个完整路径；第一行作为工作目录"
+            ></textarea><button id="task-pick-cwd" type="button">选择目录</button></span
+          ></label
+        >
+        <p class="small task-wide task-hint" id="task-default-hint"></p>
+        <p id="task-error" class="task-wide task-error" role="alert"></p>
+        <div class="task-dialog-actions task-wide">
+          <button type="button" data-close="task-dialog">取消</button
+          ><button id="task-save" type="submit" class="primary">
+            添加任务
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog
+      id="task-settings-dialog"
+      class="task-dialog"
+      aria-labelledby="task-settings-title"
+    >
+      <div class="task-dialog-head">
+        <h2 id="task-settings-title">预设任务设置</h2>
+        <button
+          type="button"
+          data-close="task-settings-dialog"
+          aria-label="关闭"
+        >
+          ×
+        </button>
+      </div>
+      <form id="task-settings-form" class="task-form">
+        <label class="task-wide"
+          >默认文档目录<span class="task-path-row"
+            ><input
+              id="task-directory"
+              placeholder="留空恢复默认的用户应用数据目录"
+            /><button id="task-pick-directory" type="button">
+              选择目录
+            </button></span
+          ></label
+        >
+        <div class="task-wide">
+          <div class="task-model-picker-head">
+            <span>其他模型</span
+            ><button id="task-models-refresh" type="button">重新检测</button>
+          </div>
+          <div
+            id="task-model-tags"
+            class="task-model-tags"
+            role="group"
+            aria-label="其他模型"
+          ></div>
+          <p
+            id="task-model-detection"
+            class="small task-hint"
+            role="status"
+          ></p>
+        </div>
+        <p class="small task-wide task-hint">
+          保留 GPT-6 Astra 和 GPT-6.1
+          Sol。执行前核对本机模型及推理强度，不支持的组合会显示失败原因。
+        </p>
+        <p
+          id="task-settings-error"
+          class="task-wide task-error"
+          role="alert"
+        ></p>
+        <div class="task-dialog-actions task-wide">
+          <button type="button" data-close="task-settings-dialog">取消</button
+          ><button id="task-settings-save" type="submit" class="primary">
+            保存设置
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog
+      id="task-detail-dialog"
+      class="task-dialog"
+      aria-labelledby="task-detail-title"
+    >
+      <div class="task-dialog-head">
+        <div class="task-detail-heading">
+          <h2 id="task-detail-title">任务详情</h2>
+          <span
+            id="task-detail-status"
+            class="task-status task-detail-status"
+            role="status"
+          ></span>
+        </div>
+        <button type="button" data-close="task-detail-dialog" aria-label="关闭">
+          ×
+        </button>
+      </div>
+      <p id="task-detail-meta" class="small task-detail-meta"></p>
+      <div id="task-detail-directory" class="small task-directory" hidden>
+        <span class="task-directory-path"
+          >执行目录：<span id="task-detail-cwd"></span><select id="task-detail-directory-select" aria-label="选择执行目录" hidden></select
+        ></span>
+        <span class="task-path-action"
+          ><button
+            id="task-copy-cwd"
+            type="button"
+            aria-label="复制路径"
+            aria-describedby="task-copy-tooltip"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="9" y="9" width="12" height="12" rx="2" />
+              <path d="M15 5V3H3v12h2" />
+            </svg></button
+          ><span id="task-copy-tooltip" class="task-path-tooltip" role="tooltip"
+            >复制路径</span
+          ></span
+        >
+        <span class="task-path-action"
+          ><button
+            id="task-open-cwd"
+            type="button"
+            aria-label="打开目录"
+            aria-describedby="task-open-tooltip"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v1M3 7h18l-3 14H3z"
+              />
+            </svg></button
+          ><span id="task-open-tooltip" class="task-path-tooltip" role="tooltip"
+            >打开目录</span
+          ></span
+        >
+      </div>
+      <p id="task-detail-files" class="small task-detail-meta"></p>
+      <p id="task-path-feedback" class="task-error" role="status"></p>
+      <p id="task-detail-progress" role="status" hidden></p>
+      <h3 class="task-text-heading">
+        任务内容<span class="task-path-action"
+          ><button
+            id="task-copy-content"
+            type="button"
+            aria-label="复制任务内容"
+            aria-describedby="task-copy-content-tooltip"
+            disabled
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="9" y="9" width="12" height="12" rx="2" />
+              <path d="M15 5V3H3v12h2" />
+            </svg></button
+          ><span
+            id="task-copy-content-tooltip"
+            class="task-path-tooltip"
+            role="tooltip"
+            >复制任务内容</span
+          ></span
+        ><span
+          id="task-copy-content-feedback"
+          class="task-copy-feedback"
+          role="status"
+        ></span>
+      </h3>
+      <pre id="task-detail-content"></pre>
+      <h3 class="task-text-heading">
+        执行结果<span class="task-path-action"
+          ><button
+            id="task-copy-result"
+            type="button"
+            aria-label="复制执行结果"
+            aria-describedby="task-copy-result-tooltip"
+            disabled
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="9" y="9" width="12" height="12" rx="2" />
+              <path d="M15 5V3H3v12h2" />
+            </svg></button
+          ><span
+            id="task-copy-result-tooltip"
+            class="task-path-tooltip"
+            role="tooltip"
+            >复制执行结果</span
+          ></span
+        ><span
+          id="task-copy-result-feedback"
+          class="task-copy-feedback"
+          role="status"
+        ></span>
+      </h3>
+      <pre id="task-detail-result">等待执行</pre>
+    </dialog>
     <div id="chart-tooltip" class="chart-tooltip" role="tooltip" hidden>
       <time id="tooltip-time"></time><span id="tooltip-statistics"></span>
     </div>
@@ -3166,19 +4115,20 @@
       let operationError = "";
       const pendingActions = new Set();
       const $ = (id) => document.getElementById(id);
-      const time = (s) =>
-        s
-          ? new Intl.DateTimeFormat("zh-CN", {
-              timeZone: "Asia/Shanghai",
-              year: "numeric",
-              month: "2-digit",
-              day: "2-digit",
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-              hour12: false,
-            }).format(new Date(s * 1000))
-          : "—";
+      const timeFormat = new Intl.DateTimeFormat("zh-CN", {
+        timeZone: "Asia/Shanghai",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+      const chartDateFormat = new Intl.DateTimeFormat("zh-CN", {
+        timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit",
+      });
+      const time = (s) => s ? timeFormat.format(new Date(s * 1000)) : "—";
       const inputTime = (s) =>
         new Date(s * 1000 + 8 * 3600000).toISOString().slice(0, 19);
       const labels = {
@@ -3189,7 +4139,10 @@
         reserved: "待核实",
       };
       const clockTime = (s) => (s ? time(s).split(" ")[1] : "—");
-      function renderQuota(id, quota) {
+      function weeklyResetText(at, now = Date.now() / 1000) {
+        return at - now >= 86400 ? time(at).split(" ")[0] : clockTime(at);
+      }
+      function renderQuota(id, quota, weeklyResetAt) {
         const value = quota
           ? Math.max(0, Math.min(100, 100 - quota.usedPercent))
           : null;
@@ -3205,12 +4158,17 @@
           value === null
             ? "未返回额度"
             : id === "weekly"
-              ? "近 " +
-                Math.round(quota.windowDurationMins / 1440) +
-                " 天剩余额度占比"
+              ? weeklyResetAt
+                ? "更新：" + weeklyResetText(weeklyResetAt)
+                : "预计更新待检测"
               : value > 0
-                ? "当前可正常发送请求"
+                ? "可正常发送请求"
                 : "额度已用尽";
+        if (id === "weekly")
+          $("weekly-copy").title =
+            value !== null && weeklyResetAt
+              ? "预计更新：" + time(weeklyResetAt)
+              : "";
       }
       function timeBlock(id, dateId, value) {
         $(id).textContent = clockTime(value);
@@ -3223,11 +4181,13 @@
       }
       function renderErrorBanner(s) {
         setErrorBanner(
-          s.connection?.error || s.autostart?.error || operationError,
+          s.connection?.error ||
+            s.autostart?.error ||
+            s.scheduleQueue?.last?.error ||
+            operationError,
         );
       }
       function shortStatus(s) {
-        if (s.connection?.upgradeRequired) return "Codex CLI 需要升级";
         if (s.connection?.stopped) return "已断开，等待重新连接";
         if (s.connection?.recoveryAt) return "等待自动重连";
         const phases = {
@@ -3270,17 +4230,15 @@
           recheckBusy ||
           pendingActions.has("check");
         $("choose-time").disabled =
-          offline || busy || changing || !snapshot?.timing?.minRefreshAt;
+          offline || paused || changing || !snapshot?.timing?.minRefreshAt;
+        $("schedule-timeline").setAttribute("data-paused", String(Boolean(paused)));
+        if (paused && refreshDialog.open) refreshDialog.close();
         const manualPlan =
           snapshot?.timing?.mode === "manual" ||
           snapshot?.timing?.schedule?.status === "pending";
-        $("auto-time").disabled = offline || busy || changing || !manualPlan;
+        $("auto-time").disabled = offline || paused || changing || !manualPlan;
         $("save-time").disabled =
-          offline ||
-          busy ||
-          changing ||
-          manualDirty ||
-          !snapshot?.timing?.minRefreshAt;
+          offline || paused || changing || manualDirty || !snapshot?.timing?.minRefreshAt;
         $("pause").disabled =
           offline ||
           pendingActions.has("pause") ||
@@ -3408,7 +4366,11 @@
             refreshAt: sendAt + 18000,
           })
         )
-          showFeedback("schedule-feedback", "已保存刷新时间", true);
+          showFeedback(
+            "schedule-feedback",
+            scheduleSaveQueued ? "已排队，检测后保存" : "已保存刷新时间",
+            true,
+          );
       }
       const timelineHandle = $("timeline-handle");
       timelineHandle.addEventListener("pointerdown", (e) => {
@@ -3650,7 +4612,6 @@
         if (!min || !max) return;
         $("save-time").disabled =
           !connected ||
-          snapshot.busy ||
           pendingActions.has("schedule") ||
           manualDirty ||
           draftRefresh < min ||
@@ -3684,7 +4645,6 @@
         });
         $("save-time").disabled =
           !connected ||
-          snapshot.busy ||
           pendingActions.has("schedule") ||
           manualDirty ||
           draftRefresh < min ||
@@ -3708,9 +4668,11 @@
             e.preventDefault();
             if (!e.deltaY) return;
             const now = Date.now();
-            if (now - last < 30) return;
+            if (now - last < (index === 4 ? 8 : index === 3 ? 16 : 30)) return;
             last = now;
-            stepWheel(index, e.deltaY > 0 ? 1 : -1);
+            const steps = wheelSteps(index, e);
+            for (let n = 0; n < steps; n++)
+              stepWheel(index, e.deltaY > 0 ? 1 : -1);
           },
           { passive: false },
         );
@@ -3725,6 +4687,19 @@
           }
         });
       });
+      function wheelSteps(index, event) {
+        if (index < 3) return 1;
+        const pixels =
+          Math.abs(event.deltaY) *
+          (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 240 : 1);
+        return Math.max(
+          1,
+          Math.min(
+            index === 3 ? 3 : 5,
+            Math.round(pixels / (index === 3 ? 60 : 40)),
+          ),
+        );
+      }
       $("choose-time").addEventListener("click", () => {
         const { min, max } = bounds();
         if (!min || !max) return;
@@ -3788,6 +4763,7 @@
           service: "服务启动",
           schedule: "设置定时请求",
           schedule_cancelled: "自动取消定时请求",
+          schedule_run: "定时刷新执行结果",
           connection_failure: "连接检测失败",
           connection_recovery: "等待自动重连",
           connection_recovered: "连接已恢复",
@@ -3821,6 +4797,12 @@
             details.push("发送时间：" + time(d.sendAt));
             details.push("预计刷新：" + time(d.refreshAt || d.sendAt + 18000));
           }
+        } else if (event.kind === "schedule_run") {
+          name = { waiting: "定时刷新暂未发送", submitted: "定时刷新开始发送",
+            completed: "定时刷新请求已完成", unknown: "定时刷新结果未知",
+            failed: "定时刷新未完成" }[d.status] || name;
+          if (d.sendAt) details.push("计划发送时间：" + time(d.sendAt));
+          if (d.afterError) details.push("额度核验失败：" + d.afterError);
         } else if (event.kind === "schedule_cancelled") {
           if (d.sendAt) details.push("原发送时间：" + time(d.sendAt));
           if (d.serverResetAt)
@@ -3832,6 +4814,35 @@
           if (d.result?.error) details.push("操作失败：" + d.result.error);
           if (d.action === "poll_while_paused")
             details.push(d.enabled ? "已开启" : "已关闭");
+        } else if (event.kind === "task") {
+          const taskActions = {
+            created: "创建预设任务",
+            edited: "修改预设任务",
+            started: "开始预设任务",
+            submitted: "提交预设任务",
+            session_started: "任务会话已启动",
+            sandbox_ready: "任务沙箱已就绪",
+            execution_step: "执行预设任务",
+            completed: "预设任务已完成",
+            failed: "预设任务失败",
+            cancelled: "预设任务已取消",
+            cancel_requested: "请求中断预设任务",
+            waiting: "预设任务继续等待",
+            recovered: "任务结果未知",
+            settings: "修改任务设置",
+            models: "检测任务模型",
+            deleted: "删除预设任务",
+            delete_failed: "任务文档删除失败",
+          };
+          name = taskActions[d.action] || "预设任务";
+          if (d.title) details.push("任务：" + d.title);
+          if (d.id) details.push("任务 ID：" + d.id);
+          if (d.cwd) details.push("执行目录：" + d.cwd);
+          if (d.model)
+            details.push(
+              "模型：" + d.model + (d.effort ? " · " + d.effort : ""),
+            );
+          if (d.resultPath) details.push("结果文档：" + d.resultPath);
         } else if (event.kind === "trigger") {
           details.push(labels[d.status] || d.status || "");
           if (d.evidence) details.push(d.evidence);
@@ -3854,17 +4865,6 @@
           );
         return [name, details.filter(Boolean).join("\n") || "—"];
       }
-      for (const name of ["quota-chart", "activity"])
-        $(name + "-jump").addEventListener("click", () =>
-          $(name + "-panel").scrollIntoView({
-            behavior:
-              typeof window !== "undefined" &&
-              window.matchMedia("(prefers-reduced-motion: reduce)").matches
-                ? "auto"
-                : "smooth",
-            block: "start",
-          }),
-        );
       let activitySignature = "";
       function renderActivity(s) {
         const events = (
@@ -3897,17 +4897,17 @@
         if (viewport) viewport.scrollTop = scroll;
       }
       let chartSignature = "";
+      let planningRecheckPending = false;
       const chartPreferencesKey = "quota-starter:chart-preferences:v1";
       function restoreChartPreferences() {
         try {
           const saved = JSON.parse(localStorage.getItem(chartPreferencesKey));
-          if (saved && ["60", "300", "1440"].includes(saved.window))
-            $("chart-window").value = saved.window;
           if (
             saved &&
             ["primaryRemaining", "secondaryRemaining"].includes(saved.quota)
           )
             $("chart-quota").value = saved.quota;
+          if (saved?.mode === "plan") $("chart-mode").value = "plan";
         } catch {}
       }
       function rememberChartPreferences() {
@@ -3915,14 +4915,38 @@
           localStorage.setItem(
             chartPreferencesKey,
             JSON.stringify({
-              window: $("chart-window").value,
               quota: $("chart-quota").value,
+              mode: $("chart-mode").value,
             }),
           );
         } catch {}
         renderChart();
       }
       restoreChartPreferences();
+      function planningResetAt(weekly, now) {
+        const current = snapshot?.current;
+        const reset = weekly
+          ? (current?.secondary ? current.weeklyResetAt : null)
+          : current?.primary?.resetsAt;
+        return Number.isFinite(reset) && reset > now ? reset : null;
+      }
+      function recheckPlanningIfNeeded() {
+        if (!planningRecheckPending || !connected) return;
+        const weekly = $("chart-quota").value === "secondaryRemaining";
+        if (planningResetAt(weekly, Date.now() / 1000)) {
+          planningRecheckPending = false;
+          return;
+        }
+        if ($("recheck").disabled || snapshot?.connection?.failures || snapshot?.connection?.recoveryAt)
+          return;
+        planningRecheckPending = false;
+        return recheckQuota();
+      }
+      function changeChartPreferences() {
+        rememberChartPreferences();
+        planningRecheckPending = $("chart-mode").value === "plan";
+        return recheckPlanningIfNeeded();
+      }
       function svgPart(name, attributes = {}, text) {
         const node = document.createElementNS(
           "http://www.w3.org/2000/svg",
@@ -3933,64 +4957,60 @@
         if (text !== undefined) node.textContent = text;
         return node;
       }
-      function chartData(history, start, end, key) {
-        return history
-          .filter(
-            (p) =>
-              p.minute >= start && p.minute <= end && Number.isFinite(p[key]),
-          )
-          .map((p, i, rows) => {
-            const previous = rows[i - 1],
-              delta =
-                previous && p.minute - previous.minute === 60
-                  ? p[key] - previous[key]
-                  : null;
-            return { ...p, value: p[key], delta };
-          });
-      }
-      function chartScale(points) {
-        const values = points.map((p) => p.value),
-          min = values.length ? Math.min(...values) : 0,
-          max = values.length ? Math.max(...values) : 100;
-        const span = Math.max(20, max - min + 6),
-          step = span <= 25 ? 2 : span <= 50 ? 5 : 10;
-        let low = Math.max(0, Math.floor((min - 3) / step) * step),
-          high = Math.min(100, Math.ceil((max + 3) / step) * step);
-        if (high - low < 20) {
-          low = Math.max(0, Math.min(low, high - 20));
-          high = Math.min(100, Math.max(high, low + 20));
+      function chartData(history, start, end, key, planning = false) {
+        const weekly = key === "secondaryRemaining";
+        const samples = new Map();
+        for (const point of history) {
+          const sampledAt = planning ? (point.checkedAt ?? point.minute) : point.minute;
+          if (sampledAt < start || sampledAt > end || !Number.isFinite(point[key])) continue;
+          const bucket = weekly ? Math.ceil(sampledAt / 3600) - 1 : point.minute / 60;
+          const at = weekly ? Math.min(end, (bucket + 1) * 3600) : sampledAt;
+          samples.set(bucket, { at, sampledAt, bucket, value: point[key] });
         }
-        return { low, high, step };
+        const points = [...samples.values()];
+        for (let i = 0; i < points.length; i++) {
+          const previous = points[i - 1], point = points[i];
+          point.delta = previous && point.bucket - previous.bucket === 1
+            ? point.value - previous.value
+            : null;
+        }
+        return points;
       }
-      function chartSegments(points, x, y) {
-        const segments = [];
+      function chartScale(plotHeight) {
+        return { low: 0, high: 100, step: plotHeight < 200 ? 20 : 10 };
+      }
+      function chartPath(points, x, y) {
+        const commands = [];
         // Monotone Hermite interpolation passes through every measurement. Opposing
         // slopes flatten at the sample, so smoothing cannot invent overshoot or hide drops.
-        const slope = (a, b) => (b.value - a.value) / (b.minute - a.minute);
+        const slope = (a, b) => (b.value - a.value) / (b.at - a.at);
         const tangent = (i) => {
           const a = points[i - 1],
             b = points[i],
             c = points[i + 1];
-          const before = a && b.minute - a.minute === 60 ? slope(a, b) : null,
-            after = c && c.minute - b.minute === 60 ? slope(b, c) : null;
+          const before = a && b.delta !== null ? slope(a, b) : null,
+            after = c && c.delta !== null ? slope(b, c) : null;
           if (before === null) return after || 0;
           if (after === null) return before;
           return before * after <= 0
             ? 0
             : (2 * before * after) / (before + after);
         };
-        for (let i = 1; i < points.length; i++) {
+        for (let i = 0; i < points.length; i++) {
           const a = points[i - 1],
-            b = points[i];
-          if (b.minute - a.minute !== 60) continue;
-          const h = (b.minute - a.minute) / 3,
-            ax = x(a.minute),
-            bx = x(b.minute);
-          segments.push({
-            d: `M${ax} ${y(a.value)} C${ax + (bx - ax) / 3} ${y(a.value + tangent(i - 1) * h)},${bx - (bx - ax) / 3} ${y(b.value - tangent(i) * h)},${bx} ${y(b.value)}`,
-          });
+            b = points[i],
+            bx = x(b.at);
+          if (b.delta === null) {
+            commands.push(`M${bx} ${y(b.value)}`);
+            if (!points[i + 1] || points[i + 1].delta === null)
+              commands.push("l0 0");
+            continue;
+          }
+          const h = (b.at - a.at) / 3,
+            ax = x(a.at);
+          commands.push(`C${ax + (bx - ax) / 3} ${y(a.value + tangent(i - 1) * h)},${bx - (bx - ax) / 3} ${y(b.value - tangent(i) * h)},${bx} ${y(b.value)}`);
         }
-        return segments;
+        return commands.join(" ");
       }
       function fitChartCard() {
         if (typeof window === "undefined") return;
@@ -3999,23 +5019,31 @@
         const gap =
           parseFloat(getComputedStyle(card).getPropertyValue("--card-gap")) ||
           20;
-        const available = window.innerHeight - top - gap;
-        // Fill only this card; the title, two existing panels and all gaps keep their
-        // actual dimensions. The next card begins at the viewport's lower boundary.
-        card.style.height =
-          window.innerWidth > 1000 && available >= 140 ? available + "px" : "";
+        const banner = $("error-banner");
+        let bannerSpace = 0;
+        if (!banner.hidden) {
+          const style = getComputedStyle(banner);
+          bannerSpace =
+            banner.getBoundingClientRect().height +
+            (parseFloat(style.getPropertyValue("margin-top")) || 0) +
+            (parseFloat(style.getPropertyValue("margin-bottom")) || 0);
+        }
+        // Ignore the banner's flow space when sizing: an error shifts the whole
+        // card down without shrinking it, including on initial load or resize.
+        const available = window.innerHeight - (top - bannerSpace) - gap;
+        // Only the statistics card absorbs the remaining viewport height. The
+        // title, schedule/status cards and their spacing keep their CSS sizes.
+        // Narrow layouts may stack the fixed cards; fit whenever they leave room.
+        card.style.height = available >= 0 ? available + "px" : "";
       }
       function hideChartTooltip() {
         $("chart-tooltip").hidden = true;
       }
-      function showChartTooltip(event, minute, statistics, hit) {
+      function showChartTooltip(at, statistics, x, y) {
         const tip = $("chart-tooltip");
-        $("tooltip-time").textContent = time(minute);
+        $("tooltip-time").textContent = time(at);
         $("tooltip-statistics").textContent = statistics;
         tip.hidden = false;
-        const rect = hit.getBoundingClientRect(),
-          x = event.clientX ?? rect.left + rect.width / 2,
-          y = event.clientY ?? rect.top + rect.height / 2;
         const bounds = tip.getBoundingClientRect();
         tip.style.left =
           Math.max(
@@ -4035,39 +5063,41 @@
       function renderChart() {
         fitChartCard();
         const history = snapshot?.quotaHistory || [],
-          key = $("chart-quota").value || "primaryRemaining";
-        const minutes = Number($("chart-window").value) || 300,
-          end = Math.floor(Date.now() / 60000) * 60,
-          start = end - minutes * 60;
+          key = $("chart-quota").value || "primaryRemaining",
+          weekly = key === "secondaryRemaining",
+          planning = $("chart-mode").value === "plan",
+          duration = weekly ? 7 * 86400 : 5 * 3600,
+          now = Date.now() / 1000,
+          minute = Math.floor(now / 60) * 60,
+          reset = planning ? planningResetAt(weekly, now) : null,
+          end = reset ?? minute,
+          start = end - duration;
+        const points = planning && reset === null ? []
+          : chartData(history, start, planning ? Math.min(now, end) : end, key, planning);
         const height = Math.max(60, $("quota-chart").clientHeight || 180),
           width = Math.max(280, $("quota-chart").clientWidth || 960),
-          signature = JSON.stringify([
-            history,
-            key,
-            minutes,
-            end,
-            width,
-            height,
-          ]);
+          signature = JSON.stringify([points, history.length > 0, key, planning, reset, end, minute, width, height]);
         if (signature === chartSignature) return;
         chartSignature = signature;
         hideChartTooltip();
-        const points = chartData(history, start, end, key),
-          svg = $("quota-chart-svg");
+        const svg = $("quota-chart-svg");
         svg.replaceChildren();
         svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
         svg.setAttribute("preserveAspectRatio", "none");
         const left = 42,
           right = width - 16,
           plot = right - left,
-          { low, high, step: baseStep } = chartScale(points),
           bottom = height - 25,
-          plotHeight = height - 37;
-        const step =
-          baseStep *
-          Math.max(1, Math.ceil((((high - low) / baseStep) * 12) / plotHeight));
+          plotHeight = height - 37,
+          { low, high, step } = chartScale(plotHeight);
         const x = (minute) => left + ((minute - start) / (end - start)) * plot,
           y = (value) => bottom - ((value - low) / (high - low)) * plotHeight;
+        if (planning && reset === null) {
+          $("chart-empty").hidden = false;
+          $("chart-empty").textContent = "暂无额度周期";
+          svg.setAttribute("aria-label", "暂无额度周期");
+          return;
+        }
         for (let value = low; value <= high; value += step) {
           svg.append(
             svgPart("line", {
@@ -4091,32 +5121,45 @@
             ),
           );
         }
-        const minor = (minutes <= 60 ? 1 : minutes <= 300 ? 5 : 30) * 60;
-        const major =
-          (minutes <= 60
-            ? width < 500
-              ? 15
-              : 10
-            : minutes <= 300
-              ? width < 500
-                ? 60
-                : 30
-              : width < 500
-                ? 240
-                : 120) * 60;
+        const minor = weekly ? 4 * 3600 : 5 * 60;
+        const major = weekly ? 86400 : width < 500 ? 3600 : 1800;
+        const dayOffset = 8 * 3600;
+        const labelClearance = planning ? 84 : 44;
+        const addTimeLabel = (at, anchor) => {
+          const date = chartDateFormat.format(new Date(at * 1000));
+          const clock = clockTime(at).slice(0, 5);
+          const label = planning && anchor !== "middle" ? date + " " + clock : weekly ? date : clock;
+          svg.append(svgPart("text", {
+            x: x(at), y: height - 5, "text-anchor": anchor,
+            class: "chart-axis" + (planning && at > now ? " chart-axis-future" : ""),
+          }, label));
+        };
+        if (planning) {
+          const elapsed = x(Math.min(end, Math.max(start, now)));
+          svg.append(svgPart("line", {
+            x1: left, x2: elapsed, y1: bottom, y2: bottom, class: "chart-axis-line",
+          }));
+          svg.append(svgPart("line", {
+            x1: elapsed, x2: right, y1: bottom, y2: bottom, class: "chart-axis-line chart-axis-future",
+          }));
+          svg.append(svgPart("line", {
+            x1: left, x2: right, y1: y(100), y2: y(0), class: "chart-pace",
+          }));
+        }
         for (
           let at = Math.ceil(start / minor) * minor;
           at <= end;
           at += minor
         ) {
-          const majorTick = at % major === 0;
+          const majorTick = (at + (weekly ? dayOffset : 0)) % major === 0;
+          const future = planning && at > now ? " chart-axis-future" : "";
           svg.append(
             svgPart("line", {
               x1: x(at),
               x2: x(at),
               y1: bottom,
               y2: bottom + (majorTick ? 7 : 4),
-              class: "chart-tick",
+              class: "chart-tick" + future,
             }),
           );
           if (majorTick) {
@@ -4129,99 +5172,101 @@
                 class: "chart-grid",
               }),
             );
-            svg.append(
-              svgPart(
-                "text",
-                {
-                  x: x(at),
-                  y: height - 5,
-                  "text-anchor":
-                    x(at) - left < 16
-                      ? "start"
-                      : right - x(at) < 16
-                        ? "end"
-                        : "middle",
-                  class: "chart-axis",
-                },
-                clockTime(at).slice(0, 5),
-              ),
-            );
+            const repeatsEnd = weekly && end - at < 86400;
+            if (!repeatsEnd && x(at) - left >= labelClearance && right - x(at) >= labelClearance)
+              addTimeLabel(at, "middle");
           }
         }
-        for (const segment of chartSegments(points, x, y))
-          svg.append(svgPart("path", { d: segment.d, class: "chart-line" }));
+        addTimeLabel(start, "start");
+        addTimeLabel(end, "end");
+        if (planning && start <= now)
+          svg.append(svgPart("circle", { cx: left, cy: y(100), r: 2, fill: "#315c43" }));
+        if (points.length) {
+          svg.append(svgPart("path", { d: chartPath(points, x, y), class: "chart-line" }));
+          const hit = svgPart("rect", {
+            x: left, y: 8, width: plot, height: plotHeight + 6,
+            class: "chart-hit", tabindex: 0, "aria-label": "额度采样，使用方向键查看",
+          });
+          let selected = points.length - 1;
+          const showPoint = (index, event) => {
+            selected = index;
+            const point = points[index], delta = point.delta;
+            const change = delta === null
+              ? "无连续检测，变化未知"
+              : delta < 0
+                ? "消耗 " + (-delta).toFixed(0) + " 个百分点"
+                : delta > 0 ? "恢复 " + delta.toFixed(0) + " 个百分点" : "无变化";
+            const statistics = "剩余 " + point.value + "% " + change;
+            const bounds = svg.getBoundingClientRect();
+            hit.setAttribute("aria-label", time(point.sampledAt) + " " + statistics);
+            showChartTooltip(point.sampledAt, statistics,
+              event?.clientX ?? bounds.left + x(point.at) / width * bounds.width,
+              event?.clientY ?? bounds.top + y(point.value) / height * bounds.height);
+          };
+          hit.addEventListener("pointermove", (event) => {
+            const bounds = svg.getBoundingClientRect();
+            const cursor = (event.clientX - bounds.left) / bounds.width * width;
+            let lo = 0, hi = points.length - 1;
+            while (lo < hi) {
+              const mid = Math.floor((lo + hi) / 2);
+              if (cursor > (x(points[mid].at) + x(points[mid + 1].at)) / 2) lo = mid + 1;
+              else hi = mid;
+            }
+            const radius = Math.max(4, (weekly ? 3600 : 60) / duration * plot / 2);
+            if (Math.abs(cursor - x(points[lo].at)) <= radius) showPoint(lo, event);
+            else hideChartTooltip();
+          });
+          hit.addEventListener("focus", () => showPoint(selected));
+          hit.addEventListener("keydown", (event) => {
+            const index = {
+              ArrowLeft: Math.max(0, selected - 1),
+              ArrowRight: Math.min(points.length - 1, selected + 1),
+              Home: 0, End: points.length - 1,
+            }[event.key];
+            if (!Number.isInteger(index)) return;
+            event.preventDefault();
+            showPoint(index);
+          });
+          hit.addEventListener("pointerleave", hideChartTooltip);
+          hit.addEventListener("blur", hideChartTooltip);
+          svg.append(hit);
+        }
         let consumed = 0,
           recovered = 0;
         for (const point of points) {
           if (point.delta < 0) consumed -= point.delta;
           else if (point.delta > 0) recovered += point.delta;
-          svg.append(
-            svgPart("circle", {
-              cx: x(point.minute),
-              cy: y(point.value),
-              r: 1,
-              fill: "#315c43",
-            }),
-          );
-          const hit = svgPart("rect", {
-            x: Math.max(
-              left,
-              x(point.minute) - Math.max(4, plot / minutes / 2),
-            ),
-            y: 8,
-            width: Math.max(8, plot / minutes),
-            height: plotHeight + 6,
-            class: "chart-hit",
-          });
-          const change =
-            point.delta === null
-              ? "无连续检测，变化未知"
-              : point.delta < 0
-                ? "消耗 " + (-point.delta).toFixed(0) + " 个百分点"
-                : point.delta > 0
-                  ? "恢复 " + point.delta.toFixed(0) + " 个百分点"
-                  : "无变化";
-          const statistics = "剩余 " + point.value + "% " + change;
-          hit.setAttribute("tabindex", "0");
-          hit.setAttribute("aria-label", time(point.minute) + " " + statistics);
-          const show = (e) =>
-            showChartTooltip(e, point.minute, statistics, hit);
-          hit.addEventListener("pointerenter", show);
-          hit.addEventListener("pointermove", show);
-          hit.addEventListener("focus", show);
-          hit.addEventListener("pointerleave", hideChartTooltip);
-          hit.addEventListener("blur", hideChartTooltip);
-          svg.append(hit);
         }
         $("chart-empty").hidden = points.length > 0;
         $("chart-empty").textContent = history.length
           ? "所选范围暂无额度数据"
           : "等待额度检测";
         const description = points.length
-          ? `已记录 ${points.length} 分钟 · 消耗 ${Number(consumed.toFixed(0))} 个百分点 · 恢复 ${Number(recovered.toFixed(0))} 个百分点`
-          : "每分钟记录一次；未检测时留空";
+          ? `已记录 ${points.length} ${weekly ? "小时" : "分钟"} · 消耗 ${Number(consumed.toFixed(0))} 个百分点 · 恢复 ${Number(recovered.toFixed(0))} 个百分点`
+          : "未检测时留空";
         svg.setAttribute(
           "aria-label",
           "Codex" +
-            (key === "primaryRemaining" ? "五小时" : "周") +
+            (weekly ? "周" : "五小时") +
             "额度变化，" +
             description,
         );
       }
-      $("chart-window").addEventListener("change", rememberChartPreferences);
-      $("chart-quota").addEventListener("change", rememberChartPreferences);
+      $("chart-mode").addEventListener("change", changeChartPreferences);
+      $("chart-quota").addEventListener("change", changeChartPreferences);
       if (typeof ResizeObserver !== "undefined")
         new ResizeObserver(renderChart).observe($("quota-chart"));
       if (typeof window !== "undefined")
         window.addEventListener("resize", renderChart);
       // Render synchronously: the browser paints only after the complete snapshot is applied.
-      function renderStatus(s) {
+      function renderStatus(s, announce = true) {
         connected = true;
         if (!s.current && snapshot?.current)
           s = { ...s, current: snapshot.current, timing: snapshot.timing };
         snapshot = s;
         paused = s.paused;
         $("version").textContent = "v" + s.version;
+        $("installation-path").textContent = s.installationPath || "—";
         $("badge").textContent = paused
           ? "停止运行"
           : s.connection?.stopped
@@ -4241,7 +5286,9 @@
         const c = s.current;
         if (c) {
           renderQuota("remaining", c.primary);
-          renderQuota("weekly", c.secondary);
+          renderQuota("weekly", c.secondary, c.weeklyResetAt);
+          if (s.linked === false)
+            $("remaining-copy").textContent = "连接中断，显示上次额度";
           timeBlock("checked", "checked-date", c.checkedAt);
           $("checked").title = time(c.checkedAt);
         }
@@ -4253,6 +5300,30 @@
           $("poll-while-paused").checked = s.pollWhilePaused === true;
         renderChart();
         renderActivity(s);
+        if (announce) showScheduleNotice(s.scheduleNotice);
+        if (announce) recheckPlanningIfNeeded();
+      }
+
+      let lastScheduleNotice = null;
+      function showScheduleNotice(notice) {
+        if (
+          !notice?.id ||
+          notice.id === lastScheduleNotice ||
+          Math.abs(Date.now() / 1000 - notice.time) > 120
+        )
+          return;
+        lastScheduleNotice = notice.id;
+        try {
+          if (
+            sessionStorage.getItem("quota-starter:schedule-notice") ===
+            notice.id
+          )
+            return;
+          sessionStorage.setItem("quota-starter:schedule-notice", notice.id);
+        } catch (e) {
+          /* In-memory deduplication remains available. */
+        }
+        showFeedback("toast", notice.message, true);
       }
 
       function showOffline() {
@@ -4260,6 +5331,8 @@
           "无法连接本机后台服务，请通过桌面快捷方式启动软件；若仍失败，请检查后台日志。",
         );
         connected = false;
+        if (snapshot?.current)
+          $("remaining-copy").textContent = "连接中断，显示上次额度";
         $("badge").textContent = "连接中断";
         $("status").textContent = "等待重连";
         $("status-detail").textContent = snapshot
@@ -4292,7 +5365,7 @@
         try {
           const s = JSON.parse(sessionStorage.getItem(cacheKey));
           if (completeStatus(s)) {
-            renderStatus(s);
+            renderStatus(s, false);
             connected = false;
             // Cached values are for display only until the live service answers.
             for (const id of [
@@ -4370,6 +5443,7 @@
           updateControls();
         }
       }
+      let scheduleSaveQueued = false;
       async function action(name, feedback = "toast", body) {
         if (pendingActions.has(name)) return false;
         pendingActions.add(name);
@@ -4407,6 +5481,8 @@
           operationError = r.ok
             ? ""
             : d.error || d.message || "操作失败，请检查日志";
+          if (name === "schedule" && r.ok)
+            scheduleSaveQueued = d.queued === true;
           showFeedback(feedback, d.message || d.error, r.ok);
           if (refreshPromise) await refreshPromise;
           await refresh();
@@ -4436,7 +5512,11 @@
           await action("schedule", "refresh-error", { refreshAt: draftRefresh })
         ) {
           refreshDialog.close();
-          showFeedback("schedule-feedback", "已保存刷新时间", true);
+          showFeedback(
+            "schedule-feedback",
+            scheduleSaveQueued ? "已排队，检测后保存" : "已保存刷新时间",
+            true,
+          );
         } else renderWheels();
       }
       $("save-time").addEventListener("click", saveTime);
@@ -4469,5 +5549,6 @@
       setInterval(refresh, 3000);
       refresh();
     </script>
+    <script src="/tasks.js"></script>
   </body>
 </html>

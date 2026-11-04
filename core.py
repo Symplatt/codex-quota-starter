@@ -20,7 +20,8 @@ POLL_INTERVAL = 60
 ATTEMPT_LIMIT = 5
 RETRY_INTERVAL = 10
 RETRY_BUDGET = 60
-RECOVERY_INTERVAL = 20 * 60
+RECOVERY_INTERVAL = 30
+MAX_RECOVERY_INTERVAL = 300
 BEIJING = timezone(timedelta(hours=8))
 
 
@@ -28,6 +29,9 @@ def transient_connection_error(error):
     if isinstance(error, (TimeoutError, ConnectionError)):
         return True
     message = str(error).lower()
+    if any(text in message for text in ('unauthorized', 'forbidden', 'invalid_grant',
+                                        'invalid token', 'account changed during workspace routing')):
+        return False
     diagnostics = getattr(error, 'rpc_diagnostics', {})
     read_method = (diagnostics.get('method') in ('account/read', 'account/rateLimits/read')
                    or re.match(r'^account/(?:read|ratelimits/read)\s*[:：]', message))
@@ -42,7 +46,9 @@ def transient_connection_error(error):
         if status:
             return int(status[1]) in (408, 425, 429, 500, 502, 503, 504)
     return any(text in message for text in (
-        'workspace routing discovery', 'error sending request', 'timed out',
+        'workspace routing discovery timed out', 'workspace routing discovery failed',
+        'workspace routing discovery cancelled', 'retry account/read',
+        'error sending request', 'timed out',
         'connection reset', 'connection refused', 'connection closed',
         'temporarily unavailable', 'dns error', 'codex app server 已断开',
         'broken pipe', 'pipe has been ended', '管道已结束', '管道正在被关闭',
@@ -322,12 +328,13 @@ class Store:
             db.execute('INSERT OR REPLACE INTO state VALUES (?,?)', ('sending', 'true'))
             return attempt
 
-    def cancel_invalid_schedule(self, reset_at, now, *, used_percent=None):
+    def cancel_invalid_schedule(self, reset_at, now, *, used_percent=None, reconnected=False):
         # An idle window can report a rolling reset of now + five hours before
         # any request. That timestamp alone must not discard the user's plan.
         # Legacy snapshots without usage wait for a fresh read before cancelling.
-        if (isinstance(used_percent, bool) or not isinstance(used_percent, (int, float))
-                or not math.isfinite(used_percent) or not 0 < used_percent <= 100):
+        active_window = (not isinstance(used_percent, bool) and isinstance(used_percent, (int, float))
+                         and math.isfinite(used_percent) and 0 < used_percent <= 100)
+        if not active_window and not reconnected:
             return False
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -335,11 +342,19 @@ class Store:
             schedule = json.loads(row[0]) if row else None
             if not schedule or schedule['status'] != 'pending' or schedule['sendAt'] > reset_at:
                 return False
+            # A fresh reconnect supersedes the idle-window exception only when
+            # the planned send is strictly behind the newly reported reset.
+            if not active_window and schedule['sendAt'] == reset_at:
+                return False
             schedule.update(status='cancelled', cancelledAt=now, serverResetAt=reset_at,
                             reason='服务器刷新时间已达到或超过计划发送时间')
             db.execute("UPDATE state SET value=? WHERE key='schedule'", (json.dumps(schedule),))
             db.execute('INSERT INTO events(time,kind,detail) VALUES (?,?,?)',
                        (now, 'schedule_cancelled', json.dumps(schedule, ensure_ascii=False)))
+            notice = {'id': schedule.get('id') or uuid.uuid4().hex, 'time': now,
+                      'message': '定时计划已失效，已恢复自动'}
+            db.execute('INSERT OR REPLACE INTO state VALUES (?,?)',
+                       ('scheduleNotice', json.dumps(notice, ensure_ascii=False)))
             return True
 
     def record_submission(self, attempt, account, detail, now):
@@ -368,6 +383,26 @@ class Store:
         with self.connect() as db:
             rows = db.execute(f'SELECT * FROM {table} ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
         return [{**dict(row), 'detail': json.loads(row['detail'])} for row in rows]
+
+    def report_schedule(self, status, message, now, schedule_id=None, **extra):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute("SELECT value FROM state WHERE key='schedule'").fetchone()
+            schedule = json.loads(row[0]) if row else None
+            if (not schedule or schedule['sendAt'] > now or
+                    schedule_id and schedule['id'] != schedule_id or
+                    schedule['status'] not in ('pending', 'submitted') or
+                    status == 'waiting' and schedule['status'] != 'pending'):
+                return
+            report = [status, message]
+            if schedule.get('lastReport') == report:
+                return
+            schedule['lastReport'] = report
+            db.execute("UPDATE state SET value=? WHERE key='schedule'", (json.dumps(schedule),))
+            detail = dict(id=schedule['id'], sendAt=schedule['sendAt'], status=status,
+                          message=message, **extra)
+            db.execute('INSERT INTO events(time,kind,detail) VALUES (?,?,?)',
+                       (now, 'schedule_run', json.dumps(detail, ensure_ascii=False)))
 
     def activity(self, limit=50):
         with self.connect() as db:
@@ -407,7 +442,7 @@ class Store:
         with self.connect() as db:
             rows = db.execute('SELECT minute,checked,primary_used,secondary_used FROM quota_samples '
                               'WHERE account=? AND minute>=? AND minute<=? ORDER BY minute',
-                              (current['account'], math.floor(now / 60) * 60 - 86400, now)).fetchall()
+                              (current['account'], math.floor(now / 60) * 60 - 7 * 86400, now)).fetchall()
         return [{'minute': row['minute'], 'checkedAt': row['checked'],
                  'primaryRemaining': 100 - row['primary_used'],
                  'secondaryRemaining': None if row['secondary_used'] is None else 100 - row['secondary_used']}
@@ -456,15 +491,16 @@ class Engine:
                 and transient_connection_error(retry.get('error', ''))):
             self.stop_connection(recoverable=True)
             retry = self.connection()
-        if retry.get('recoveryAt') and retry.get('recoveryInterval') != RECOVERY_INTERVAL:
-            # Upgrade the old one-minute wait once, without postponing on every restart.
-            retry['recoveryAt'] = max(self.clock(), retry['recoveryAt'] - 60 + RECOVERY_INTERVAL)
+        if retry.get('recoveryAt') and retry.get('recoveryPolicy') != 'backoff-v1':
+            # Migrate a legacy twenty-minute wait once. Restarts must never move
+            # an already scheduled recovery farther into the future.
+            retry['recoveryAt'] = max(self.clock(), min(retry['recoveryAt'], self.clock() + RECOVERY_INTERVAL))
             retry['nextAt'] = retry['recoveryAt']
             retry['recoveryInterval'] = RECOVERY_INTERVAL
+            retry['recoveryPolicy'] = 'backoff-v1'
             self.store.set('connection', retry)
         if retry.get('stopped'):
-            self.status = (retry.get('error') if retry.get('upgradeRequired')
-                           else '已断开，请点击重新连接')
+            self.status = '已断开，请点击重新连接'
             self.phase = 'stopped'
         elif retry:
             self.next_poll = retry.get('nextAt', 0)
@@ -505,7 +541,6 @@ class Engine:
             self.pause_event.set()
         else:
             self.pause_event.clear()
-            self.next_poll = 0
         self.store.log('control', {'action': 'pause' if paused else 'resume'})
 
     def set_poll_while_paused(self, enabled):
@@ -515,6 +550,18 @@ class Engine:
         self.store.log('control', {'action': 'poll_while_paused', 'enabled': enabled}, self.clock())
         if enabled and self.store.get('paused', False):
             self.next_poll = 0
+
+    def resume(self):
+        self.set_paused(False)
+        if self.connection().get('stopped'):
+            return
+        # One quota response contains both windows. Queue a read-only first
+        # round on resume instead of waiting for the old minute deadline.
+        if not self.read_requested:
+            self.read_requested = 'resume'
+        if not self.lock.locked() and not self.connection().get('failures'):
+            self.next_poll = 0
+            self._phase('checking', '正在检测五小时及周额度')
 
     def polling_enabled(self):
         return (not self.store.get('paused', False)
@@ -527,8 +574,7 @@ class Engine:
             if self.read_requested == 'reconnect':
                 return
             self.close()
-            self.store.set('connection', {'startedAt': self.clock(), 'nextAt': self.clock(),
-                                          'failures': 0, 'manualReconnect': True})
+            self.store.set('connection', {})
             self.store.set('sending', False)
             self.status = '正在重新连接'
             self.phase = 'connecting'
@@ -543,17 +589,18 @@ class Engine:
         state = self.connection()
         state['stopped'] = not recoverable
         state['stopReason'] = 'network' if recoverable else 'manual_required'
-        if state.get('upgradeRequired'):
-            state['stopReason'] = 'cli_upgrade'
         state.pop('recoveryAt', None)
         if recoverable:
-            state['recoveryAt'] = max(self.clock(), state.get('recoveryStartedAt', self.clock()) + RECOVERY_INTERVAL)
+            rounds = min(state.get('recoveryRounds', 0) + 1, 5)
+            interval = min(RECOVERY_INTERVAL * 2 ** (rounds - 1), MAX_RECOVERY_INTERVAL)
+            state['recoveryRounds'] = rounds
+            state['recoveryAt'] = self.clock() + interval
             state['nextAt'] = state['recoveryAt']
-            state['recoveryInterval'] = RECOVERY_INTERVAL
+            state['recoveryInterval'] = interval
+            state['recoveryPolicy'] = 'backoff-v1'
         self.store.set('connection', state)
         self.next_poll = state['recoveryAt'] if recoverable else 0
         self.status = ('连接暂时不可用，等待自动重连' if recoverable
-                       else state.get('error') if state.get('upgradeRequired')
                        else '已断开，请点击重新连接')
         self.read_requested = None
         self.phase = 'retry_wait' if recoverable else 'stopped'
@@ -578,10 +625,9 @@ class Engine:
         self.store.set('connection', state)
         self.linked = False
         diagnostics = getattr(error, 'rpc_diagnostics', {})
-        # A completed read-only HTTP error leaves stdio usable. Keep the cached
-        # account routing throughout this bounded retry round; rebuilding it
-        # after a second 15-second HTTP failure can spend the final few seconds
-        # on discovery instead of a quota read. Exhaustion still closes it.
+        # A completed read-only HTTP error leaves the JSON-RPC stream usable.
+        # Keep its discovered account route within the bounded retry round;
+        # local timeouts/broken pipes require a fresh transport instead.
         keep_transport = (state['recoverable']
                           and not isinstance(error, (TimeoutError, ConnectionError))
                           and diagnostics.get('method') in ('account/read', 'account/rateLimits/read')
@@ -591,8 +637,7 @@ class Engine:
         diagnostics['reusedTransport'] = bool(keep_transport)
         self.store.log('connection_failure', {'error': state['error'], 'failures': state['failures'],
                                              'nextAt': state['nextAt'], 'diagnostics': diagnostics}, now)
-        if (state['upgradeRequired'] or state.get('autoRecovery')
-                or state['failures'] >= ATTEMPT_LIMIT or now >= state['startedAt'] + RETRY_BUDGET):
+        if state['upgradeRequired'] or state['failures'] >= ATTEMPT_LIMIT or now >= state['startedAt'] + RETRY_BUDGET:
             self.stop_connection(recoverable=state['recoverable'])
         else:
             self.next_poll = state['nextAt']
@@ -631,6 +676,8 @@ class Engine:
         if not self.lock.acquire(blocking=False):
             raise RuntimeError('正在检测或发送，请稍后再修改时间')
         try:
+            if self.store.get('paused', False):
+                raise ValueError('软件已暂停，请先恢复运行再修改时间')
             if self.read_requested:
                 raise RuntimeError('正在等待检测，请稍后再修改时间')
             if send_at is not None:
@@ -671,6 +718,23 @@ class Engine:
                                                self.store.guard_until()) + WINDOW) / 60) * 60 if server else None,
                 'maxRefreshAt': math.floor((self.clock() + 366 * 86400 + WINDOW) / 60) * 60}
 
+    def audit_schedule_due(self, reason=None):
+        plan = self.store.get('schedule')
+        if not plan or plan['status'] != 'pending' or self.clock() < plan['sendAt']:
+            return
+        if self.store.get('paused', False):
+            reason = '软件已暂停，定时请求尚未发送；恢复运行后重新校验'
+        elif self.connection().get('stopped'):
+            reason = '连接已停止，定时请求未发送：' + str(self.connection().get('error') or '请重新连接')
+        elif reason is None:
+            if self.connection().get('failures') or self.connection().get('recoveryAt'):
+                reason = '连接暂时不可用，等待重连后重新校验'
+            elif self.next_poll > self.clock() and not plan.get('lastReport'):
+                reason = '已到计划时间，等待下一轮额度检测后发送'
+            else:
+                return
+        self.store.report_schedule('waiting', reason, self.clock(), plan['id'])
+
     def select_candidate(self, snapshot, previous, now, manual):
         if self.store.cancel_invalid_schedule(snapshot['primary']['resetsAt'], now,
                                               used_percent=snapshot['primary']['usedPercent']):
@@ -689,7 +753,7 @@ class Engine:
 
     def _ok(self, status):
         previous = self.connection()
-        if previous.get('failures') or previous.get('autoRecovery') or previous.get('manualReconnect'):
+        if previous.get('failures') or previous.get('autoRecovery') or previous.get('readOnlyRecovery'):
             self.store.log('connection_recovered', {'message': '已恢复连接，账户和额度核验成功',
                                                    'failures': previous.get('failures', 0)}, self.clock())
         self.store.set('connection', {})
@@ -699,8 +763,6 @@ class Engine:
         if self.rpc:
             self.rpc.deadline = None
         self._phase('idle', status)
-        if not self.polling_enabled():
-            self.next_poll = 0
         return status
 
     def _read(self, expected=None):
@@ -718,14 +780,32 @@ class Engine:
         self.linked = True
         return (identity, raw.get('accountId')), snapshot
 
-    def _publish(self, identity, snapshot):
+    def _publish(self, identity, snapshot, *, reconnected=False):
+        refresh_weekly = (snapshot['primary']['usedPercent'] == 0 or reconnected or
+                          self.read_requested in ('check', 'reconnect', 'resume'))
+        if snapshot['primary']['usedPercent'] == 0 and self.rpc is not None:
+            # Every full reading gets one immediate follow-up. Reuse the validated
+            # read path so both windows and the account stay consistent; never loop
+            # if the follow-up is also full. All publish paths share this rule.
+            _, fresh = self._read(identity)
+            snapshot.update(fresh)
         account_key = hashlib.sha256(identity[0].encode()).hexdigest()[:24]
         now = self.clock()
+        weekly_key = 'weekly-reset:' + account_key
+        weekly = self.store.get(weekly_key)
+        # Explicit checks refresh the estimate even when five-hour quota is not
+        # full. Routine non-full polling keeps the last confirmed estimate.
+        if refresh_weekly:
+            weekly = {'resetsAt': (snapshot.get('secondary') or {}).get('resetsAt'),
+                      'checkedAt': now}
+            self.store.set(weekly_key, weekly)
         self.store.set('snapshot:' + account_key, snapshot)
-        self.store.set('current', {'checkedAt': now, 'account': account_key, **snapshot})
+        self.store.set('current', {'checkedAt': now, 'account': account_key, **snapshot,
+                                  'weeklyResetAt': (weekly or {}).get('resetsAt')})
         self.store.sample(account_key, snapshot, now)
         cancelled = self.store.cancel_invalid_schedule(
-            snapshot['primary']['resetsAt'], now, used_percent=snapshot['primary']['usedPercent'])
+            snapshot['primary']['resetsAt'], now, used_percent=snapshot['primary']['usedPercent'],
+            reconnected=reconnected)
         return account_key, cancelled
 
     def _wait_retry(self):
@@ -807,6 +887,7 @@ class Engine:
             return '检测或请求正在进行'
         attempt = None
         detail = {}
+        due_reason = None
         try:
             if not self.polling_enabled() and not (manual or check_only or self.read_requested):
                 self.status = '已暂停，自动额度检测已关闭'
@@ -819,11 +900,12 @@ class Engine:
                 if now < retry['recoveryAt']:
                     return self.status
                 retry = {'startedAt': now, 'nextAt': now, 'failures': 0,
-                         'autoRecovery': True, 'recoveryStartedAt': now, 'recoverable': True}
+                         'recoveryRounds': retry.get('recoveryRounds', 0),
+                         'readOnlyRecovery': True, 'recoverable': True}
                 self.store.set('connection', retry)
                 self.read_requested = 'reconnect'
             elif retry.get('autoRecovery'):
-                # A restart during a probe must not start another probe in that slot.
+                # An interrupted probe from a legacy version keeps its guard.
                 self.stop_connection(recoverable=True)
                 return self.status
             if retry and now >= retry['startedAt'] + RETRY_BUDGET:
@@ -839,11 +921,13 @@ class Engine:
             identity, snap = self._read()
             account_key = hashlib.sha256(identity[0].encode()).hexdigest()[:24]
             previous = self.store.get('snapshot:' + account_key)
-            _, cancelled = self._publish(identity, snap)
+            reconnected = requested == 'reconnect' or bool(retry.get('readOnlyRecovery'))
+            _, cancelled = self._publish(identity, snap, reconnected=reconnected)
             now = self.clock()
             self.store.log('check', {**snap, 'durationSeconds': round(now - started, 3)}, now)
             if requested or check_only:
                 self.read_requested = None
+                due_reason = '本轮为只读额度检测，定时请求等待后续自动调度'
                 message = '已连接，额度已更新' if requested == 'reconnect' else '当前额度已更新'
                 if self.store.get('paused', False):
                     message = '已暂停；' + message
@@ -873,11 +957,18 @@ class Engine:
             cycle, reason, schedule_id = self.select_candidate(fresh, snap, now, manual)
             if not cycle or self.store.get('paused', False):
                 return self._ok(reason if cycle is None else '已暂停')
+            # Read-only setup has completed successfully. Start the bounded send
+            # round here so slow quota/routing reads cannot leave a newly
+            # submitted turn with only the tail of the setup timeout.
+            self._ok('已连接，正在准备小额请求')
+            self.connect()
             detail = {'before': fresh, 'prepared': prepared, 'reason': reason,
                       'manual': manual, 'scheduleId': schedule_id}
             attempt = self.store.claim(account_key, cycle, now, detail, schedule_id)
             if attempt is None:
                 return self._ok('本周期已处理')
+            if schedule_id:
+                self.store.report_schedule('submitted', '已到计划时间，正在发送小额请求', self.clock(), schedule_id, attempt=attempt)
             status = self._send_reserved(attempt, account_key, identity, fresh, prepared, detail)
             if status == 'completed':
                 # Persist the acknowledged send before the separate read-only check.
@@ -899,6 +990,10 @@ class Engine:
             detail['finishedAt'] = self.clock()
             self.store.finish(attempt, account_key, status, detail, after, self.clock())
             self.store.log('trigger', {'attempt': attempt, 'status': status, **detail})
+            if schedule_id:
+                self.store.report_schedule(status, detail.get('stoppedReason') or detail['evidence'],
+                                           self.clock(), schedule_id, attempt=attempt,
+                                           afterError=detail.get('afterError'))
             self.store.set('sending', False)
             attempt = None
             if self.connection().get('stopped') or detail.get('afterError'):
@@ -914,9 +1009,13 @@ class Engine:
                 self.failed_connection(exc)
             if attempt is not None:
                 self.store.log('error', {'message': self.status, 'error': str(exc)[:1200]})
+                if detail.get('scheduleId'):
+                    self.store.report_schedule('unknown', '请求结果未知，未自动重复提交：' + str(exc)[:1200],
+                                               self.clock(), detail['scheduleId'], attempt=attempt)
             return self.status
         finally:
             try:
+                self.audit_schedule_due(due_reason or self.status)
                 self.store.set('health', {'status': self.status, 'updatedAt': self.clock(), 'nextPoll': self.next_poll})
             finally:
                 self.lock.release()

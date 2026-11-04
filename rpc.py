@@ -22,7 +22,9 @@ def configure_proxy(env):
     """Resolve the active Windows proxy before spawning any Codex HTTP client."""
     override = env.get('QUOTA_HTTP_PROXY')
     system = (urllib.request.getproxies_registry() if os.name == 'nt' else {})
-    source = 'override' if override else 'windows' if system else 'environment'
+    inherited = any(k.lower() in ('http_proxy', 'https_proxy', 'all_proxy') and v
+                    for k, v in env.items())
+    source = 'override' if override else 'windows' if system else 'environment' if inherited else 'default'
     proxies = ({'http': override, 'https': override} if override else system)
     if proxies:
         # Explorer/autostart can inherit old or missing shell variables. Use the
@@ -43,7 +45,7 @@ def configure_proxy(env):
     parsed = urlsplit(value if value and '://' in value else 'http://' + value) if value else None
     # Only log routing information; proxy credentials never enter diagnostics.
     return {'source': source, 'proxy': (f'{parsed.scheme}://{parsed.hostname}:{parsed.port or 80}'
-                                       if parsed and parsed.hostname else 'system/default')}
+                                       if parsed and parsed.hostname else 'default')}
 
 
 def find_codex():
@@ -91,11 +93,11 @@ class RPC:
                      'features.apps=false', 'features.plugins=false',
                      'features.memories=false', 'features.hooks=false',
                      'features.respect_system_proxy=false',
+                     'features.system_proxy_fallback=false',
                      'skills.max_context_tokens=1', 'service_tier="default"']
-        if self.transport['proxy'] != 'system/default':
-            # The proxy is already resolved explicitly. Bootstrap's five-second
-            # fallback would repeat WinHTTP/PAC discovery after slow responses.
-            overrides.append('features.system_proxy_fallback=false')
+        # Resolve static proxies here, or let reqwest use its normal direct/env
+        # route. Repeating WinHTTP/PAC discovery can hang even when Windows has
+        # no enabled proxy (notably at logon without shell proxy variables).
         # Disable user-configured MCP tools without exposing their configuration.
         home = Path(env.get('CODEX_HOME', str(Path.home() / '.codex')))
         config_path = home / 'config.toml'

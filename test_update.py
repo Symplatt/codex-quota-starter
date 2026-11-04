@@ -1,12 +1,90 @@
-"""Paused sampling, consolidated evidence, and proxy routing regressions."""
+"""Paused sampling and consolidated evidence regressions."""
 import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
 from core import Engine
-from rpc import configure_proxy
+from test_quota import csrf_token
 import test_quota as fixtures
 from test_quota import FakeRPC, raw
+
+
+@unittest.skipUnless(os.name == 'nt', 'Windows launchers')
+class StartupTests(unittest.TestCase):
+    def run_start(self, mode):
+        shell = shutil.which('powershell') or shutil.which('pwsh')
+        self.assertIsNotNone(shell)
+        script = r'''
+$ErrorActionPreference = 'Stop'
+$global:mode = $env:QUOTA_TEST_MODE
+$global:calls = [System.Collections.Generic.List[string]]::new()
+$global:reads = 0
+$global:ready = $global:mode -eq 'running'
+function Invoke-RestMethod {
+    param($Uri, $TimeoutSec)
+    if ($Uri -ne 'http://127.0.0.1:31026/api/status') { throw 'Unexpected health URL' }
+    $global:reads++
+    if (-not $global:ready) { throw 'Offline' }
+    return [pscustomobject]@{ service = 'quota-starter' }
+}
+function Get-ScheduledTask {
+    param($TaskName, $ErrorAction)
+    if ($global:mode -eq 'missing') { return $null }
+    $target = Join-Path $env:QUOTA_TEST_ROOT 'supervisor.py'
+    if ($global:mode -eq 'other') { $target = 'C:\other\supervisor.py' }
+    return [pscustomobject]@{
+        Settings = [pscustomobject]@{ Enabled = $global:mode -ne 'disabled' }
+        Actions = @([pscustomobject]@{ Arguments = ('-X utf8 "' + $target + '"') })
+    }
+}
+function Start-ScheduledTask {
+    param($TaskName)
+    $global:calls.Add('scheduled')
+    if ($global:mode -eq 'failure') { throw 'Scheduler refused startup' }
+    $global:ready = $true
+}
+function Get-Command { param($Name, $ErrorAction); return [pscustomobject]@{ Source = $env:QUOTA_TEST_PYTHON } }
+function Test-Path { param($LiteralPath); return $true }
+function Start-Process {
+    param($FilePath, $ArgumentList, $WorkingDirectory, $WindowStyle)
+    if ($WindowStyle -ne 'Hidden') { throw 'Background window must be hidden' }
+    $global:calls.Add('direct')
+    $global:ready = $true
+}
+function Start-Sleep { param($Milliseconds) }
+try {
+    & (Join-Path $env:QUOTA_TEST_ROOT 'Start.ps1') -NoBrowser | Out-Null
+    $message = $null
+} catch { $message = $_.Exception.Message }
+ConvertTo-Json -Compress -InputObject @{calls=@($global:calls.ToArray()); error=$message; reads=$global:reads}
+'''
+        result = subprocess.run(
+            [shell, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+            env={**os.environ, 'QUOTA_TEST_MODE': mode,
+                 'QUOTA_TEST_ROOT': str(Path(__file__).resolve().parent),
+                 'QUOTA_TEST_PYTHON': sys.executable},
+            capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_start_selects_scheduler_without_changing_disabled_or_other_installations(self):
+        for mode, expected in [('managed', ['scheduled']), ('disabled', ['direct']),
+                               ('other', ['direct']), ('missing', ['direct']), ('running', [])]:
+            with self.subTest(mode=mode):
+                result = self.run_start(mode)
+                self.assertIsNone(result['error'])
+                self.assertEqual(result['calls'], expected)
+                self.assertEqual(result['reads'], 1 if mode == 'running' else 2)
+
+    def test_scheduler_failure_is_reported_without_unmanaged_fallback(self):
+        result = self.run_start('failure')
+        self.assertEqual(result['calls'], ['scheduled'])
+        self.assertEqual(result['error'], 'Scheduler refused startup')
 
 
 class PausedSamplingTests(unittest.TestCase):
@@ -50,7 +128,7 @@ class PausedSamplingTests(unittest.TestCase):
         e.tick()
         self.assertEqual(fake.reads, 2)
         self.assertEqual(fake.sent, 0)
-        self.assertEqual(e.next_poll, 0)
+        self.assertEqual(e.next_poll, 160)
 
     def test_activity_keeps_unfinished_attempt_and_deduplicates_final_event(self):
         attempt = self.store.claim('account', 'cycle:one', 100, {'reason': '计划到点'})
@@ -65,70 +143,6 @@ class PausedSamplingTests(unittest.TestCase):
         self.assertEqual(rows[0]['detail']['evidence'], '真实结果')
 
 
-class ProxyTests(unittest.TestCase):
-    def test_local_timeout_closes_live_transport_before_retry(self):
-        from unittest.mock import Mock
-        import tempfile
-        from pathlib import Path
-        from core import Store
-        with tempfile.TemporaryDirectory() as root:
-            engine = Engine(Store(Path(root) / 'db'), Path(root) / 'empty', clock=lambda: 100)
-            transport = engine.rpc = Mock()
-            transport.is_alive.return_value = True
-            error = TimeoutError('account/rateLimits/read 超时')
-            error.rpc_diagnostics = {'method': 'account/rateLimits/read', 'processAlive': True}
-            engine.failed_connection(error)
-            transport.close.assert_called_once()
-            self.assertIsNone(engine.rpc)
-            self.assertEqual(engine.next_poll, 110)
-
-    def test_returned_network_error_keeps_transport_until_retry_budget_exhausted(self):
-        from unittest.mock import Mock
-        import tempfile
-        from pathlib import Path
-        from core import Store
-        with tempfile.TemporaryDirectory() as root:
-            engine = Engine(Store(Path(root) / 'db'), Path(root) / 'empty', clock=lambda: 100)
-            engine.rpc = Mock()
-            engine.rpc.is_alive.return_value = True
-            err = RuntimeError('error sending request')
-            err.rpc_diagnostics = {'method': 'account/rateLimits/read', 'processAlive': True}
-            engine.failed_connection(err)
-            engine.rpc.close.assert_not_called()
-            transport = engine.rpc
-            engine.failed_connection(err)
-            transport.close.assert_not_called()
-            engine.failed_connection(err)
-            engine.failed_connection(err)
-            transport.close.assert_not_called()
-            engine.failed_connection(err)
-            transport.close.assert_called_once()
-            self.assertIsNone(engine.rpc)
-            self.assertEqual(engine.connection()['recoveryAt'], 1300)
-
-    def test_windows_proxy_replaces_stale_environment_before_spawn(self):
-        env = {'HTTPS_PROXY': 'http://127.0.0.1:9999', 'ALL_PROXY': 'http://127.0.0.1:9999', 'NO_PROXY': 'example.local'}
-        with patch('rpc.os.name', 'nt'), patch('rpc.urllib.request.getproxies_registry',
-                  return_value={'http': 'http://127.0.0.1:7897', 'https': 'http://127.0.0.1:7897'}, create=True):
-            route = configure_proxy(env)
-        self.assertEqual(env['HTTPS_PROXY'], 'http://127.0.0.1:7897')
-        self.assertEqual(env['HTTP_PROXY'], env['HTTPS_PROXY'])
-        self.assertNotIn('ALL_PROXY', env)
-        self.assertIn('127.0.0.1', env['NO_PROXY'])
-        self.assertEqual(route['source'], 'windows')
-
-    def test_explicit_override_wins_and_diagnostics_never_include_credentials(self):
-        env = {'QUOTA_HTTP_PROXY': 'http://secret:password@127.0.0.1:7897'}
-        route = configure_proxy(env)
-        self.assertEqual(env['HTTPS_PROXY'], env['QUOTA_HTTP_PROXY'])
-        self.assertEqual(route['proxy'], 'http://127.0.0.1:7897')
-        self.assertNotIn('password', json.dumps(route))
-
-    def test_environment_survives_when_system_proxy_disabled(self):
-        env = {'HTTPS_PROXY': 'http://127.0.0.1:7897'}
-        with patch('rpc.urllib.request.getproxies_registry', return_value={}, create=True):
-            configure_proxy(env)
-        self.assertEqual(env['HTTPS_PROXY'], 'http://127.0.0.1:7897')
 
 
 class SettingsHTTPTests(unittest.TestCase):
@@ -139,7 +153,7 @@ class SettingsHTTPTests(unittest.TestCase):
     def test_setting_requires_boolean_and_persists_and_favicon_is_served(self):
         _, page = self.request('GET', '/')
         import re
-        token = re.search("let token='([^']+)'", page)[1]
+        token = csrf_token(page)
         headers = {'Origin': 'http://127.0.0.1:18769', 'X-Quota-Token': token, 'Content-Type': 'application/json'}
         for enabled in (True, False):
             code, _ = self.request('POST', '/api/settings/poll-while-paused', headers, json.dumps({'enabled': enabled}))

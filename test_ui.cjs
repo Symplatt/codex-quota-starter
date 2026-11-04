@@ -7,18 +7,56 @@ function setup(storage={},preferences={}){
   const elements=new Map();
   function element(){return {value:'',textContent:'',disabled:false,children:[],options:[],attributes:{},setAttribute(key,value){this.attributes[key]=value;},querySelector(){return null;},addEventListener(){},append(child){this.children.push(child);this.options.push(child);if(!this.value)this.value=child.value;},replaceChildren(){this.children=[];},showModal(){},close(){}};}
   const intervals=[];let response,requests=0;
-  const c=vm.createContext({document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,createElementNS:element},Intl,Date,JSON,AbortController,setTimeout,clearTimeout,setInterval(f){intervals.push(f);},sessionStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v},localStorage:{getItem:k=>preferences[k]||null,setItem:(k,v)=>preferences[k]=v},fetch:()=>{requests++;return new Promise(resolve=>response=resolve);}});
+  const c=vm.createContext({document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,createElementNS:element},Intl,Date:class extends Date {},JSON,AbortController,setTimeout,clearTimeout,setInterval(f){intervals.push(f);},sessionStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v},localStorage:{getItem:k=>preferences[k]||null,setItem:(k,v)=>preferences[k]=v},fetch:()=>{requests++;return new Promise(resolve=>response=resolve);}});
   vm.runInContext(source,c);
   return {c,e:id=>elements.get(id),run:code=>vm.runInContext(code,c),respond:async s=>{response({ok:true,json:async()=>s});await vm.runInContext('refreshPromise',c);},requests:()=>requests,storage};
 }
 function status(){const at=Date.parse('2090-10-09T19:09:00+08:00')/1000;return {service:'quota-starter',version:'1.4.5',paused:false,busy:false,status:'等待重置时间',current:{primary:{usedPercent:20,resetsAt:at},checkedAt:at-3600},timing:{serverResetAt:at,minSendAt:at+1,minRefreshAt:at+18060,maxRefreshAt:at+366*86400,sendAt:at+2,estimatedResetAt:at+18002,schedule:null},nextPoll:at,attempts:[],events:[],autostart:{available:true,enabled:true}};}
+
+test('pause disables timing edits and grays all timeline events until resumed',async()=>{
+ const p=setup(),s=status();s.paused=true;s.timing.mode='manual';s.timing.schedule={status:'pending'};await p.respond(s);
+ assert.equal(p.e('choose-time').disabled,true);assert.equal(p.e('save-time').disabled,true);
+ assert.equal(p.e('auto-time').disabled,true);
+ assert.equal(p.e('timeline-handle').disabled,true);
+ assert.equal(p.e('schedule-timeline').attributes['data-paused'],'true');
+ p.run('refresh()');await p.respond({...s,paused:false});
+ assert.equal(p.e('choose-time').disabled,false);
+ assert.equal(p.e('auto-time').disabled,false);
+ assert.equal(p.e('schedule-timeline').attributes['data-paused'],'false');
+});
+
+test('scheduled refresh activity shows planned time and actual result or waiting reason',async()=>{
+ const p=setup();await p.respond(status());
+ p.c.event={kind:'schedule_run',detail:{status:'completed',sendAt:100,message:'请求完成；周期起点未验证'}};
+ assert.equal(p.run('activityText(event)[0]'),'定时刷新请求已完成');
+ assert.match(p.run('activityText(event)[1]'),/计划发送时间/);
+ assert.match(p.run('activityText(event)[1]'),/周期起点未验证/);
+});
+
+test('hour and minute wheels respond more quickly with bounded steps across delta modes',async()=>{
+ const p=setup();await p.respond(status());
+ for(const index of [0,1,2])assert.equal(p.run(`wheelSteps(${index},{deltaY:120,deltaMode:0})`),1);
+ for(const index of [3,4]){
+   assert.equal(p.run(`wheelSteps(${index},{deltaY:120,deltaMode:0})`),index===3?2:3);
+   assert.equal(p.run(`wheelSteps(${index},{deltaY:-120,deltaMode:0})`),index===3?2:3);
+   assert.equal(p.run(`wheelSteps(${index},{deltaY:3,deltaMode:1})`),1);
+   assert.equal(p.run(`wheelSteps(${index},{deltaY:10000,deltaMode:0})`),index===3?3:5);
+ }
+});
+
+test('task lifecycle events show readable names and failure reasons in activity',async()=>{
+ const p=setup(),s=status();s.activity=[{time:1,kind:'task',detail:{action:'failed',title:'更新软件',id:'task-id',cwd:'C:\\project',reason:'目录不可用'}}];
+ await p.respond(s);const row=p.e('activity').children[0];
+ assert.equal(row.children[1].textContent,'预设任务失败');
+ assert.match(row.children[2].textContent,/任务：更新软件/);assert.match(row.children[2].textContent,/目录不可用/);
+});
 
 test('error banner shows current failures safely and disappears after recovery',async()=>{
  const p=setup(),s=status();await p.respond(s);assert.equal(p.e('error-banner').hidden,true);
  s.connection={stopped:true,upgradeRequired:true,error:'Codex CLI 版本过低（0.144.4） <script>test</script>'};
  p.run('refresh()');await p.respond(s);
  assert.equal(p.e('error-banner').hidden,false);assert.equal(p.e('error-banner').textContent,s.connection.error);
- assert.equal(p.e('status').textContent,'Codex CLI 需要升级');
+ assert.equal(p.e('status').textContent,'已断开，等待重新连接');
  p.run('refresh()');await p.respond({...status(),events:[{kind:'connection_failure',detail:{error:'old'}}]});
  assert.equal(p.e('error-banner').hidden,true);assert.equal(p.e('error-banner').textContent,'');
  await p.run('fetch=async()=>{throw Error("offline")};refresh();');
@@ -44,6 +82,16 @@ test('timeline handle follows live availability including stale sessions and pen
  p.run("pendingActions.clear();connected=false;updateControls()");assert.equal(p.e('timeline-handle').disabled,true);
 });
 
+test('timing edits remain available during detection and only real queued errors show a banner',async()=>{
+ const p=setup(),s={...status(),busy:true,phase:'checking'};await p.respond(s);
+ assert.equal(p.e('choose-time').disabled,false);assert.equal(p.e('timeline-handle').disabled,false);
+ assert.equal(p.e('error-banner').hidden,true);
+ s.scheduleQueue={pending:1,last:{status:'queued'}};p.run('refresh()');await p.respond(s);
+ assert.equal(p.e('error-banner').hidden,true);
+ s.scheduleQueue={pending:0,last:{status:'failed',error:'时间已失效'}};p.run('refresh()');await p.respond(s);
+ assert.equal(p.e('error-banner').textContent,'时间已失效');
+});
+
 test('minute chart keeps gaps unknown and reports consumption separately from recovery',async()=>{
  const p=setup(),s=status();await p.respond(s);
  p.c.points=[{minute:0,primaryRemaining:90},{minute:60,primaryRemaining:88},{minute:180,primaryRemaining:85},{minute:240,primaryRemaining:100}];
@@ -53,24 +101,34 @@ test('minute chart keeps gaps unknown and reports consumption separately from re
  s.quotaHistory=[{minute:Math.floor(Date.now()/60000)*60,primaryRemaining:60,secondaryRemaining:null}];
  p.run('refresh()');await p.respond(s);
  assert.equal(p.e('chart-empty').hidden,true);assert.match(p.e('quota-chart-svg').attributes['aria-label'],/已记录 1 分钟/);
- assert.ok(p.e('quota-chart-svg').children.some(c=>c.attributes.fill==='#315c43'));
+ assert.ok(p.e('quota-chart-svg').children.some(c=>c.attributes.class==='chart-line'&&c.attributes.d.endsWith('l0 0')));
  p.e('chart-quota').value='secondaryRemaining';p.run('renderChart()');assert.equal(p.e('chart-empty').hidden,false);
 });
 
 test('smooth line preserves steep drops, extrema, and disconnect gaps',async()=>{
  const p=setup();await p.respond(status());
- p.c.points=[{minute:0,value:90,delta:null},{minute:60,value:89,delta:-1},{minute:120,value:60,delta:-29},{minute:180,value:61,delta:1},{minute:300,value:40,delta:null}];
- const paths=JSON.parse(p.run('JSON.stringify(chartSegments(points,v=>v,v=>v))'));
+ p.c.points=[{at:0,value:90,delta:null},{at:60,value:89,delta:-1},{at:120,value:60,delta:-29},{at:180,value:61,delta:1},{at:300,value:40,delta:null}];
+ const path=p.run('chartPath(points,v=>v,v=>v)');
+ const paths=path.match(/C[^MC]+/g);
  assert.equal(paths.length,3);
- assert.match(paths[1].d,/M60 89 C/);assert.ok(paths[1].d.endsWith(',120 60'));
+ assert.ok(path.startsWith('M0 90 C'));assert.ok(path.endsWith('M300 40 l0 0'));
+ assert.ok(paths[1].trim().endsWith(',120 60'));
  // Every control stays between the true endpoints; there is no invented peak/trough.
  for(let i=0;i<paths.length;i++){
-  const numbers=paths[i].d.match(/-?[\d.]+/g).map(Number),min=Math.min(p.c.points[i].value,p.c.points[i+1].value),max=Math.max(p.c.points[i].value,p.c.points[i+1].value);
-  assert.ok(numbers[3]>=min&&numbers[3]<=max);assert.ok(numbers[5]>=min&&numbers[5]<=max);
+  const numbers=paths[i].match(/-?[\d.]+/g).map(Number),min=Math.min(p.c.points[i].value,p.c.points[i+1].value),max=Math.max(p.c.points[i].value,p.c.points[i+1].value);
+  assert.ok(numbers[1]>=min&&numbers[1]<=max);assert.ok(numbers[3]>=min&&numbers[3]<=max);
  }
- const scale=JSON.parse(p.run('JSON.stringify(chartScale(points))'));assert.ok(scale.low<=40&&scale.high>=90);
- p.c.points=[{value:99},{value:98}];const close=JSON.parse(p.run('JSON.stringify(chartScale(points))'));
- assert.ok(close.high-close.low>=20);assert.equal(close.high,100);assert.ok(close.step<=5);
+});
+
+test('chart fixes zero-to-hundred bounds and switches tick density below 200px plot height',async()=>{
+ const p=setup(),s=status(),end=Math.floor(Date.now()/60000)*60;await p.respond(s);
+ for(const height of [60,180,236,237,238,600])for(const quota of ['primaryRemaining','secondaryRemaining'])for(const values of [[],[98,99],[0,100],[40,90]]){
+  const step=height-37<200?20:10,expected=Array.from({length:100/step+1},(_,i)=>i*step+'%');
+  p.e('quota-chart').clientHeight=height;p.e('chart-quota').value=quota;
+  p.c.history=values.map((value,i)=>({minute:end-(values.length-1-i)*60,[quota]:value}));
+  p.run('snapshot.quotaHistory=history;renderChart()');
+  assert.deepEqual(p.e('quota-chart-svg').children.filter(n=>String(n.textContent).endsWith('%')).map(n=>n.textContent),expected);
+ }
 });
 
 test('consolidated log omits routine reads and preserves small request evidence',async()=>{
@@ -97,16 +155,16 @@ test('paused badge never claims background running even when still connected',as
 
 test('chart selections survive reload and a new browser session',async()=>{
  const preferences={},p=setup({},preferences);await p.respond(status());
- p.e('chart-window').value='1440';p.e('chart-quota').value='secondaryRemaining';p.run('rememberChartPreferences()');
+ p.e('chart-mode').value='plan';p.e('chart-quota').value='secondaryRemaining';p.run('rememberChartPreferences()');
  const reopened=setup({},preferences);await reopened.respond(status());
- assert.equal(reopened.e('chart-window').value,'1440');assert.equal(reopened.e('chart-quota').value,'secondaryRemaining');
- reopened.e('chart-window').value='60';reopened.run('rememberChartPreferences()');
- const again=setup({},preferences);await again.respond(status());assert.equal(again.e('chart-window').value,'60');assert.equal(again.e('chart-quota').value,'secondaryRemaining');
+ assert.equal(reopened.e('chart-mode').value,'plan');assert.equal(reopened.e('chart-quota').value,'secondaryRemaining');
+ reopened.e('chart-mode').value='history';reopened.run('rememberChartPreferences()');
+ const again=setup({},preferences);await again.respond(status());assert.notEqual(again.e('chart-mode').value,'plan');assert.equal(again.e('chart-quota').value,'secondaryRemaining');
 });
 
 test('invalid or unavailable chart storage never breaks the dashboard',async()=>{
  const preferences={'quota-starter:chart-preferences:v1':'{"window":"invalid","quota":"invalid"}'},p=setup({},preferences);await p.respond(status());
- assert.notEqual(p.e('chart-window').value,'invalid');assert.notEqual(p.e('chart-quota').value,'invalid');
+ assert.notEqual(p.e('chart-mode').value,'invalid');assert.notEqual(p.e('chart-quota').value,'invalid');
  p.run('localStorage.setItem=()=>{throw Error("blocked")};rememberChartPreferences()');assert.ok(p.e('quota-chart-svg').children.length>0);
  const corrupt=setup({},{'quota-starter:chart-preferences:v1':'{broken'});await corrupt.respond(status());assert.equal(corrupt.e('version').textContent,'v1.4.5');
 });
@@ -375,9 +433,153 @@ test('quota rings show live values, clamp percentages and handle missing weekly 
  const p=setup(),s=status();s.current.secondary={usedPercent:68,windowDurationMins:10080};await p.respond(s);
  assert.equal(p.e('weekly').textContent,'32%');
  assert.equal(p.e('weekly-ring').attributes.style,'--progress:32');
- assert.equal(p.e('weekly-copy').textContent,'近 7 天剩余额度占比');
+ assert.equal(p.e('weekly-copy').textContent,'预计更新待检测');
+ s.current.weeklyResetAt=s.current.primary.resetsAt;
+ p.run('refresh()');await p.respond(s);
+ assert.equal(p.e('weekly-copy').textContent,'更新：'+p.run('time(snapshot.current.weeklyResetAt).split(" ")[0]'));
+ assert.equal(p.e('weekly-copy').title,'预计更新：'+p.run('time(snapshot.current.weeklyResetAt)'));
  p.run("renderQuota('weekly',null)");assert.equal(p.e('weekly').textContent,'—');
  assert.equal(p.e('weekly-ring').attributes.style,'--progress:0');
  p.run("renderQuota('remaining',{usedPercent:150})");assert.equal(p.e('remaining').textContent,'0%');
  assert.equal(p.e('remaining-copy').textContent,'额度已用尽');
+});
+
+test('weekly update label switches from date to Beijing clock below 24 hours',async()=>{
+ const p=setup();await p.respond(status());
+ const now=Date.parse('2026-10-23T23:30:00+08:00')/1000;p.c.labelNow=now;
+ for(const offset of [7*86400,86401,86400,86399,3600,1,0,-1]){
+  p.c.labelAt=now+offset;
+  assert.equal(p.run('weeklyResetText(labelAt,labelNow)'),p.run(offset>=86400?'time(labelAt).split(" ")[0]':'clockTime(labelAt)'));
+ }
+ assert.equal(p.run('weeklyResetText(labelNow+3600,labelNow)'),'00:30:00');
+ p.run('renderQuota("weekly",{usedPercent:20},Date.now()/1000+3600)');
+ assert.match(p.e('weekly-copy').textContent,/^更新：\d{2}:\d{2}:\d{2}$/);
+ p.run('renderQuota("weekly",{usedPercent:20},null)');assert.equal(p.e('weekly-copy').textContent,'预计更新待检测');assert.equal(p.e('weekly-copy').title,'');
+ p.run('renderQuota("weekly",null,labelAt)');assert.equal(p.e('weekly-copy').textContent,'未返回额度');assert.equal(p.e('weekly-copy').title,'');
+});
+
+test('schedule auto recovery notice appears once and ignores stale notices',async()=>{
+ const p=setup(),s=status();s.scheduleNotice={id:'plan-one',time:Date.now()/1000,message:'定时计划已失效，已恢复自动'};
+ await p.respond(s);assert.equal(p.e('toast').textContent,s.scheduleNotice.message);
+ p.run("document.getElementById('toast').textContent='other operation';refresh()");await p.respond(s);
+ assert.equal(p.e('toast').textContent,'other operation');
+ const reopened=setup(p.storage);await reopened.respond(s);assert.notEqual(reopened.e('toast')?.textContent,s.scheduleNotice.message);
+ s.scheduleNotice={...s.scheduleNotice,id:'old-plan',time:Date.now()/1000-121};
+ p.run('refresh()');await p.respond(s);assert.equal(p.e('toast').textContent,'other operation');
+});
+
+test('only statistics height absorbs available viewport space, including below the old cutoff',async()=>{
+ const p=setup();await p.respond(status());
+ p.run(`window={innerHeight:600,innerWidth:1280,scrollY:100};
+   getComputedStyle=()=>({getPropertyValue:()=> '20'});
+   document.getElementById('quota-chart-panel').style={};
+   document.getElementById('quota-chart-panel').getBoundingClientRect=()=>({top:352});
+   fitChartCard();`);
+ assert.equal(p.e('quota-chart-panel').style.height,'128px');
+ p.run('window.innerWidth=1000;window.innerHeight=1080;document.getElementById("quota-chart-panel").getBoundingClientRect=()=>({top:707});fitChartCard()');
+ assert.equal(p.e('quota-chart-panel').style.height,'253px');
+ assert.equal(p.e('timeline-reset-at').textContent,'19:09:00');
+});
+
+test('error banners shift the statistics card without reducing its height',async()=>{
+ const p=setup();await p.respond(status());
+ p.run(`window={innerHeight:1080,scrollY:0};
+   getComputedStyle=()=>({getPropertyValue:key=>key==='margin-bottom'?'0':'20'});
+   document.getElementById('quota-chart-panel').style={};
+   document.getElementById('quota-chart-panel').getBoundingClientRect=()=>({top:500});
+   fitChartCard();`);
+ assert.equal(p.e('quota-chart-panel').style.height,'560px');
+ for (const height of [56,200,600]) {
+  p.run(`document.getElementById('error-banner').hidden=false;
+    document.getElementById('error-banner').getBoundingClientRect=()=>({height:${height}});
+    document.getElementById('quota-chart-panel').getBoundingClientRect=()=>({top:${500+height+20}});
+    fitChartCard();`);
+  assert.equal(p.e('quota-chart-panel').style.height,'560px');
+ }
+ p.run('window.innerHeight=900;fitChartCard()');
+ assert.equal(p.e('quota-chart-panel').style.height,'380px');
+ p.run(`document.getElementById('error-banner').hidden=true;
+   document.getElementById('quota-chart-panel').getBoundingClientRect=()=>({top:500});fitChartCard()`);
+ assert.equal(p.e('quota-chart-panel').style.height,'380px');
+});
+
+test('software information renders the current backend installation path as text',async()=>{
+ const p=setup(),s=status();s.installationPath='E:\\源码 & <目录>\\quota-starter';
+ await p.respond(s);assert.equal(p.e('installation-path').textContent,s.installationPath);
+ p.run('refresh()');await p.respond(status());assert.equal(p.e('installation-path').textContent,'—');
+});
+
+test('disconnected quota labels never claim requests can currently be sent',async()=>{
+ const p=setup(),s=status();s.linked=false;await p.respond(s);
+ assert.equal(p.e('remaining-copy').textContent,'连接中断，显示上次额度');
+ s.linked=true;p.run('refresh()');await p.respond(s);assert.equal(p.e('remaining-copy').textContent,'可正常发送请求');
+ p.run('showOffline()');assert.equal(p.e('remaining-copy').textContent,'连接中断，显示上次额度');
+});
+
+
+test('seven-day chart restores the legacy quota selection and draws an hour at a time',async()=>{
+ const p=setup({},{'quota-starter:chart-preferences:v1':'{"window":"1440","quota":"secondaryRemaining"}'});
+ const s=status(),end=Math.floor(Date.now()/60000)*60;
+ s.quotaHistory=Array.from({length:10081},(_,i)=>({minute:end-(10080-i)*60,secondaryRemaining:80}));
+ await p.respond(s);assert.equal(p.e('chart-quota').value,'secondaryRemaining');
+ const labels=p.e('quota-chart-svg').children.filter(n=>/^\d{2}\/\d{2}$/.test(n.textContent));
+ assert.ok(labels.length>=6 && labels.length<=9);
+ assert.ok(p.e('quota-chart-svg').children.length<200);
+ assert.equal(p.e('quota-chart-svg').children.filter(n=>n.attributes.class==='chart-hit').length,1);
+ p.c.rows=[{minute:60,secondaryRemaining:95},{minute:120,secondaryRemaining:92},{minute:3660,secondaryRemaining:80},{minute:10860,secondaryRemaining:75}];
+ const points=JSON.parse(p.run("JSON.stringify(chartData(rows,0,14400,'secondaryRemaining'))"));
+ assert.deepEqual(points.map(({at,value,delta})=>[at,value,delta]),[[3600,92,null],[7200,80,-12],[14400,75,null]]);
+});
+
+test('planning anchors to the quota reset and splits the axis at the current time',async()=>{
+ const p=setup(),s=status(),now=Date.parse('2026-11-05T00:09:00+08:00')/1000,reset=now+3600,start=reset-18000;
+ p.c.Date.now=()=>now*1000;
+ s.current.primary.resetsAt=reset;
+ s.quotaHistory=[{minute:start-60,primaryRemaining:20},{minute:start+60,primaryRemaining:93},{minute:now+60,primaryRemaining:45}];
+ await p.respond(s);
+ p.e('chart-mode').value='plan';p.run('renderChart()');
+ const svg=p.e('quota-chart-svg'),pace=svg.children.find(n=>n.attributes.class==='chart-pace').attributes;
+ const elapsed=svg.children.find(n=>n.attributes.class==='chart-axis-line').attributes;
+ const future=svg.children.find(n=>n.attributes.class==='chart-axis-line chart-axis-future').attributes;
+ assert.equal(pace.x1,elapsed.x1);assert.equal(pace.x2,future.x2);assert.equal(pace.y1,12);
+ assert.equal(pace.y2,future.y2);assert.equal(elapsed.x2,future.x1);
+ assert.equal((elapsed.x2-pace.x1)/(pace.x2-pace.x1),0.8);
+ assert.match(svg.attributes['aria-label'],/已记录 1 分钟/);
+ assert.deepEqual(svg.children.filter(n=>/^\d{2}\/\d{2} \d{2}:\d{2}$/.test(n.textContent)).map(n=>n.textContent),
+   ['11/04 20:09','11/05 01:09']);
+});
+
+test('weekly planning uses the displayed reset time and labels both ends to the minute',async()=>{
+ const p=setup(),s=status(),now=Date.parse('2026-11-08T12:00:00+08:00');
+ p.c.Date.now=()=>now;
+ s.current.weeklyResetAt=Date.parse('2026-11-11T17:09:00+08:00')/1000;
+ s.current.secondary={usedPercent:30,resetsAt:s.current.weeklyResetAt+3600};
+ await p.respond(s);
+ p.e('chart-quota').value='secondaryRemaining';
+ p.e('chart-mode').value='plan';
+ p.run('changeChartPreferences()');
+ const labels=p.e('quota-chart-svg').children.filter(n=>/^\d{2}\/\d{2} \d{2}:\d{2}$/.test(n.textContent));
+ assert.deepEqual(labels.map(n=>n.textContent),['11/04 17:09','11/11 17:09']);
+ assert.equal(p.requests(),1);
+});
+
+test('switching to planning queues one read-only check when the selected reset is missing or expired',async()=>{
+ for(const [quota,expired] of [['secondaryRemaining',false],['primaryRemaining',true]]){
+  const p=setup(),s=status();
+  if(expired)s.current.primary.resetsAt=Math.floor(Date.now()/1000)-60;
+  s.busy=true;await p.respond(s);
+  const posts=[];p.c.posts=posts;p.c.next={...s,busy:false};
+  p.run("fetch=async (url,options)=>{if(options?.method==='POST')posts.push(url);return {ok:true,json:async()=>options?.method==='POST'?{message:'正在检测额度'}:next}}");
+  p.e('chart-quota').value=quota;
+  p.e('chart-mode').value='plan';
+  await p.run('changeChartPreferences()');
+  assert.deepEqual(posts,[]);
+  await p.run('refresh()');
+  await p.run('refresh()');
+  assert.deepEqual(posts,['/api/check']);
+  assert.equal(p.e('chart-empty').textContent,'暂无额度周期');
+  p.e('chart-mode').value='history';
+  await p.run('changeChartPreferences()');
+  assert.deepEqual(posts,['/api/check']);
+ }
 });

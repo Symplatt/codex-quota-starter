@@ -83,12 +83,13 @@ class StatisticsTests(unittest.TestCase):
         self.assertEqual(rows[1]['minute']-rows[0]['minute'], 120)
         self.assertEqual(rows[0]['secondaryRemaining'], 80)
 
-    def test_history_separates_accounts_and_bounds_to_last_day(self):
+    def test_history_separates_accounts_and_bounds_to_last_seven_days(self):
         now = self.now[0]
         self.store.set('current', {'account': 'one'})
-        for account, when in [('one', now-86460), ('one', now), ('two', now)]:
+        for account, when in [('one', now-7*86400-60), ('one', now-7*86400),
+                              ('one', now-86460), ('one', now), ('two', now), ('one', now+60)]:
             self.store.sample(account, normalize(raw()), when)
-        self.assertEqual(len(self.store.quota_history()), 1)
+        self.assertEqual(len(self.store.quota_history()), 3)
         self.store.set('current', {'account': 'two'})
         self.assertEqual(len(self.store.quota_history()), 1)
 

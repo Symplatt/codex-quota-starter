@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from core import Engine, normalize, RECOVERY_INTERVAL
-from rpc import RPC, CodexCompatibilityError
+from rpc import RPC
 import test_quota as fixtures
 from test_quota import FakeRPC, raw
 from windows_settings import Autostart
@@ -20,25 +20,6 @@ class AuditTests(unittest.TestCase):
     tearDown = fixtures.QuotaTests.tearDown
     engine = fixtures.QuotaTests.engine
 
-    def test_cli_upgrade_stops_immediately_and_survives_restart_then_reconnects(self):
-        message = 'Codex CLI 版本过低或接口不兼容（当前版本：0.144.4）'
-        fake = FakeRPC([CodexCompatibilityError(message), raw(149)])
-        e = self.engine(fake, 100)
-        e.tick(check_only=True)
-        self.assertEqual(e.status, message)
-        self.assertEqual(e.connection()['stopReason'], 'cli_upgrade')
-        self.assertTrue(e.connection()['upgradeRequired'])
-        self.assertEqual(e.connection()['failures'], 1)
-        restarted = self.engine(fake, 900)
-        self.assertEqual(restarted.status, message)
-        restarted.tick()
-        self.assertEqual(fake.reads, 1)
-        self.assertEqual(fake.sent, 0)
-        restarted.reconnect()
-        restarted.tick()
-        self.assertTrue(restarted.linked)
-        self.assertFalse(restarted.connection().get('upgradeRequired'))
-        self.assertEqual(fake.sent, 0)
 
     def schedule(self, engine):
         self.store.set('current', {'primary': {'resetsAt': 100}})
@@ -136,10 +117,14 @@ class AuditTests(unittest.TestCase):
             e.stop_connection()
             e.reconnect()
         e.tick()
-        self.assertEqual(self.store.get('schedule')['status'], 'pending')
-        self.assertEqual(fake.reads, 1)
+        self.assertEqual(self.store.get('schedule')['status'], 'cancelled' if action == 'reconnect' else 'pending')
+        self.assertEqual(fake.reads, 2)  # Full quota adds one weekly follow-up.
         self.assertEqual(fake.sent, 0)
         self.assertEqual(e.next_poll, 260)
+        if action == 'reconnect':
+            self.assertEqual(e.timing()['mode'], 'auto')
+            self.assertIn('恢复自动', self.store.get('scheduleNotice')['message'])
+            return
         e.sleeper(60)
         e.tick()
         self.assertEqual(fake.sent, 1)
@@ -149,18 +134,18 @@ class AuditTests(unittest.TestCase):
     def test_due_empty_schedule_survives_manual_read(self):
         self.assert_due_empty_schedule_survives_read_only('check')
 
-    def test_due_empty_schedule_survives_reconnect(self):
+    def test_due_empty_schedule_restores_auto_after_reconnect(self):
         self.assert_due_empty_schedule_survives_read_only('reconnect')
 
     def test_final_preflight_keeps_schedule_when_empty_reset_moves(self):
-        fake = FakeRPC([raw(100, 0), raw(18201, 0), raw(18200, 1)])
+        fake = FakeRPC([raw(100, 0), raw(100, 0), raw(18201, 0), raw(18201, 0), raw(18200, 1)])
         self.schedule(self.engine(fake, 110))
         self.engine(fake, 200).tick()
         self.assertEqual(fake.sent, 1)
         self.assertEqual(self.store.get('schedule')['status'], 'submitted')
 
     def test_schedule_cancels_when_rolling_empty_window_becomes_used(self):
-        fake = FakeRPC([raw(18110, 0), raw(18170, 1)])
+        fake = FakeRPC([raw(18110, 0), raw(18110, 0), raw(18170, 1)])
         e = self.engine(fake, 110)
         self.schedule(e)
         e.tick()
@@ -211,7 +196,7 @@ class AuditTests(unittest.TestCase):
             e.request_check()
         e.tick()
         self.assertEqual(fake.sent, 0)
-        self.assertEqual(fake.reads, 1)
+        self.assertEqual(fake.reads, 2)
         self.assertIsNone(e.read_requested)
         self.assertEqual(e.next_poll, 170)
 
@@ -361,24 +346,21 @@ class RecoveryTests(unittest.TestCase):
             if not engine.connection().get('recoveryAt'):
                 engine.sleeper(10)
 
-    def test_three_single_probes_per_hour_and_restart_preserves_wait(self):
+    def test_recovery_backoff_is_capped_and_restart_preserves_wait(self):
         fake = FakeRPC([TimeoutError('offline')])
         e = self.engine(fake, 100)
         self.failed_round(e)
-        self.assertEqual(fake.reads, 5)
-        start = e.clock()
-        for index in range(1, 4):
-            due = start + index * 1200
-            restarted = self.engine(fake, due - 1)
-            restarted.tick()
-            self.assertEqual(fake.reads, 4 + index)
-            restarted.sleeper(1)
-            restarted.tick()
-            self.assertEqual(fake.reads, 5 + index)
-            self.assertEqual(restarted.next_poll, due + 1200)
-            restarted.sleeper(10)
-            restarted.tick()
-            self.assertEqual(fake.reads, 5 + index)
+        for interval in (30, 60, 120, 240, 300, 300):
+            self.assertEqual(e.connection()['recoveryInterval'], interval)
+            due = e.next_poll
+            self.assertEqual(due, e.clock() + interval)
+            reads = fake.reads
+            e = self.engine(fake, due - 1)
+            e.tick()
+            self.assertEqual(fake.reads, reads)
+            e.sleeper(1)
+            self.failed_round(e)
+            self.assertEqual(fake.reads, reads + 5)
         self.assertEqual(fake.sent, 0)
 
     def test_restart_during_probe_does_not_repeat_it(self):
@@ -388,17 +370,17 @@ class RecoveryTests(unittest.TestCase):
         e = self.engine(fake, 101)
         e.tick()
         self.assertEqual(fake.reads, 0)
-        self.assertEqual(e.next_poll, 1300)
+        self.assertEqual(e.next_poll, 131)
 
     def test_old_one_minute_wait_migrates_once(self):
         self.store.set('connection', {'startedAt': 100, 'nextAt': 200, 'failures': 5,
                                      'stopped': False, 'recoveryAt': 200})
         fake = FakeRPC([raw()])
         e = self.engine(fake, 150)
-        self.assertEqual(e.next_poll, 1340)
-        self.assertEqual(self.engine(fake, 160).next_poll, 1340)
+        self.assertEqual(e.next_poll, 180)
+        self.assertEqual(self.engine(fake, 160).next_poll, 180)
 
-    def test_manual_reconnect_bypasses_twenty_minute_wait(self):
+    def test_manual_reconnect_bypasses_backoff_wait(self):
         fake = FakeRPC([TimeoutError('offline')] * 5 + [raw(20000, 0)])
         e = self.engine(fake, 100)
         self.failed_round(e)
@@ -407,6 +389,17 @@ class RecoveryTests(unittest.TestCase):
         self.assertTrue(e.linked)
         self.assertEqual(fake.sent, 0)
         self.assertEqual(e.next_poll, 200)
+
+    def test_first_successful_recovery_probe_records_recovered_event(self):
+        fake = FakeRPC([TimeoutError('offline')] * 5 + [raw(149)])
+        e = self.engine(fake, 100)
+        self.failed_round(e)
+        e.sleeper(RECOVERY_INTERVAL)
+        e.tick(check_only=True)
+        self.assertTrue(e.linked)
+        self.assertEqual(fake.sent, 0)
+        recovered = [r for r in self.store.activity() if r['kind'] == 'connection_recovered']
+        self.assertEqual(len(recovered), 1)
 
     def test_upstream_timeout_rebuilds_live_transport_before_read_only_retry(self):
         fake = FakeRPC([TimeoutError('routing timed out'), raw()])
@@ -442,13 +435,13 @@ class RecoveryTests(unittest.TestCase):
         self.store.set('current', {'primary': {'resetsAt': 149}})
         plan = e.set_schedule(150)
         self.failed_round(e)
-        self.assertEqual(e.next_poll, 1340)
+        self.assertEqual(e.next_poll, 170)
         self.assertEqual(self.store.get('schedule')['id'], plan['id'])
         e.sleeper(RECOVERY_INTERVAL)
         e.tick()
         self.assertTrue(e.linked)
         self.assertEqual(fake.sent, 0)  # Recovery first verifies the account/quota.
-        self.assertEqual(e.next_poll, 1400)
+        self.assertEqual(e.next_poll, 230)
         e.sleeper(60)
         e.tick()
         self.assertEqual(fake.sent, 1)
@@ -459,6 +452,9 @@ class RecoveryTests(unittest.TestCase):
     def test_recovery_respects_pause_and_changed_server_window(self):
         for paused, end in [(True, 149), (False, 3000)]:
             with self.subTest(paused=paused):
+                # Each case creates its plan while running, then exercises
+                # recovery under its own pause state, independent of the prior case.
+                self.store.set('paused', False)
                 self.store.set('connection', {})
                 self.store.set('current', {'primary': {'resetsAt': 149}})
                 fake = FakeRPC([TimeoutError('offline')] * 5 + [raw(end)])
@@ -484,12 +480,12 @@ class RecoveryTests(unittest.TestCase):
         fake = FakeRPC([raw(149)])
         e = self.engine(fake, 200)
         self.assertFalse(e.connection()['stopped'])
-        self.assertEqual(e.next_poll, 1400)
+        self.assertEqual(e.next_poll, 230)
         restarted = self.engine(fake, 220)
-        self.assertEqual(restarted.next_poll, 1400)
+        self.assertEqual(restarted.next_poll, 230)
         restarted.tick()
         self.assertEqual(fake.reads, 0)
-        restarted.sleeper(1180)
+        restarted.sleeper(10)
         restarted.tick()
         self.assertTrue(restarted.linked)
         self.assertEqual(self.store.get('schedule')['id'], 'existing')
@@ -527,40 +523,8 @@ class RecoveryTests(unittest.TestCase):
 
 
 class RPCTests(unittest.TestCase):
-    def test_quota_protocol_rejection_has_actual_cli_version_and_upgrade_command(self):
-        rpc = self.rpc()
-        rpc.codex_exe = r'C:\npm\codex.exe'
-        rpc.proc = Mock()
-        for code, message in [(-32600, 'Invalid request: invalid type: map, expected unit'),
-                              (-32602, 'unknown field excludeResetCreditDetails'),
-                              (-32601, 'Method not found')]:
-            rpc._send = lambda msg: rpc.pending[msg['id']].put({'error': {'code': code, 'message': message}})
-            with patch('rpc.subprocess.run', return_value=Mock(returncode=0, stdout='codex-cli 0.144.4\n')) as run:
-                with self.assertRaises(CodexCompatibilityError) as caught:
-                    rpc.limits()
-                self.assertIn('0.144.4', str(caught.exception))
-                self.assertIn('npm install -g @openai/codex@latest', str(caught.exception))
-                self.assertIn(rpc.codex_exe, str(caught.exception))
-                self.assertEqual(run.call_args.args[0][0], rpc.codex_exe)
-                self.assertEqual(caught.exception.rpc_diagnostics['method'], 'account/rateLimits/read')
-                self.assertEqual(caught.exception.rpc_diagnostics['serverError']['code'], code)
 
-    def test_other_rpc_errors_are_not_mislabeled_as_old_cli(self):
-        rpc = self.rpc()
-        rpc.proc = Mock()
-        for method, code, message in [('account/rateLimits/read', -32603, 'error sending request'),
-                                      ('account/rateLimits/read', -32600, 'unrelated invalid request'),
-                                      ('turn/start', -32602, 'expected unit')]:
-            rpc._send = lambda msg: rpc.pending[msg['id']].put({'error': {'code': code, 'message': message}})
-            with self.assertRaises(RuntimeError) as caught:
-                rpc.call(method)
-            self.assertNotIsInstance(caught.exception, CodexCompatibilityError)
 
-    def test_cli_version_failure_does_not_hide_upgrade_advice(self):
-        rpc = self.rpc()
-        rpc.codex_exe = r'C:\npm\codex.exe'
-        with patch('rpc.subprocess.run', side_effect=OSError('unavailable')):
-            self.assertIn('当前版本：无法读取', str(rpc.compatibility_error()))
 
     def rpc(self):
         rpc = object.__new__(RPC)
