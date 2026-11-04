@@ -24,7 +24,7 @@ Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Wor
 
 ### 下载并安装
 
-1. 打开 [1.8.0 下载页](https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.8.0)，在 **Assets** 中下载 `quota-starter-1.8.0-windows.zip`，不要选择 `Source code`。
+1. 打开 [1.8.1 下载页](https://github.com/Symplatt/codex-quota-starter/releases/tag/v1.8.1)，在 **Assets** 中下载 `quota-starter-1.8.1-windows.zip`，不要选择 `Source code`。
 2. 右键 ZIP，选择 **全部解压**。
 3. 打开解压后的 `quota-starter` 文件夹，双击 **Install.cmd**，等待安装完成。不要直接从压缩包窗口运行。
 4. 双击桌面或开始菜单中的 **Quota Starter**，打开软件界面。
@@ -92,7 +92,7 @@ Quota Starter 是一个 Windows 后台工具，用于查看 ChatGPT Plus 的 Wor
 在「五小时额度」和「周额度」之间切换。五小时额度逐分钟绘制，周额度每小时取最后一次有效采样。纵轴固定为 0% 至 100%，缺测时段留空。悬停或聚焦图表后使用方向键可查看采样的北京时间、剩余额度和变化。额度和统计方式会在当前浏览器中保存。
 
 - 历程统计显示最近 5 小时或最近 7 天的剩余额度。
-- 规划统计从当前额度周期回满的时刻画到下一次重置。横轴的灰绿色表示已过去的时间，灰色表示未来。曲线高于灰色对角线表示消耗慢于平均速度，低于对角线表示消耗快于平均速度。
+- 规划统计以下次额度更新时间为终点，向前推 5 小时或 7 天作为起点。进入规划统计或切换统计目标时，如果所选额度缺少有效的下次更新时间，软件会重新检测一次。横轴两端显示北京时间的日期和时分，灰绿色表示已过去的时间，灰色表示未来。曲线高于灰色对角线表示消耗慢于平均速度，低于对角线表示消耗快于平均速度。
 
 统计复用现有检测，不额外发送模型请求；同一分钟以最后一次读取为准，关闭网页或重启后台保留采样。休眠、断网或未检测的分钟留空，跨缺口不计算变化；只显示当前账户的采样，升级前未采样的历史不补造。变化按服务器返回的百分比计算，单位为百分点，不代表精确 Token 数；检测仍在每轮完成后间隔60秒。
 
@@ -182,7 +182,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Stop.ps1
 
 ## 项目信息
 
-当前版本 **v1.8.0**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
+当前版本 **v1.8.1**。这是独立工具，并非 OpenAI 官方产品，采用 [MIT License](LICENSE)。
 
 - [版本更新记录](CHANGELOG.md)
 - [机制说明](MECHANISM.md)

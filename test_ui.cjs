@@ -532,7 +532,7 @@ test('seven-day chart restores the legacy quota selection and draws an hour at a
 });
 
 test('planning anchors to the quota reset and splits the axis at the current time',async()=>{
- const p=setup(),s=status(),now=1800000000,reset=now+3600,start=reset-18000;
+ const p=setup(),s=status(),now=Date.parse('2026-11-05T00:09:00+08:00')/1000,reset=now+3600,start=reset-18000;
  p.c.Date.now=()=>now*1000;
  s.current.primary.resetsAt=reset;
  s.quotaHistory=[{minute:start-60,primaryRemaining:20},{minute:start+60,primaryRemaining:93},{minute:now+60,primaryRemaining:45}];
@@ -545,4 +545,41 @@ test('planning anchors to the quota reset and splits the axis at the current tim
  assert.equal(pace.y2,future.y2);assert.equal(elapsed.x2,future.x1);
  assert.equal((elapsed.x2-pace.x1)/(pace.x2-pace.x1),0.8);
  assert.match(svg.attributes['aria-label'],/已记录 1 分钟/);
+ assert.deepEqual(svg.children.filter(n=>/^\d{2}\/\d{2} \d{2}:\d{2}$/.test(n.textContent)).map(n=>n.textContent),
+   ['11/04 20:09','11/05 01:09']);
+});
+
+test('weekly planning uses the displayed reset time and labels both ends to the minute',async()=>{
+ const p=setup(),s=status(),now=Date.parse('2026-11-08T12:00:00+08:00');
+ p.c.Date.now=()=>now;
+ s.current.weeklyResetAt=Date.parse('2026-11-11T17:09:00+08:00')/1000;
+ s.current.secondary={usedPercent:30,resetsAt:s.current.weeklyResetAt+3600};
+ await p.respond(s);
+ p.e('chart-quota').value='secondaryRemaining';
+ p.e('chart-mode').value='plan';
+ p.run('changeChartPreferences()');
+ const labels=p.e('quota-chart-svg').children.filter(n=>/^\d{2}\/\d{2} \d{2}:\d{2}$/.test(n.textContent));
+ assert.deepEqual(labels.map(n=>n.textContent),['11/04 17:09','11/11 17:09']);
+ assert.equal(p.requests(),1);
+});
+
+test('switching to planning queues one read-only check when the selected reset is missing or expired',async()=>{
+ for(const [quota,expired] of [['secondaryRemaining',false],['primaryRemaining',true]]){
+  const p=setup(),s=status();
+  if(expired)s.current.primary.resetsAt=Math.floor(Date.now()/1000)-60;
+  s.busy=true;await p.respond(s);
+  const posts=[];p.c.posts=posts;p.c.next={...s,busy:false};
+  p.run("fetch=async (url,options)=>{if(options?.method==='POST')posts.push(url);return {ok:true,json:async()=>options?.method==='POST'?{message:'正在检测额度'}:next}}");
+  p.e('chart-quota').value=quota;
+  p.e('chart-mode').value='plan';
+  await p.run('changeChartPreferences()');
+  assert.deepEqual(posts,[]);
+  await p.run('refresh()');
+  await p.run('refresh()');
+  assert.deepEqual(posts,['/api/check']);
+  assert.equal(p.e('chart-empty').textContent,'暂无额度周期');
+  p.e('chart-mode').value='history';
+  await p.run('changeChartPreferences()');
+  assert.deepEqual(posts,['/api/check']);
+ }
 });

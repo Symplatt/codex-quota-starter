@@ -4897,6 +4897,7 @@
         if (viewport) viewport.scrollTop = scroll;
       }
       let chartSignature = "";
+      let planningRecheckPending = false;
       const chartPreferencesKey = "quota-starter:chart-preferences:v1";
       function restoreChartPreferences() {
         try {
@@ -4922,6 +4923,30 @@
         renderChart();
       }
       restoreChartPreferences();
+      function planningResetAt(weekly, now) {
+        const current = snapshot?.current;
+        const reset = weekly
+          ? (current?.secondary ? current.weeklyResetAt : null)
+          : current?.primary?.resetsAt;
+        return Number.isFinite(reset) && reset > now ? reset : null;
+      }
+      function recheckPlanningIfNeeded() {
+        if (!planningRecheckPending || !connected) return;
+        const weekly = $("chart-quota").value === "secondaryRemaining";
+        if (planningResetAt(weekly, Date.now() / 1000)) {
+          planningRecheckPending = false;
+          return;
+        }
+        if ($("recheck").disabled || snapshot?.connection?.failures || snapshot?.connection?.recoveryAt)
+          return;
+        planningRecheckPending = false;
+        return recheckQuota();
+      }
+      function changeChartPreferences() {
+        rememberChartPreferences();
+        planningRecheckPending = $("chart-mode").value === "plan";
+        return recheckPlanningIfNeeded();
+      }
       function svgPart(name, attributes = {}, text) {
         const node = document.createElementNS(
           "http://www.w3.org/2000/svg",
@@ -5044,15 +5069,14 @@
           duration = weekly ? 7 * 86400 : 5 * 3600,
           now = Date.now() / 1000,
           minute = Math.floor(now / 60) * 60,
-          reset = snapshot?.current?.[weekly ? "secondary" : "primary"]?.resetsAt,
-          hasCycle = Number.isFinite(reset) && reset > duration,
-          end = planning && hasCycle ? reset : minute,
+          reset = planning ? planningResetAt(weekly, now) : null,
+          end = reset ?? minute,
           start = end - duration;
-        const points = planning && !hasCycle ? []
+        const points = planning && reset === null ? []
           : chartData(history, start, planning ? Math.min(now, end) : end, key, planning);
         const height = Math.max(60, $("quota-chart").clientHeight || 180),
           width = Math.max(280, $("quota-chart").clientWidth || 960),
-          signature = JSON.stringify([points, history.length > 0, key, planning, hasCycle, end, minute, width, height]);
+          signature = JSON.stringify([points, history.length > 0, key, planning, reset, end, minute, width, height]);
         if (signature === chartSignature) return;
         chartSignature = signature;
         hideChartTooltip();
@@ -5068,7 +5092,7 @@
           { low, high, step } = chartScale(plotHeight);
         const x = (minute) => left + ((minute - start) / (end - start)) * plot,
           y = (value) => bottom - ((value - low) / (high - low)) * plotHeight;
-        if (planning && !hasCycle) {
+        if (planning && reset === null) {
           $("chart-empty").hidden = false;
           $("chart-empty").textContent = "暂无额度周期";
           svg.setAttribute("aria-label", "暂无额度周期");
@@ -5100,11 +5124,15 @@
         const minor = weekly ? 4 * 3600 : 5 * 60;
         const major = weekly ? 86400 : width < 500 ? 3600 : 1800;
         const dayOffset = 8 * 3600;
+        const labelClearance = planning ? 84 : 44;
         const addTimeLabel = (at, anchor) => {
+          const date = chartDateFormat.format(new Date(at * 1000));
+          const clock = clockTime(at).slice(0, 5);
+          const label = planning && anchor !== "middle" ? date + " " + clock : weekly ? date : clock;
           svg.append(svgPart("text", {
             x: x(at), y: height - 5, "text-anchor": anchor,
             class: "chart-axis" + (planning && at > now ? " chart-axis-future" : ""),
-          }, weekly ? chartDateFormat.format(new Date(at * 1000)) : clockTime(at).slice(0, 5)));
+          }, label));
         };
         if (planning) {
           const elapsed = x(Math.min(end, Math.max(start, now)));
@@ -5145,7 +5173,7 @@
               }),
             );
             const repeatsEnd = weekly && end - at < 86400;
-            if (!repeatsEnd && x(at) - left >= 44 && right - x(at) >= 44)
+            if (!repeatsEnd && x(at) - left >= labelClearance && right - x(at) >= labelClearance)
               addTimeLabel(at, "middle");
           }
         }
@@ -5224,8 +5252,8 @@
             description,
         );
       }
-      $("chart-mode").addEventListener("change", rememberChartPreferences);
-      $("chart-quota").addEventListener("change", rememberChartPreferences);
+      $("chart-mode").addEventListener("change", changeChartPreferences);
+      $("chart-quota").addEventListener("change", changeChartPreferences);
       if (typeof ResizeObserver !== "undefined")
         new ResizeObserver(renderChart).observe($("quota-chart"));
       if (typeof window !== "undefined")
@@ -5273,6 +5301,7 @@
         renderChart();
         renderActivity(s);
         if (announce) showScheduleNotice(s.scheduleNotice);
+        if (announce) recheckPlanningIfNeeded();
       }
 
       let lastScheduleNotice = null;
