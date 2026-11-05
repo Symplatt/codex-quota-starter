@@ -780,7 +780,7 @@ class Engine:
         self.linked = True
         return (identity, raw.get('accountId')), snapshot
 
-    def _publish(self, identity, snapshot, *, reconnected=False):
+    def _publish(self, identity, snapshot, *, reconnected=False, revalidate_idle_plan=False):
         refresh_weekly = (snapshot['primary']['usedPercent'] == 0 or reconnected or
                           self.read_requested in ('check', 'reconnect', 'resume'))
         if snapshot['primary']['usedPercent'] == 0 and self.rpc is not None:
@@ -805,7 +805,7 @@ class Engine:
         self.store.sample(account_key, snapshot, now)
         cancelled = self.store.cancel_invalid_schedule(
             snapshot['primary']['resetsAt'], now, used_percent=snapshot['primary']['usedPercent'],
-            reconnected=reconnected)
+            reconnected=revalidate_idle_plan)
         return account_key, cancelled
 
     def _wait_retry(self):
@@ -903,7 +903,7 @@ class Engine:
                          'recoveryRounds': retry.get('recoveryRounds', 0),
                          'readOnlyRecovery': True, 'recoverable': True}
                 self.store.set('connection', retry)
-                self.read_requested = 'reconnect'
+                self.read_requested = 'recover'
             elif retry.get('autoRecovery'):
                 # An interrupted probe from a legacy version keeps its guard.
                 self.stop_connection(recoverable=True)
@@ -913,7 +913,7 @@ class Engine:
                 return self.status
             if retry and now < retry['nextAt']:
                 return self.status
-            requested = self.read_requested or ('reconnect' if retry.get('readOnlyRecovery') else None)
+            requested = self.read_requested or ('recover' if retry.get('readOnlyRecovery') else None)
             self._phase('connecting' if not self.rpc else 'checking',
                         '正在连接' if not self.rpc else '正在检测额度')
             started = self.clock()
@@ -921,14 +921,19 @@ class Engine:
             identity, snap = self._read()
             account_key = hashlib.sha256(identity[0].encode()).hexdigest()[:24]
             previous = self.store.get('snapshot:' + account_key)
-            reconnected = requested == 'reconnect' or bool(retry.get('readOnlyRecovery'))
-            _, cancelled = self._publish(identity, snap, reconnected=reconnected)
+            reconnected = requested in ('reconnect', 'recover') or bool(retry.get('readOnlyRecovery'))
+            # Automatic recovery can read a rolling timestamp from an idle
+            # window. Only a user-requested recheck after a connection failure
+            # or an explicit reconnect should revalidate an idle plan.
+            _, cancelled = self._publish(
+                identity, snap, reconnected=reconnected,
+                revalidate_idle_plan=reconnected and requested in ('check', 'reconnect'))
             now = self.clock()
             self.store.log('check', {**snap, 'durationSeconds': round(now - started, 3)}, now)
             if requested or check_only:
                 self.read_requested = None
                 due_reason = '本轮为只读额度检测，定时请求等待后续自动调度'
-                message = '已连接，额度已更新' if requested == 'reconnect' else '当前额度已更新'
+                message = '已连接，额度已更新' if requested in ('reconnect', 'recover') else '当前额度已更新'
                 if self.store.get('paused', False):
                     message = '已暂停；' + message
                 if cancelled:

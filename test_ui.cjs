@@ -545,21 +545,32 @@ test('planning anchors to the quota reset and splits the axis at the current tim
  assert.equal(pace.y2,future.y2);assert.equal(elapsed.x2,future.x1);
  assert.equal((elapsed.x2-pace.x1)/(pace.x2-pace.x1),0.8);
  assert.match(svg.attributes['aria-label'],/已记录 1 分钟/);
- assert.deepEqual(svg.children.filter(n=>/^\d{2}\/\d{2} \d{2}:\d{2}$/.test(n.textContent)).map(n=>n.textContent),
-   ['11/04 20:09','11/05 01:09']);
+ const timeLabels=()=>svg.children.filter(n=>/^\d{2}[/:]\d{2}/.test(n.textContent)).map(n=>n.textContent);
+ assert.deepEqual(timeLabels(),['11/04','11/05']);
+ p.c.Date.now=()=>(now+6*3600)*1000;
+ s.current.primary.resetsAt=reset+6*3600;
+ p.run('renderChart()');
+ assert.deepEqual(timeLabels(),['11/05']);
 });
 
-test('weekly planning uses the displayed reset time and labels both ends to the minute',async()=>{
+test('weekly planning shows eight date-only ticks anchored to the exact reset time',async()=>{
  const p=setup(),s=status(),now=Date.parse('2026-11-08T12:00:00+08:00');
  p.c.Date.now=()=>now;
- s.current.weeklyResetAt=Date.parse('2026-11-11T17:09:00+08:00')/1000;
+ s.current.weeklyResetAt=Date.parse('2026-11-11T00:09:17+08:00')/1000;
  s.current.secondary={usedPercent:30,resetsAt:s.current.weeklyResetAt+3600};
  await p.respond(s);
  p.e('chart-quota').value='secondaryRemaining';
  p.e('chart-mode').value='plan';
  p.run('changeChartPreferences()');
- const labels=p.e('quota-chart-svg').children.filter(n=>/^\d{2}\/\d{2} \d{2}:\d{2}$/.test(n.textContent));
- assert.deepEqual(labels.map(n=>n.textContent),['11/04 17:09','11/11 17:09']);
+ const svg=p.e('quota-chart-svg');
+ const labels=svg.children.filter(n=>/^\d{2}\/\d{2}/.test(n.textContent));
+ assert.deepEqual(labels.map(n=>n.textContent),
+   Array.from({length:8},(_,i)=>`11/${String(i+4).padStart(2,'0')}`));
+ const xs=labels.map(n=>n.attributes.x);
+ assert.ok(xs.every((x,i)=>Math.abs(x-xs[0]-i*(xs[7]-xs[0])/7)<0.001));
+ const elapsed=svg.children.find(n=>n.attributes.class==='chart-axis-line').attributes;
+ assert.ok(Math.abs((elapsed.x2-xs[0])/(xs[7]-xs[0])-
+   (now/1000-(s.current.weeklyResetAt-7*86400))/(7*86400))<0.000001);
  assert.equal(p.requests(),1);
 });
 

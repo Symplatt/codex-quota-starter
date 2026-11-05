@@ -2595,10 +2595,11 @@
         stroke-width: 1;
       }
       .chart-axis-line {
-        stroke: #7e8e84;
-        stroke-width: 1.5;
+        stroke: #adc2ad;
+        stroke-width: 1;
+        vector-effect: non-scaling-stroke;
       }
-      .chart-axis-future, .chart-pace {
+      .chart-tick.chart-axis-future, .chart-pace {
         stroke: #a1a5a3;
       }
       .chart-pace {
@@ -2761,15 +2762,18 @@
       }
       .settings-list {
         display: grid;
-        gap: 16px;
+        grid-template-columns: repeat(2, minmax(0, max-content));
+        gap: 12px clamp(32px, 5vw, 48px);
       }
       .settings-list label {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 8px;
         font-size: 14px;
       }
-      .settings-list input {
+      .settings-list input[type="checkbox"] {
+        width: 15px;
+        height: 15px;
         flex: none;
         margin: 0;
       }
@@ -3723,21 +3727,22 @@
           </button>
         </h2>
         <div class="settings-list">
-          <label
-            ><input
-              type="checkbox"
-              id="autostart"
-              disabled
-              onchange="setAutostart(this.checked)"
-            /><span>开机自启动</span></label
-          ><label
-            ><input
-              type="checkbox"
-              id="poll-while-paused"
-              disabled
-              onchange="setPollWhilePaused(this.checked)"
-            /><span>关闭软件后依然每分钟检测额度变化</span></label
-          >
+          <label>
+            <input type="checkbox" id="autostart" disabled onchange="setAutostart(this.checked)" />
+            <span>开机自启动</span>
+          </label>
+          <label>
+            <input type="checkbox" id="poll-while-paused" disabled onchange="setPollWhilePaused(this.checked)" />
+            <span>关闭软件后依然每分钟检测额度变化</span>
+          </label>
+          <label>
+            <input type="checkbox" id="weekly-auto-plan" checked />
+            <span>切换到周额度时自动使用规划统计</span>
+          </label>
+          <label>
+            <input type="checkbox" id="primary-auto-history" checked />
+            <span>切换到五小时额度时自动使用历程统计</span>
+          </label>
         </div>
         <div class="small" id="startup-error" role="status"></div>
       </section>
@@ -4899,7 +4904,10 @@
       let chartSignature = "";
       let planningRecheckPending = false;
       const chartPreferencesKey = "quota-starter:chart-preferences:v1";
+      const weeklyAutoPlan = $("weekly-auto-plan"),
+        primaryAutoHistory = $("primary-auto-history");
       function restoreChartPreferences() {
+        weeklyAutoPlan.checked = primaryAutoHistory.checked = true;
         try {
           const saved = JSON.parse(localStorage.getItem(chartPreferencesKey));
           if (
@@ -4908,6 +4916,8 @@
           )
             $("chart-quota").value = saved.quota;
           if (saved?.mode === "plan") $("chart-mode").value = "plan";
+          weeklyAutoPlan.checked = saved?.weeklyAutoPlan !== false;
+          primaryAutoHistory.checked = saved?.primaryAutoHistory !== false;
         } catch {}
       }
       function rememberChartPreferences() {
@@ -4917,10 +4927,11 @@
             JSON.stringify({
               quota: $("chart-quota").value,
               mode: $("chart-mode").value,
+              weeklyAutoPlan: weeklyAutoPlan.checked,
+              primaryAutoHistory: primaryAutoHistory.checked,
             }),
           );
         } catch {}
-        renderChart();
       }
       restoreChartPreferences();
       function planningResetAt(weekly, now) {
@@ -4944,6 +4955,7 @@
       }
       function changeChartPreferences() {
         rememberChartPreferences();
+        renderChart();
         planningRecheckPending = $("chart-mode").value === "plan";
         return recheckPlanningIfNeeded();
       }
@@ -5099,15 +5111,15 @@
           return;
         }
         for (let value = low; value <= high; value += step) {
-          svg.append(
-            svgPart("line", {
+          if (value > low) {
+            svg.append(svgPart("line", {
               x1: left,
               x2: right,
               y1: y(value),
               y2: y(value),
               class: "chart-grid",
-            }),
-          );
+            }));
+          }
           svg.append(
             svgPart(
               "text",
@@ -5121,37 +5133,25 @@
             ),
           );
         }
-        const minor = weekly ? 4 * 3600 : 5 * 60;
+        const weeklyPlan = weekly && planning;
+        const minor = weeklyPlan ? 86400 : weekly ? 4 * 3600 : 5 * 60;
         const major = weekly ? 86400 : width < 500 ? 3600 : 1800;
         const dayOffset = 8 * 3600;
-        const labelClearance = planning ? 84 : 44;
         const addTimeLabel = (at, anchor) => {
-          const date = chartDateFormat.format(new Date(at * 1000));
-          const clock = clockTime(at).slice(0, 5);
-          const label = planning && anchor !== "middle" ? date + " " + clock : weekly ? date : clock;
+          const label = weekly || planning
+            ? chartDateFormat.format(new Date(at * 1000))
+            : clockTime(at).slice(0, 5);
           svg.append(svgPart("text", {
             x: x(at), y: height - 5, "text-anchor": anchor,
             class: "chart-axis" + (planning && at > now ? " chart-axis-future" : ""),
           }, label));
         };
-        if (planning) {
-          const elapsed = x(Math.min(end, Math.max(start, now)));
-          svg.append(svgPart("line", {
-            x1: left, x2: elapsed, y1: bottom, y2: bottom, class: "chart-axis-line",
-          }));
-          svg.append(svgPart("line", {
-            x1: elapsed, x2: right, y1: bottom, y2: bottom, class: "chart-axis-line chart-axis-future",
-          }));
-          svg.append(svgPart("line", {
-            x1: left, x2: right, y1: y(100), y2: y(0), class: "chart-pace",
-          }));
-        }
         for (
-          let at = Math.ceil(start / minor) * minor;
+          let at = weeklyPlan ? start : Math.ceil(start / minor) * minor;
           at <= end;
           at += minor
         ) {
-          const majorTick = (at + (weekly ? dayOffset : 0)) % major === 0;
+          const majorTick = weeklyPlan || (at + (weekly ? dayOffset : 0)) % major === 0;
           const future = planning && at > now ? " chart-axis-future" : "";
           svg.append(
             svgPart("line", {
@@ -5173,14 +5173,29 @@
               }),
             );
             const repeatsEnd = weekly && end - at < 86400;
-            if (!repeatsEnd && x(at) - left >= labelClearance && right - x(at) >= labelClearance)
+            if (weeklyPlan)
+              addTimeLabel(at, at === start ? "start" : at === end ? "end" : "middle");
+            else if (!planning && !repeatsEnd && x(at) - left >= 44 && right - x(at) >= 44)
               addTimeLabel(at, "middle");
           }
         }
-        addTimeLabel(start, "start");
-        addTimeLabel(end, "end");
-        if (planning && start <= now)
-          svg.append(svgPart("circle", { cx: left, cy: y(100), r: 2, fill: "#315c43" }));
+        if (!weeklyPlan) {
+          addTimeLabel(start, "start");
+          if (!planning || Math.floor((start + dayOffset) / 86400) !== Math.floor((end + dayOffset) / 86400))
+            addTimeLabel(end, "end");
+        }
+        const elapsed = planning ? x(Math.min(end, Math.max(start, now))) : right;
+        svg.append(svgPart("line", {
+          x1: left, x2: elapsed, y1: bottom, y2: bottom, class: "chart-axis-line",
+        }));
+        if (planning) {
+          svg.append(svgPart("line", {
+            x1: elapsed, x2: right, y1: bottom, y2: bottom, class: "chart-axis-line chart-axis-future",
+          }));
+          svg.append(svgPart("line", {
+            x1: left, x2: right, y1: y(100), y2: y(0), class: "chart-pace",
+          }));
+        }
         if (points.length) {
           svg.append(svgPart("path", { d: chartPath(points, x, y), class: "chart-line" }));
           const hit = svgPart("rect", {
@@ -5231,6 +5246,24 @@
           hit.addEventListener("blur", hideChartTooltip);
           svg.append(hit);
         }
+        if (planning && start <= now) {
+          svg.append(svgPart("circle", { cx: left, cy: y(100), r: 2, fill: "#315c43" }));
+          const startHit = svgPart("circle", {
+            cx: left, cy: y(100), r: 7, class: "chart-hit chart-start-hit", tabindex: 0,
+            "aria-label": time(start) + " 剩余 100%",
+          });
+          const showStart = () => {
+            const bounds = svg.getBoundingClientRect();
+            showChartTooltip(start, "剩余 100%",
+              bounds.left + left / width * bounds.width,
+              bounds.top + y(100) / height * bounds.height);
+          };
+          startHit.addEventListener("pointerenter", showStart);
+          startHit.addEventListener("pointerleave", hideChartTooltip);
+          startHit.addEventListener("focus", showStart);
+          startHit.addEventListener("blur", hideChartTooltip);
+          svg.append(startHit);
+        }
         let consumed = 0,
           recovered = 0;
         for (const point of points) {
@@ -5253,7 +5286,16 @@
         );
       }
       $("chart-mode").addEventListener("change", changeChartPreferences);
-      $("chart-quota").addEventListener("change", changeChartPreferences);
+      $("chart-quota").addEventListener("change", () => {
+        if ($("chart-quota").value === "secondaryRemaining") {
+          if (weeklyAutoPlan.checked) $("chart-mode").value = "plan";
+        } else if (primaryAutoHistory.checked) {
+          $("chart-mode").value = "history";
+        }
+        changeChartPreferences();
+      });
+      weeklyAutoPlan.addEventListener("change", rememberChartPreferences);
+      primaryAutoHistory.addEventListener("change", rememberChartPreferences);
       if (typeof ResizeObserver !== "undefined")
         new ResizeObserver(renderChart).observe($("quota-chart"));
       if (typeof window !== "undefined")

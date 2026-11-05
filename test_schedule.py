@@ -198,6 +198,32 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(fake.sent, 0)
         self.assertEqual(e.next_poll, 170)
 
+    def test_automatic_recovery_keeps_idle_plan_and_sends_on_next_eligible_poll(self):
+        plan = self.engine(FakeRPC([]), 100).set_schedule(150)
+        fake = FakeRPC([TimeoutError('offline'), raw(20000, 0)])
+        e = self.engine(fake, 150)
+        e.tick()
+        e.sleeper(e.next_poll - e.clock())
+        e.tick()
+        self.assertEqual(self.store.get('schedule')['status'], 'pending')
+        self.assertEqual(fake.sent, 0)
+        e.sleeper(e.next_poll - e.clock())
+        e.tick()
+        self.assertEqual(self.store.get('schedule')['status'], 'submitted')
+        self.assertEqual(self.store.recent('attempts')[0]['detail']['scheduleId'], plan['id'])
+        self.assertEqual(fake.sent, 1)
+
+    def test_automatic_recovery_after_backoff_keeps_future_idle_plan(self):
+        fake = FakeRPC([raw(20000, 0)])
+        e = self.engine(fake, 100)
+        plan = e.set_schedule(200)
+        e.stop_connection(recoverable=True)
+        e.sleeper(e.next_poll - e.clock())
+        e.tick()
+        self.assertEqual(self.store.get('schedule')['id'], plan['id'])
+        self.assertEqual(self.store.get('schedule')['status'], 'pending')
+        self.assertEqual(fake.sent, 0)
+
     def test_due_schedule_sends_once_and_survives_restart(self):
         fake=FakeRPC([raw(149)]); self.engine(fake,100).set_schedule(150)
         self.engine(fake,150).tick()
