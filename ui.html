@@ -5137,12 +5137,11 @@
             ),
           );
         }
-        const weeklyPlan = weekly && planning;
-        const minor = weeklyPlan ? 86400 : weekly ? 4 * 3600 : 5 * 60;
+        const minor = planning ? (weekly ? 86400 : 3600) : weekly ? 4 * 3600 : 5 * 60;
         const major = weekly ? 86400 : width < 500 ? 3600 : 1800;
         const dayOffset = 8 * 3600;
         const addTimeLabel = (at, anchor) => {
-          const label = weekly || planning
+          const label = weekly
             ? chartDateFormat.format(new Date(at * 1000))
             : clockTime(at).slice(0, 5);
           svg.append(svgPart("text", {
@@ -5151,11 +5150,11 @@
           }, label));
         };
         for (
-          let at = weeklyPlan ? start : Math.ceil(start / minor) * minor;
+          let at = planning ? start : Math.ceil(start / minor) * minor;
           at <= end;
           at += minor
         ) {
-          const majorTick = weeklyPlan || (at + (weekly ? dayOffset : 0)) % major === 0;
+          const majorTick = planning || (at + (weekly ? dayOffset : 0)) % major === 0;
           const future = planning && at > now ? " chart-axis-future" : "";
           svg.append(
             svgPart("line", {
@@ -5177,16 +5176,15 @@
               }),
             );
             const repeatsEnd = weekly && end - at < 86400;
-            if (weeklyPlan)
+            if (planning)
               addTimeLabel(at, at === start ? "start" : at === end ? "end" : "middle");
             else if (!planning && !repeatsEnd && x(at) - left >= 44 && right - x(at) >= 44)
               addTimeLabel(at, "middle");
           }
         }
-        if (!weeklyPlan) {
+        if (!planning) {
           addTimeLabel(start, "start");
-          if (!planning || Math.floor((start + dayOffset) / 86400) !== Math.floor((end + dayOffset) / 86400))
-            addTimeLabel(end, "end");
+          addTimeLabel(end, "end");
         }
         const elapsed = planning ? x(Math.min(end, Math.max(start, now))) : right;
         svg.append(svgPart("line", {
@@ -5249,6 +5247,35 @@
           hit.addEventListener("pointerleave", hideChartTooltip);
           hit.addEventListener("blur", hideChartTooltip);
           svg.append(hit);
+        }
+        if (planning) {
+          // Append above the sample hit area so it cannot intercept the
+          // reference line, including its future portion without samples.
+          const paceHit = svgPart("line", {
+            x1: left, x2: right, y1: y(100), y2: y(0),
+            class: "chart-pace-hit", tabindex: 0,
+            "aria-label": "平均消耗参考线",
+            stroke: "transparent", "stroke-width": 12,
+            "pointer-events": "stroke",
+          });
+          const showPace = (event) => {
+            const bounds = svg.getBoundingClientRect();
+            const ratio = event ? Math.max(0, Math.min(1,
+              ((event.clientX - bounds.left) / bounds.width * width - left) / plot)) : 0.5;
+            const at = start + ratio * duration;
+            const remaining = Number((100 * (1 - ratio)).toFixed(1));
+            const statistics = "平均消耗参考 · 剩余 " + remaining + "%";
+            paceHit.setAttribute("aria-label", time(at) + " " + statistics);
+            showChartTooltip(at, statistics,
+              event?.clientX ?? bounds.left + x(at) / width * bounds.width,
+              event?.clientY ?? bounds.top + y(remaining) / height * bounds.height);
+          };
+          paceHit.addEventListener("pointerenter", showPace);
+          paceHit.addEventListener("pointermove", showPace);
+          paceHit.addEventListener("pointerleave", hideChartTooltip);
+          paceHit.addEventListener("focus", () => showPace());
+          paceHit.addEventListener("blur", hideChartTooltip);
+          svg.append(paceHit);
         }
         if (planning && start <= now) {
           svg.append(svgPart("circle", { cx: left, cy: y(100), r: 2, fill: "#315c43" }));

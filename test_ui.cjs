@@ -546,11 +546,11 @@ test('planning anchors to the quota reset and splits the axis at the current tim
  assert.equal((elapsed.x2-pace.x1)/(pace.x2-pace.x1),0.8);
  assert.match(svg.attributes['aria-label'],/已记录 1 分钟/);
  const timeLabels=()=>svg.children.filter(n=>/^\d{2}[/:]\d{2}/.test(n.textContent)).map(n=>n.textContent);
- assert.deepEqual(timeLabels(),['11/04','11/05']);
+ assert.deepEqual(timeLabels(),['20:09','21:09','22:09','23:09','00:09','01:09']);
  p.c.Date.now=()=>(now+6*3600)*1000;
  s.current.primary.resetsAt=reset+6*3600;
  p.run('renderChart()');
- assert.deepEqual(timeLabels(),['11/05']);
+ assert.deepEqual(timeLabels(),['02:09','03:09','04:09','05:09','06:09','07:09']);
 });
 
 test('weekly planning shows eight date-only ticks anchored to the exact reset time',async()=>{
