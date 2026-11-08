@@ -92,7 +92,7 @@ def create_server(engine, host='127.0.0.1', port=31026, startup=None, tasks=None
                      'timing': engine.timing(),
                      'attempts': engine.store.recent('attempts', 10),
                      'triggers': engine.store.trigger_history(),
-                     'quotaHistory': engine.store.quota_history(),
+                     'quotaHistory': engine.store.quota_history(compact=True),
                      'activity': engine.store.activity(),
                      'events': engine.store.recent('events', 30)})
             return self.send(404, {'error': 'Not found'})

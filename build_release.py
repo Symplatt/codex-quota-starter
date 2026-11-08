@@ -16,6 +16,7 @@ files += ['test_connection_baseline.py','test_fixtures/connection-baseline.json'
 files += ['test_connection.py','test_fixtures/connection-changes.json']
 files += ['tasks.py','tasks.js','test_tasks.py','test_tasks_ui.cjs']
 files += ['schedule_queue.py','test_schedule_queue.py']
+files += ['test_memory.py']
 out=root/'dist';out.mkdir(exist_ok=True)
 target=out/f'quota-starter-{VERSION}-windows.zip'
 # Validate all inputs before replacing any existing release artifact.

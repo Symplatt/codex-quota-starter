@@ -2550,6 +2550,10 @@
         font-size: 12px;
         padding: 6px 8px;
       }
+      #quota-chart-panel[data-paused="true"] {
+        filter: grayscale(1);
+        opacity: 0.65;
+      }
       #quota-chart-panel {
         display: flex;
         flex-direction: column;
@@ -5307,6 +5311,10 @@
           s = { ...s, current: snapshot.current, timing: snapshot.timing };
         snapshot = s;
         paused = s.paused;
+        $("quota-chart-panel").setAttribute(
+          "data-paused",
+          String(paused && s.pollWhilePaused !== true),
+        );
         $("version").textContent = "v" + s.version;
         $("installation-path").textContent = s.installationPath || "—";
         $("badge").textContent = paused
