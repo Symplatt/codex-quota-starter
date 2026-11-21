@@ -368,6 +368,47 @@ test('pending schedule cannot be resubmitted or reenabled by polling',async()=>{
  assert.equal(p.e('save-time').disabled,false);
 });
 
+test('queued timing remains visible across stale polls and rolls back on rejection',async()=>{
+ const p=setup(),s=status(),target=s.timing.minRefreshAt+3600;
+ await p.respond(s);
+ p.c.target=target;
+ p.run("globalThis.edit=action('schedule','schedule-feedback',{refreshAt:target})");
+ const currentText=p.run('clockTime(target-18000)'),priorText=p.run('clockTime(snapshot.timing.sendAt)');
+ assert.equal(p.e('send-at').textContent,currentText);
+ p.c.next=s;p.run('renderStatus(next)');
+ assert.equal(p.e('send-at').textContent,currentText);
+ await p.respond({queued:true,operationId:'edit-one'});await new Promise(resolve=>setImmediate(resolve));
+ await p.respond({...s,scheduleQueue:{pendingIds:['edit-one']}});await p.run('edit');
+ assert.equal(p.e('send-at').textContent,currentText);
+ p.run('refresh()');
+ await p.respond({...s,scheduleQueue:{pendingIds:[],last:{id:'edit-one',status:'failed',error:'时间已失效'}}});
+ assert.equal(p.e('send-at').textContent,priorText);
+ assert.equal(p.e('schedule-feedback').textContent,'时间已失效');
+});
+
+test('error banner waits five minutes and recovery resets its timer across reloads',async()=>{
+ const storage={},p=setup(storage),s=status();
+ const start=Date.now();let now=start;
+ p.c.Date.now=()=>now;
+ s.delayErrorBanner=true;s.connection={error:'额度检测失败'};
+ await p.respond(s);
+ assert.equal(p.e('delay-error-banner').checked,true);
+ assert.equal(p.e('error-banner').hidden,true);
+ now=start+299999;p.run('paintErrorBanner()');
+ assert.equal(p.e('error-banner').hidden,true);
+ p.run('clearTimeout(bannerTimer)');
+ const reopened=setup(storage);reopened.c.Date.now=()=>now;
+ await reopened.respond(s);
+ now=start+300000;reopened.run('paintErrorBanner()');
+ assert.equal(reopened.e('error-banner').textContent,s.connection.error);
+ reopened.run('refresh()');await reopened.respond({...s,connection:{}});
+ assert.equal(reopened.e('error-banner').hidden,true);
+ reopened.run('refresh()');await reopened.respond(s);
+ assert.equal(reopened.e('error-banner').hidden,true);
+ reopened.run('refresh()');await reopened.respond({...s,delayErrorBanner:false});
+ assert.equal(reopened.e('error-banner').textContent,s.connection.error);
+});
+
 test('invalid status disables stale controls without erasing data',async()=>{
  const p=setup();await p.respond(status());p.run('refresh()');await p.respond({service:'unexpected'});
  assert.equal(p.e('remaining').textContent,'80%');assert.equal(p.e('reconnect').disabled,true);
@@ -543,6 +584,10 @@ test('planning anchors to the quota reset and splits the axis at the current tim
  const future=svg.children.find(n=>n.attributes.class==='chart-axis-line chart-axis-future').attributes;
  assert.equal(pace.x1,elapsed.x1);assert.equal(pace.x2,future.x2);assert.equal(pace.y1,12);
  assert.equal(pace.y2,future.y2);assert.equal(elapsed.x2,future.x1);
+ const anchors=svg.children.filter(n=>n.attributes.class==='chart-sample-endpoint');
+ assert.equal(anchors.length,1);
+ assert.ok(anchors[0].attributes.cx>pace.x1 && anchors[0].attributes.cx<pace.x2);
+ assert.ok(anchors[0].attributes.cy>pace.y1 && anchors[0].attributes.cy<pace.y2);
  assert.equal((elapsed.x2-pace.x1)/(pace.x2-pace.x1),0.8);
  assert.match(svg.attributes['aria-label'],/已记录 1 分钟/);
  assert.deepEqual(svg.children.filter(n=>/^\d{2}\/\d{2} \d{2}:\d{2}$/.test(n.textContent)).map(n=>n.textContent),

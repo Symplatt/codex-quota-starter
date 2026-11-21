@@ -84,6 +84,7 @@ def create_server(engine, host='127.0.0.1', port=31026, startup=None, tasks=None
                      'phase': engine.phase, 'linked': engine.linked,
                      'paused': engine.store.get('paused', False),
                      'pollWhilePaused': engine.store.get('pollWhilePaused', False),
+                     'delayErrorBanner': engine.store.get('delayErrorBanner', False),
                      'connection': engine.connection(),
                      'scheduleNotice': engine.store.get('scheduleNotice'),
                      'scheduleQueue': schedule_queue.status(),
@@ -193,7 +194,7 @@ def create_server(engine, host='127.0.0.1', port=31026, startup=None, tasks=None
                     if operation['status'] == 'failed':
                         return self.send(400, {'error': operation['error']})
                     queued = operation['status'] == 'queued'
-                    return self.send(202 if queued else 200, {'queued': queued, 'message':
+                    return self.send(202 if queued else 200, {'queued': queued, 'operationId': operation['id'], 'message':
                                      '已排队，检测结束后保存' if queued else
                                      '已恢复自动时间' if self.path.endswith('/clear') else '已保存时间'})
                 except (json.JSONDecodeError, TypeError, UnicodeError):
@@ -205,16 +206,22 @@ def create_server(engine, host='127.0.0.1', port=31026, startup=None, tasks=None
             if self.path == '/api/pause':
                 engine.set_paused(True)
                 return self.send(200, {'message': '已暂停；已提交的请求可能仍会完成'})
-            if self.path == '/api/settings/poll-while-paused':
+            if self.path in ('/api/settings/poll-while-paused', '/api/settings/delay-error-banner'):
                 try:
                     length = int(self.headers.get('Content-Length', '0'))
                     if not 0 < length <= 1024:
                         raise ValueError('设置数据无效')
                     body = json.loads(self.rfile.read(length))
                     if not isinstance(body, dict) or not isinstance(body.get('enabled'), bool):
-                        raise ValueError('检测开关必须是布尔值')
-                    engine.set_poll_while_paused(body['enabled'])
-                    return self.send(200, {'message': '已开启暂停后额度检测' if body['enabled'] else '已关闭暂停后额度检测'})
+                        raise ValueError('设置开关必须是布尔值')
+                    enabled = body['enabled']
+                    if self.path.endswith('/delay-error-banner'):
+                        engine.store.set('delayErrorBanner', enabled)
+                        message = '已开启延迟错误提示' if enabled else '已关闭延迟错误提示'
+                    else:
+                        engine.set_poll_while_paused(enabled)
+                        message = '已开启暂停后额度检测' if enabled else '已关闭暂停后额度检测'
+                    return self.send(200, {'message': message})
                 except (ValueError, TypeError, UnicodeError) as exc:
                     return self.send(400, {'error': str(exc)})
             if self.path == '/api/resume':

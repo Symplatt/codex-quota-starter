@@ -73,5 +73,6 @@ class ScheduleQueue:
             self.lock.release()
 
     def status(self):
-        return {'pending': len(self.store.get('scheduleQueue', [])),
+        pending = self.store.get('scheduleQueue', [])
+        return {'pending': len(pending), 'pendingIds': [operation['id'] for operation in pending],
                 'last': self.store.get('scheduleQueueResult')}

@@ -704,18 +704,21 @@ class Engine:
         schedule = self.store.get('schedule')
         current = self.store.get('current')
         server = current['primary']['resetsAt'] if current else None
+        guard = self.store.guard_until() if server else None
+        automatic_send_at = max(server + 2, guard) if server else None
         if schedule and schedule['status'] == 'pending':
             send_at = schedule['sendAt']
             mode = 'manual'
         else:
-            send_at = max(server + 2, self.store.guard_until()) if server else None
+            send_at = automatic_send_at
             mode = 'auto'
         return {'mode': mode, 'schedule': schedule, 'sendAt': send_at,
+                'automaticSendAt': automatic_send_at,
                 'estimatedResetAt': send_at + WINDOW if send_at else None,
                 'serverResetAt': server,
                 'minSendAt': math.floor(max(server, self.clock())) + 1 if server else None,
                 'minRefreshAt': math.ceil((max(math.floor(max(server, self.clock())) + 1,
-                                               self.store.guard_until()) + WINDOW) / 60) * 60 if server else None,
+                                               guard) + WINDOW) / 60) * 60 if server else None,
                 'maxRefreshAt': math.floor((self.clock() + 366 * 86400 + WINDOW) / 60) * 60}
 
     def audit_schedule_due(self, reason=None):
