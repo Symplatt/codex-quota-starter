@@ -368,47 +368,6 @@ test('pending schedule cannot be resubmitted or reenabled by polling',async()=>{
  assert.equal(p.e('save-time').disabled,false);
 });
 
-test('queued timing remains visible across stale polls and rolls back on rejection',async()=>{
- const p=setup(),s=status(),target=s.timing.minRefreshAt+3600;
- await p.respond(s);
- p.c.target=target;
- p.run("globalThis.edit=action('schedule','schedule-feedback',{refreshAt:target})");
- const currentText=p.run('clockTime(target-18000)'),priorText=p.run('clockTime(snapshot.timing.sendAt)');
- assert.equal(p.e('send-at').textContent,currentText);
- p.c.next=s;p.run('renderStatus(next)');
- assert.equal(p.e('send-at').textContent,currentText);
- await p.respond({queued:true,operationId:'edit-one'});await new Promise(resolve=>setImmediate(resolve));
- await p.respond({...s,scheduleQueue:{pendingIds:['edit-one']}});await p.run('edit');
- assert.equal(p.e('send-at').textContent,currentText);
- p.run('refresh()');
- await p.respond({...s,scheduleQueue:{pendingIds:[],last:{id:'edit-one',status:'failed',error:'时间已失效'}}});
- assert.equal(p.e('send-at').textContent,priorText);
- assert.equal(p.e('schedule-feedback').textContent,'时间已失效');
-});
-
-test('error banner waits five minutes and recovery resets its timer across reloads',async()=>{
- const storage={},p=setup(storage),s=status();
- const start=Date.now();let now=start;
- p.c.Date.now=()=>now;
- s.delayErrorBanner=true;s.connection={error:'额度检测失败'};
- await p.respond(s);
- assert.equal(p.e('delay-error-banner').checked,true);
- assert.equal(p.e('error-banner').hidden,true);
- now=start+299999;p.run('paintErrorBanner()');
- assert.equal(p.e('error-banner').hidden,true);
- p.run('clearTimeout(bannerTimer)');
- const reopened=setup(storage);reopened.c.Date.now=()=>now;
- await reopened.respond(s);
- now=start+300000;reopened.run('paintErrorBanner()');
- assert.equal(reopened.e('error-banner').textContent,s.connection.error);
- reopened.run('refresh()');await reopened.respond({...s,connection:{}});
- assert.equal(reopened.e('error-banner').hidden,true);
- reopened.run('refresh()');await reopened.respond(s);
- assert.equal(reopened.e('error-banner').hidden,true);
- reopened.run('refresh()');await reopened.respond({...s,delayErrorBanner:false});
- assert.equal(reopened.e('error-banner').textContent,s.connection.error);
-});
-
 test('invalid status disables stale controls without erasing data',async()=>{
  const p=setup();await p.respond(status());p.run('refresh()');await p.respond({service:'unexpected'});
  assert.equal(p.e('remaining').textContent,'80%');assert.equal(p.e('reconnect').disabled,true);
@@ -584,27 +543,34 @@ test('planning anchors to the quota reset and splits the axis at the current tim
  const future=svg.children.find(n=>n.attributes.class==='chart-axis-line chart-axis-future').attributes;
  assert.equal(pace.x1,elapsed.x1);assert.equal(pace.x2,future.x2);assert.equal(pace.y1,12);
  assert.equal(pace.y2,future.y2);assert.equal(elapsed.x2,future.x1);
- const anchors=svg.children.filter(n=>n.attributes.class==='chart-sample-endpoint');
- assert.equal(anchors.length,1);
- assert.ok(anchors[0].attributes.cx>pace.x1 && anchors[0].attributes.cx<pace.x2);
- assert.ok(anchors[0].attributes.cy>pace.y1 && anchors[0].attributes.cy<pace.y2);
  assert.equal((elapsed.x2-pace.x1)/(pace.x2-pace.x1),0.8);
  assert.match(svg.attributes['aria-label'],/已记录 1 分钟/);
- assert.deepEqual(svg.children.filter(n=>/^\d{2}\/\d{2} \d{2}:\d{2}$/.test(n.textContent)).map(n=>n.textContent),
-   ['11/04 20:09','11/05 01:09']);
+ const timeLabels=()=>svg.children.filter(n=>/^\d{2}[/:]\d{2}/.test(n.textContent)).map(n=>n.textContent);
+ assert.deepEqual(timeLabels(),['20:09','21:09','22:09','23:09','00:09','01:09']);
+ p.c.Date.now=()=>(now+6*3600)*1000;
+ s.current.primary.resetsAt=reset+6*3600;
+ p.run('renderChart()');
+ assert.deepEqual(timeLabels(),['02:09','03:09','04:09','05:09','06:09','07:09']);
 });
 
-test('weekly planning uses the displayed reset time and labels both ends to the minute',async()=>{
+test('weekly planning shows eight date-only ticks anchored to the exact reset time',async()=>{
  const p=setup(),s=status(),now=Date.parse('2026-11-08T12:00:00+08:00');
  p.c.Date.now=()=>now;
- s.current.weeklyResetAt=Date.parse('2026-11-11T17:09:00+08:00')/1000;
+ s.current.weeklyResetAt=Date.parse('2026-11-11T00:09:17+08:00')/1000;
  s.current.secondary={usedPercent:30,resetsAt:s.current.weeklyResetAt+3600};
  await p.respond(s);
  p.e('chart-quota').value='secondaryRemaining';
  p.e('chart-mode').value='plan';
  p.run('changeChartPreferences()');
- const labels=p.e('quota-chart-svg').children.filter(n=>/^\d{2}\/\d{2} \d{2}:\d{2}$/.test(n.textContent));
- assert.deepEqual(labels.map(n=>n.textContent),['11/04 17:09','11/11 17:09']);
+ const svg=p.e('quota-chart-svg');
+ const labels=svg.children.filter(n=>/^\d{2}\/\d{2}/.test(n.textContent));
+ assert.deepEqual(labels.map(n=>n.textContent),
+   Array.from({length:8},(_,i)=>`11/${String(i+4).padStart(2,'0')}`));
+ const xs=labels.map(n=>n.attributes.x);
+ assert.ok(xs.every((x,i)=>Math.abs(x-xs[0]-i*(xs[7]-xs[0])/7)<0.001));
+ const elapsed=svg.children.find(n=>n.attributes.class==='chart-axis-line').attributes;
+ assert.ok(Math.abs((elapsed.x2-xs[0])/(xs[7]-xs[0])-
+   (now/1000-(s.current.weeklyResetAt-7*86400))/(7*86400))<0.000001);
  assert.equal(p.requests(),1);
 });
 

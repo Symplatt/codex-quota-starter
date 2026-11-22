@@ -4,11 +4,13 @@ import json
 import math
 import os
 import re
+import shutil
 import sys
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sqlite3
-from contextlib import contextmanager, closing
+from contextlib import contextmanager, closing, ExitStack
 import threading
 import time
 import uuid
@@ -193,24 +195,31 @@ class Store:
                         while True:
                             rows = archive_db.execute(
                                 'SELECT id,time,kind,detail FROM events WHERE id>? ORDER BY id LIMIT 1000',
-                                (last_id,)).fetchall()
-                            if not rows:
-                                break
-                            grouped = {}
-                            for event_id, stamp, kind, detail in rows:
-                                date = datetime.fromtimestamp(stamp, BEIJING)
-                                # Expired backlog must not recreate deleted files.
-                                if date.strftime('%Y-%m') < cutoff:
-                                    continue
-                                detail = json.loads(detail)
-                                record = {'id': event_id, 'time': date.isoformat(), 'kind': kind, 'detail': detail}
-                                grouped.setdefault(date.strftime('%Y-%m'), []).append(json.dumps(record, ensure_ascii=False) + '\n')
-                            for month, lines in grouped.items():
-                                with (folder / f'{prefix}-{month}.jsonl').open('a', encoding='utf-8') as output:
-                                    output.writelines(lines)
+                                (last_id,))
+                            previous_id = last_id
+                            # Keep only one event in memory, even after a long
+                            # outage; the checkpoint still commits in batches.
+                            with ExitStack() as files:
+                                outputs = {}
+                                for event_id, stamp, kind, detail in rows:
+                                    last_id = event_id
+                                    date = datetime.fromtimestamp(stamp, BEIJING)
+                                    month = date.strftime('%Y-%m')
+                                    # Expired backlog must not recreate deleted files.
+                                    if month < cutoff:
+                                        continue
+                                    if month not in outputs:
+                                        outputs[month] = files.enter_context(
+                                            (folder / f'{prefix}-{month}.jsonl').open('a', encoding='utf-8'))
+                                    record = {'id': event_id, 'time': date.isoformat(),
+                                              'kind': kind, 'detail': json.loads(detail)}
+                                    json.dump(record, outputs[month], ensure_ascii=False)
+                                    outputs[month].write('\n')
+                                for output in outputs.values():
                                     output.flush()
                                     os.fsync(output.fileno())
-                            last_id = rows[-1][0]
+                            if last_id == previous_id:
+                                break
                             archive_db.execute('INSERT OR REPLACE INTO state VALUES (?,?)', (cursor_key, json.dumps(last_id)))
                             archive_db.commit()
                 # Flush the database backlog/cursor first so merging legacy IDs
@@ -233,45 +242,64 @@ class Store:
             if match[1] < cutoff:
                 source.unlink()  # Same existing calendar retention policy.
                 continue
-            original = source.read_bytes()
             target = self.log_dir / f'quota-starter-{match[1]}.jsonl'
-            merged = {}
-            # Legacy metadata is retained; existing general-log fields win only
-            # after checking the authoritative event content matches.
-            texts = [original.decode('utf-8-sig')]
-            if target.exists():
-                texts.append(target.read_text(encoding='utf-8-sig'))
-            for content in texts:
-                for line in content.splitlines():
-                    if not line.strip():
-                        continue
-                    record = json.loads(line)
-                    if not isinstance(record, dict) or not all(k in record for k in ('time', 'kind', 'detail')):
-                        raise ValueError('旧归档格式无效，保留原文件：' + source.name)
-                    key = ('id', record['id']) if isinstance(record.get('id'), int) else ('raw', line)
-                    previous = merged.get(key)
-                    if previous and any(previous.get(k) != record.get(k) for k in ('time', 'kind', 'detail')):
-                        raise ValueError('旧归档事件编号冲突，保留原文件：' + source.name)
-                    merged[key] = {**(previous or {}), **record}
             backup_dir = self.path.parent / 'legacy-archive-backups'
             backup_dir.mkdir(exist_ok=True)
-            backup = backup_dir / (source.name + '.' + hashlib.sha256(original).hexdigest()[:12] + '.bak')
+            with source.open('rb') as original:
+                digest = hashlib.file_digest(original, 'sha256').hexdigest()
+            backup = backup_dir / (source.name + '.' + digest[:12] + '.bak')
             if not backup.exists():
-                with backup.open('xb') as output:
-                    output.write(original)
+                with source.open('rb') as original, backup.open('xb') as output:
+                    shutil.copyfileobj(original, output, length=64 * 1024)
                     output.flush()
                     os.fsync(output.fileno())
-            if backup.read_bytes() != original:
-                raise OSError('旧归档备份校验失败，保留原文件：' + source.name)
-            temporary = target.with_suffix('.merge.tmp')
-            with temporary.open('w', encoding='utf-8') as output:
-                for record in sorted(merged.values(), key=lambda r: (str(r['time']),
-                                     r['id'] if isinstance(r.get('id'), int) else 0)):
-                    output.write(json.dumps(record, ensure_ascii=False) + '\n')
-                output.flush()
-                os.fsync(output.fileno())
-            temporary.replace(target)
-            source.unlink()
+            with backup.open('rb') as saved:
+                if hashlib.file_digest(saved, 'sha256').hexdigest() != digest:
+                    raise OSError('旧归档备份校验失败，保留原文件：' + source.name)
+            # Deduplication and sorting can span an entire month. Use a scratch
+            # database on disk instead of retaining both files and every record.
+            with tempfile.TemporaryDirectory(prefix='legacy-merge-', dir=self.log_dir) as scratch:
+                scratch = Path(scratch)
+                with closing(sqlite3.connect(scratch / 'merge.sqlite3')) as merged:
+                    merged.execute('PRAGMA cache_size=-512')
+                    merged.execute('PRAGMA temp_store=FILE')
+                    merged.execute('CREATE TABLE records (key TEXT PRIMARY KEY, stamp TEXT, event_id INTEGER, data TEXT)')
+                    for path in (backup, target):
+                        if not path.exists():
+                            continue
+                        with path.open(encoding='utf-8-sig') as content:
+                            for line in content:
+                                line = line.rstrip('\r\n')
+                                if not line.strip():
+                                    continue
+                                record = json.loads(line)
+                                if not isinstance(record, dict) or not all(k in record for k in ('time', 'kind', 'detail')):
+                                    raise ValueError('旧归档格式无效，保留原文件：' + source.name)
+                                event_id = record.get('id')
+                                key = ('id:' + str(int(event_id)) if isinstance(event_id, int) else 'raw:' + line)
+                                row = merged.execute('SELECT data FROM records WHERE key=?', (key,)).fetchone()
+                                previous = json.loads(row[0]) if row else {}
+                                if previous and any(previous.get(k) != record.get(k) for k in ('time', 'kind', 'detail')):
+                                    raise ValueError('旧归档事件编号冲突，保留原文件：' + source.name)
+                                # General-log fields win after the event content
+                                # has been checked; retain legacy-only metadata.
+                                record = {**previous, **record}
+                                merged.execute('INSERT INTO records VALUES (?,?,?,?) ON CONFLICT(key) DO UPDATE SET '
+                                               'stamp=excluded.stamp,event_id=excluded.event_id,data=excluded.data',
+                                               (key, str(record['time']), event_id if isinstance(event_id, int) else 0,
+                                                json.dumps(record, ensure_ascii=False)))
+                    merged.execute('CREATE INDEX merge_order ON records(stamp,event_id)')
+                    temporary = scratch / 'merged.jsonl'
+                    with temporary.open('w', encoding='utf-8') as output:
+                        for row in merged.execute('SELECT data FROM records ORDER BY stamp,event_id'):
+                            output.write(row[0] + '\n')
+                        output.flush()
+                        os.fsync(output.fileno())
+                with source.open('rb') as original:
+                    if hashlib.file_digest(original, 'sha256').hexdigest() != digest:
+                        raise OSError('旧归档已变化，保留原文件并稍后重试：' + source.name)
+                temporary.replace(target)
+                source.unlink()
         # Keep unrelated user files; only remove the directory when empty.
         if not any(legacy.iterdir()):
             legacy.rmdir()
@@ -434,19 +462,36 @@ class Store:
                        (account, math.floor(now / 60) * 60, now,
                         snapshot['primary']['usedPercent'], secondary['usedPercent'] if secondary else None))
 
-    def quota_history(self, now=None):
+    def quota_history(self, now=None, *, compact=False):
         current = self.get('current')
         if not current or not current.get('account'):
             return []
         now = self.clock() if now is None else now
+        points, primary, weekly = [], {}, {}
+        primary_start = math.floor(now / 60) * 60 - WINDOW
         with self.connect() as db:
             rows = db.execute('SELECT minute,checked,primary_used,secondary_used FROM quota_samples '
                               'WHERE account=? AND minute>=? AND minute<=? ORDER BY minute',
-                              (current['account'], math.floor(now / 60) * 60 - 7 * 86400, now)).fetchall()
-        return [{'minute': row['minute'], 'checkedAt': row['checked'],
-                 'primaryRemaining': 100 - row['primary_used'],
-                 'secondaryRemaining': None if row['secondary_used'] is None else 100 - row['secondary_used']}
-                for row in rows]
+                              (current['account'], math.floor(now / 60) * 60 - 7 * 86400, now))
+            for row in rows:
+                point = {'minute': row['minute'], 'checkedAt': row['checked'],
+                         'primaryRemaining': 100 - row['primary_used'],
+                         'secondaryRemaining': None if row['secondary_used'] is None else 100 - row['secondary_used']}
+                if not compact:
+                    points.append(point)
+                    continue
+                if row['minute'] >= primary_start:
+                    primary[row['minute']] = point
+                if row['secondary_used'] is not None:
+                    # The existing history chart buckets minute timestamps;
+                    # planning buckets actual check times. Keep the last valid
+                    # sample for both so hour boundaries retain identical plots.
+                    for mode, stamp in enumerate((row['minute'], row['checked'])):
+                        weekly[mode, math.ceil(stamp / 3600) - 1] = point
+        if not compact:
+            return points
+        primary.update((point['minute'], point) for point in weekly.values())
+        return sorted(primary.values(), key=lambda point: point['minute'])
 
     def trigger_history(self, limit=15):
         with self.connect() as db:
@@ -704,21 +749,18 @@ class Engine:
         schedule = self.store.get('schedule')
         current = self.store.get('current')
         server = current['primary']['resetsAt'] if current else None
-        guard = self.store.guard_until() if server else None
-        automatic_send_at = max(server + 2, guard) if server else None
         if schedule and schedule['status'] == 'pending':
             send_at = schedule['sendAt']
             mode = 'manual'
         else:
-            send_at = automatic_send_at
+            send_at = max(server + 2, self.store.guard_until()) if server else None
             mode = 'auto'
         return {'mode': mode, 'schedule': schedule, 'sendAt': send_at,
-                'automaticSendAt': automatic_send_at,
                 'estimatedResetAt': send_at + WINDOW if send_at else None,
                 'serverResetAt': server,
                 'minSendAt': math.floor(max(server, self.clock())) + 1 if server else None,
                 'minRefreshAt': math.ceil((max(math.floor(max(server, self.clock())) + 1,
-                                               guard) + WINDOW) / 60) * 60 if server else None,
+                                               self.store.guard_until()) + WINDOW) / 60) * 60 if server else None,
                 'maxRefreshAt': math.floor((self.clock() + 366 * 86400 + WINDOW) / 60) * 60}
 
     def audit_schedule_due(self, reason=None):
@@ -783,7 +825,7 @@ class Engine:
         self.linked = True
         return (identity, raw.get('accountId')), snapshot
 
-    def _publish(self, identity, snapshot, *, reconnected=False):
+    def _publish(self, identity, snapshot, *, reconnected=False, revalidate_idle_plan=False):
         refresh_weekly = (snapshot['primary']['usedPercent'] == 0 or reconnected or
                           self.read_requested in ('check', 'reconnect', 'resume'))
         if snapshot['primary']['usedPercent'] == 0 and self.rpc is not None:
@@ -808,7 +850,7 @@ class Engine:
         self.store.sample(account_key, snapshot, now)
         cancelled = self.store.cancel_invalid_schedule(
             snapshot['primary']['resetsAt'], now, used_percent=snapshot['primary']['usedPercent'],
-            reconnected=reconnected)
+            reconnected=revalidate_idle_plan)
         return account_key, cancelled
 
     def _wait_retry(self):
@@ -906,7 +948,7 @@ class Engine:
                          'recoveryRounds': retry.get('recoveryRounds', 0),
                          'readOnlyRecovery': True, 'recoverable': True}
                 self.store.set('connection', retry)
-                self.read_requested = 'reconnect'
+                self.read_requested = 'recover'
             elif retry.get('autoRecovery'):
                 # An interrupted probe from a legacy version keeps its guard.
                 self.stop_connection(recoverable=True)
@@ -916,7 +958,7 @@ class Engine:
                 return self.status
             if retry and now < retry['nextAt']:
                 return self.status
-            requested = self.read_requested or ('reconnect' if retry.get('readOnlyRecovery') else None)
+            requested = self.read_requested or ('recover' if retry.get('readOnlyRecovery') else None)
             self._phase('connecting' if not self.rpc else 'checking',
                         '正在连接' if not self.rpc else '正在检测额度')
             started = self.clock()
@@ -924,14 +966,19 @@ class Engine:
             identity, snap = self._read()
             account_key = hashlib.sha256(identity[0].encode()).hexdigest()[:24]
             previous = self.store.get('snapshot:' + account_key)
-            reconnected = requested == 'reconnect' or bool(retry.get('readOnlyRecovery'))
-            _, cancelled = self._publish(identity, snap, reconnected=reconnected)
+            reconnected = requested in ('reconnect', 'recover') or bool(retry.get('readOnlyRecovery'))
+            # Automatic recovery can read a rolling timestamp from an idle
+            # window. Only a user-requested recheck after a connection failure
+            # or an explicit reconnect should revalidate an idle plan.
+            _, cancelled = self._publish(
+                identity, snap, reconnected=reconnected,
+                revalidate_idle_plan=reconnected and requested in ('check', 'reconnect'))
             now = self.clock()
             self.store.log('check', {**snap, 'durationSeconds': round(now - started, 3)}, now)
             if requested or check_only:
                 self.read_requested = None
                 due_reason = '本轮为只读额度检测，定时请求等待后续自动调度'
-                message = '已连接，额度已更新' if requested == 'reconnect' else '当前额度已更新'
+                message = '已连接，额度已更新' if requested in ('reconnect', 'recover') else '当前额度已更新'
                 if self.store.get('paused', False):
                     message = '已暂停；' + message
                 if cancelled:

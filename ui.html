@@ -2550,6 +2550,10 @@
         font-size: 12px;
         padding: 6px 8px;
       }
+      #quota-chart-panel[data-paused="true"] {
+        filter: grayscale(1);
+        opacity: 0.65;
+      }
       #quota-chart-panel {
         display: flex;
         flex-direction: column;
@@ -2595,10 +2599,11 @@
         stroke-width: 1;
       }
       .chart-axis-line {
-        stroke: #7e8e84;
-        stroke-width: 1.5;
+        stroke: #adc2ad;
+        stroke-width: 1;
+        vector-effect: non-scaling-stroke;
       }
-      .chart-axis-future, .chart-pace {
+      .chart-tick.chart-axis-future, .chart-pace {
         stroke: #a1a5a3;
       }
       .chart-pace {
@@ -2761,15 +2766,18 @@
       }
       .settings-list {
         display: grid;
-        gap: 16px;
+        grid-template-columns: repeat(2, minmax(0, max-content));
+        gap: 12px clamp(32px, 5vw, 48px);
       }
       .settings-list label {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 8px;
         font-size: 14px;
       }
-      .settings-list input {
+      .settings-list input[type="checkbox"] {
+        width: 15px;
+        height: 15px;
         flex: none;
         margin: 0;
       }
@@ -3723,28 +3731,22 @@
           </button>
         </h2>
         <div class="settings-list">
-          <label
-            ><input
-              type="checkbox"
-              id="autostart"
-              disabled
-              onchange="setAutostart(this.checked)"
-            /><span>开机自启动</span></label
-          ><label
-            ><input
-              type="checkbox"
-              id="poll-while-paused"
-              disabled
-              onchange="setPollWhilePaused(this.checked)"
-            /><span>关闭软件后依然每分钟检测额度变化</span></label
-          ><label
-            ><input
-              type="checkbox"
-              id="delay-error-banner"
-              disabled
-              onchange="setDelayErrorBanner(this.checked)"
-            /><span>出错后5分钟再提示</span></label
-          >
+          <label>
+            <input type="checkbox" id="autostart" disabled onchange="setAutostart(this.checked)" />
+            <span>开机自启动</span>
+          </label>
+          <label>
+            <input type="checkbox" id="poll-while-paused" disabled onchange="setPollWhilePaused(this.checked)" />
+            <span>关闭软件后依然每分钟检测额度变化</span>
+          </label>
+          <label>
+            <input type="checkbox" id="weekly-auto-plan" checked />
+            <span>切换到周额度时自动使用规划统计</span>
+          </label>
+          <label>
+            <input type="checkbox" id="primary-auto-history" checked />
+            <span>切换到五小时额度时自动使用历程统计</span>
+          </label>
         </div>
         <div class="small" id="startup-error" role="status"></div>
       </section>
@@ -4117,17 +4119,9 @@
         refreshPromise = null,
         recheckBusy = false,
         connected = false,
-        pollSettingBusy = false,
-        delayErrorBanner = false;
+        pollSettingBusy = false;
       const cacheKey = "quota-starter:last-status:v1";
-      const bannerDelay = 5 * 60 * 1000;
-      const bannerCacheKey = "quota-starter:active-banner-error";
-      let bannerError = null, bannerTimer;
-      try {
-        bannerError = JSON.parse(sessionStorage.getItem(bannerCacheKey));
-      } catch {}
       let operationError = "";
-      let schedulePreviews = [];
       const pendingActions = new Set();
       const $ = (id) => document.getElementById(id);
       const timeFormat = new Intl.DateTimeFormat("zh-CN", {
@@ -4189,30 +4183,17 @@
         $(id).textContent = clockTime(value);
         $(dateId).textContent = value ? time(value).split(" ")[0] : "—";
       }
-      function paintErrorBanner() {
-        clearTimeout(bannerTimer);
-        const wait = bannerError && delayErrorBanner
-          ? bannerDelay - (Date.now() - bannerError.since) : 0;
-        const banner = $("error-banner");
-        banner.textContent = wait > 0 ? "" : bannerError?.message || "";
-        banner.hidden = !banner.textContent;
-        if (wait > 0) bannerTimer = setTimeout(paintErrorBanner, wait);
-      }
       function setErrorBanner(message) {
-        if ((bannerError?.message || "") !== message) {
-          bannerError = message ? { message, since: Date.now() } : null;
-          try {
-            sessionStorage.setItem(bannerCacheKey, JSON.stringify(bannerError));
-          } catch {}
-        }
-        paintErrorBanner();
+        const banner = $("error-banner");
+        banner.textContent = message || "";
+        banner.hidden = !message;
       }
       function renderErrorBanner(s) {
         setErrorBanner(
           s.connection?.error ||
             s.autostart?.error ||
             s.scheduleQueue?.last?.error ||
-            operationError || "",
+            operationError,
         );
       }
       function shortStatus(s) {
@@ -4242,21 +4223,13 @@
         if (v.includes("未确认")) return "待核实";
         return s.busy ? "处理中" : "等待检测";
       }
-      function displayedTiming() {
-        const t = snapshot?.timing, preview = schedulePreviews.at(-1);
-        if (!t || !preview) return t;
-        const sendAt = preview.clear ? t.automaticSendAt : preview.refreshAt - 18000;
-        return { ...t, sendAt, estimatedResetAt: sendAt ? sendAt + 18000 : null,
-          mode: preview.clear ? "auto" : "manual", schedule: null };
-      }
-      function savingSchedule() {
-        return pendingActions.has("schedule") || pendingActions.has("schedule/clear");
-      }
       function updateControls() {
         const busy = Boolean(snapshot?.busy),
           offline = !connected,
           stopped = Boolean(snapshot?.connection?.stopped);
-        const changing = savingSchedule(), timing = displayedTiming();
+        const changing =
+          pendingActions.has("schedule") ||
+          pendingActions.has("schedule/clear");
         $("reconnect").disabled =
           offline || busy || pendingActions.has("reconnect");
         $("recheck").disabled =
@@ -4270,7 +4243,8 @@
         $("schedule-timeline").setAttribute("data-paused", String(Boolean(paused)));
         if (paused && refreshDialog.open) refreshDialog.close();
         const manualPlan =
-          timing?.mode === "manual" || timing?.schedule?.status === "pending";
+          snapshot?.timing?.mode === "manual" ||
+          snapshot?.timing?.schedule?.status === "pending";
         $("auto-time").disabled = offline || paused || changing || !manualPlan;
         $("save-time").disabled =
           offline || paused || changing || manualDirty || !snapshot?.timing?.minRefreshAt;
@@ -4279,9 +4253,8 @@
           pendingActions.has("pause") ||
           pendingActions.has("resume");
         $("timeline-handle").disabled =
-          $("choose-time").disabled || !timing?.sendAt;
+          $("choose-time").disabled || !snapshot?.timing?.sendAt;
         $("poll-while-paused").disabled = offline || pollSettingBusy;
-        $("delay-error-banner").disabled = offline || pendingActions.has("settings/delay-error-banner");
       }
       let timelineGeometry = null,
         timelineDrag = null;
@@ -4397,7 +4370,16 @@
       }
       async function saveDraggedTime(sendAt) {
         if (!connected || !sendAt) return;
-        await action("schedule", "schedule-feedback", { refreshAt: sendAt + 18000 });
+        if (
+          await action("schedule", "schedule-feedback", {
+            refreshAt: sendAt + 18000,
+          })
+        )
+          showFeedback(
+            "schedule-feedback",
+            scheduleSaveQueued ? "已排队，检测后保存" : "已保存刷新时间",
+            true,
+          );
       }
       const timelineHandle = $("timeline-handle");
       timelineHandle.addEventListener("pointerdown", (e) => {
@@ -4406,7 +4388,7 @@
         timelineDrag = {
           pointer: e.pointerId,
           x: e.clientX,
-          initial: displayedTiming().sendAt,
+          initial: snapshot.timing.sendAt,
           target: null,
           ...timelineGeometry,
         };
@@ -4440,10 +4422,9 @@
         if (!d || e.pointerId !== d.pointer) return;
         timelineDrag = null;
         $("schedule-timeline").setAttribute("data-dragging", "false");
-        if (save && connected && !paused && !savingSchedule() &&
-            d.target !== null && d.target !== d.initial)
+        renderTiming(snapshot.timing);
+        if (save && d.target !== null && d.target !== d.initial)
           saveDraggedTime(d.target);
-        else renderTiming();
       }
       timelineHandle.addEventListener("pointerup", (e) =>
         endTimelineDrag(e, true),
@@ -4463,13 +4444,12 @@
         e.preventDefault();
         saveDraggedTime(
           dragSendTarget(
-            displayedTiming().sendAt,
+            snapshot.timing.sendAt,
             e.key === "ArrowLeft" ? -1 : 1,
           ),
         );
       });
-      function renderTiming() {
-        const t = displayedTiming();
+      function renderTiming(t) {
         if (!t) return;
         renderTimeline(t);
         updateControls();
@@ -4478,8 +4458,7 @@
       }
       if (typeof ResizeObserver !== "undefined")
         new ResizeObserver(() => {
-          const t = displayedTiming();
-          if (t) renderTimeline(t);
+          if (snapshot?.timing) renderTimeline(snapshot.timing);
         }).observe($("schedule-timeline"));
 
       const refreshDialog = $("refresh-dialog");
@@ -4642,7 +4621,7 @@
         if (!min || !max) return;
         $("save-time").disabled =
           !connected ||
-          savingSchedule() ||
+          pendingActions.has("schedule") ||
           manualDirty ||
           draftRefresh < min ||
           draftRefresh > max;
@@ -4737,7 +4716,7 @@
           min,
           Math.min(
             max,
-            Math.ceil((displayedTiming().estimatedResetAt || min) / 60) * 60,
+            Math.ceil((snapshot.timing.estimatedResetAt || min) / 60) * 60,
           ),
         );
         syncManualDate();
@@ -4765,7 +4744,7 @@
         refreshBackdrop = false;
       });
       function countdown() {
-        const t = displayedTiming();
+        const t = snapshot?.timing;
         if (!t) return;
         const left = t.sendAt - Date.now() / 1000;
         const pad = (n) => String(n).padStart(2, "0");
@@ -4929,7 +4908,10 @@
       let chartSignature = "";
       let planningRecheckPending = false;
       const chartPreferencesKey = "quota-starter:chart-preferences:v1";
+      const weeklyAutoPlan = $("weekly-auto-plan"),
+        primaryAutoHistory = $("primary-auto-history");
       function restoreChartPreferences() {
+        weeklyAutoPlan.checked = primaryAutoHistory.checked = true;
         try {
           const saved = JSON.parse(localStorage.getItem(chartPreferencesKey));
           if (
@@ -4938,6 +4920,8 @@
           )
             $("chart-quota").value = saved.quota;
           if (saved?.mode === "plan") $("chart-mode").value = "plan";
+          weeklyAutoPlan.checked = saved?.weeklyAutoPlan !== false;
+          primaryAutoHistory.checked = saved?.primaryAutoHistory !== false;
         } catch {}
       }
       function rememberChartPreferences() {
@@ -4947,10 +4931,11 @@
             JSON.stringify({
               quota: $("chart-quota").value,
               mode: $("chart-mode").value,
+              weeklyAutoPlan: weeklyAutoPlan.checked,
+              primaryAutoHistory: primaryAutoHistory.checked,
             }),
           );
         } catch {}
-        renderChart();
       }
       restoreChartPreferences();
       function planningResetAt(weekly, now) {
@@ -4974,6 +4959,7 @@
       }
       function changeChartPreferences() {
         rememberChartPreferences();
+        renderChart();
         planningRecheckPending = $("chart-mode").value === "plan";
         return recheckPlanningIfNeeded();
       }
@@ -5069,7 +5055,7 @@
       function hideChartTooltip() {
         $("chart-tooltip").hidden = true;
       }
-      function showChartTooltip(at, statistics, x, y, alignEnd = false) {
+      function showChartTooltip(at, statistics, x, y) {
         const tip = $("chart-tooltip");
         $("tooltip-time").textContent = time(at);
         $("tooltip-statistics").textContent = statistics;
@@ -5078,12 +5064,12 @@
         tip.style.left =
           Math.max(
             12,
-            Math.min(alignEnd ? x - bounds.width - 12 : x + 12, window.innerWidth - bounds.width - 12),
+            Math.min(x + 12, window.innerWidth - bounds.width - 12),
           ) + "px";
         tip.style.top =
           Math.max(
             12,
-            Math.min(alignEnd ? y - bounds.height - 12 : y + 16, window.innerHeight - bounds.height - 12),
+            Math.min(y + 16, window.innerHeight - bounds.height - 12),
           ) + "px";
       }
       if (typeof window !== "undefined") {
@@ -5129,15 +5115,15 @@
           return;
         }
         for (let value = low; value <= high; value += step) {
-          svg.append(
-            svgPart("line", {
+          if (value > low) {
+            svg.append(svgPart("line", {
               x1: left,
               x2: right,
               y1: y(value),
               y2: y(value),
               class: "chart-grid",
-            }),
-          );
+            }));
+          }
           svg.append(
             svgPart(
               "text",
@@ -5151,37 +5137,24 @@
             ),
           );
         }
-        const minor = weekly ? 4 * 3600 : 5 * 60;
+        const minor = planning ? (weekly ? 86400 : 3600) : weekly ? 4 * 3600 : 5 * 60;
         const major = weekly ? 86400 : width < 500 ? 3600 : 1800;
         const dayOffset = 8 * 3600;
-        const labelClearance = planning ? 84 : 44;
         const addTimeLabel = (at, anchor) => {
-          const date = chartDateFormat.format(new Date(at * 1000));
-          const clock = clockTime(at).slice(0, 5);
-          const label = planning && anchor !== "middle" ? date + " " + clock : weekly ? date : clock;
+          const label = weekly
+            ? chartDateFormat.format(new Date(at * 1000))
+            : clockTime(at).slice(0, 5);
           svg.append(svgPart("text", {
             x: x(at), y: height - 5, "text-anchor": anchor,
             class: "chart-axis" + (planning && at > now ? " chart-axis-future" : ""),
           }, label));
         };
-        if (planning) {
-          const elapsed = x(Math.min(end, Math.max(start, now)));
-          svg.append(svgPart("line", {
-            x1: left, x2: elapsed, y1: bottom, y2: bottom, class: "chart-axis-line",
-          }));
-          svg.append(svgPart("line", {
-            x1: elapsed, x2: right, y1: bottom, y2: bottom, class: "chart-axis-line chart-axis-future",
-          }));
-          svg.append(svgPart("line", {
-            x1: left, x2: right, y1: y(100), y2: y(0), class: "chart-pace",
-          }));
-        }
         for (
-          let at = Math.ceil(start / minor) * minor;
+          let at = planning ? start : Math.ceil(start / minor) * minor;
           at <= end;
           at += minor
         ) {
-          const majorTick = (at + (weekly ? dayOffset : 0)) % major === 0;
+          const majorTick = planning || (at + (weekly ? dayOffset : 0)) % major === 0;
           const future = planning && at > now ? " chart-axis-future" : "";
           svg.append(
             svgPart("line", {
@@ -5203,32 +5176,35 @@
               }),
             );
             const repeatsEnd = weekly && end - at < 86400;
-            if (!repeatsEnd && x(at) - left >= labelClearance && right - x(at) >= labelClearance)
+            if (planning)
+              addTimeLabel(at, at === start ? "start" : at === end ? "end" : "middle");
+            else if (!planning && !repeatsEnd && x(at) - left >= 44 && right - x(at) >= 44)
               addTimeLabel(at, "middle");
           }
         }
-        addTimeLabel(start, "start");
-        addTimeLabel(end, "end");
-        if (planning && start <= now)
-          svg.append(svgPart("circle", { cx: left, cy: y(100), r: 2, fill: "#315c43" }));
+        if (!planning) {
+          addTimeLabel(start, "start");
+          addTimeLabel(end, "end");
+        }
+        const elapsed = planning ? x(Math.min(end, Math.max(start, now))) : right;
+        svg.append(svgPart("line", {
+          x1: left, x2: elapsed, y1: bottom, y2: bottom, class: "chart-axis-line",
+        }));
+        if (planning) {
+          svg.append(svgPart("line", {
+            x1: elapsed, x2: right, y1: bottom, y2: bottom, class: "chart-axis-line chart-axis-future",
+          }));
+          svg.append(svgPart("line", {
+            x1: left, x2: right, y1: y(100), y2: y(0), class: "chart-pace",
+          }));
+        }
         if (points.length) {
           svg.append(svgPart("path", { d: chartPath(points, x, y), class: "chart-line" }));
-          const last = points.length - 1;
-          const endpoints = last ? [0, last] : [0];
-          if (planning) {
-            for (const index of endpoints) {
-              const point = points[index];
-              svg.append(svgPart("circle", {
-                cx: x(point.at), cy: y(point.value), r: 2, fill: "#315c43",
-                class: "chart-sample-endpoint",
-              }));
-            }
-          }
           const hit = svgPart("rect", {
             x: left, y: 8, width: plot, height: plotHeight + 6,
             class: "chart-hit", tabindex: 0, "aria-label": "额度采样，使用方向键查看",
           });
-          let selected = last;
+          let selected = points.length - 1;
           const showPoint = (index, event) => {
             selected = index;
             const point = points[index], delta = point.delta;
@@ -5242,27 +5218,12 @@
             hit.setAttribute("aria-label", time(point.sampledAt) + " " + statistics);
             showChartTooltip(point.sampledAt, statistics,
               event?.clientX ?? bounds.left + x(point.at) / width * bounds.width,
-              event?.clientY ?? bounds.top + y(point.value) / height * bounds.height,
-              planning && index === last && !event);
+              event?.clientY ?? bounds.top + y(point.value) / height * bounds.height);
           };
           hit.addEventListener("pointermove", (event) => {
             const bounds = svg.getBoundingClientRect();
             const cursor = (event.clientX - bounds.left) / bounds.width * width;
-            if (planning) {
-              const cursorY = (event.clientY - bounds.top) / bounds.height * height;
-              // Choose the closest endpoint when both samples fall inside the snap radius.
-              let nearest = null, distance = 10;
-              for (const index of endpoints) {
-                const point = points[index];
-                const offset = Math.hypot(cursor - x(point.at), cursorY - y(point.value));
-                if (offset <= distance) {
-                  nearest = index;
-                  distance = offset;
-                }
-              }
-              if (nearest !== null) return showPoint(nearest);
-            }
-            let lo = 0, hi = last;
+            let lo = 0, hi = points.length - 1;
             while (lo < hi) {
               const mid = Math.floor((lo + hi) / 2);
               if (cursor > (x(points[mid].at) + x(points[mid + 1].at)) / 2) lo = mid + 1;
@@ -5276,8 +5237,8 @@
           hit.addEventListener("keydown", (event) => {
             const index = {
               ArrowLeft: Math.max(0, selected - 1),
-              ArrowRight: Math.min(last, selected + 1),
-              Home: 0, End: last,
+              ArrowRight: Math.min(points.length - 1, selected + 1),
+              Home: 0, End: points.length - 1,
             }[event.key];
             if (!Number.isInteger(index)) return;
             event.preventDefault();
@@ -5286,6 +5247,53 @@
           hit.addEventListener("pointerleave", hideChartTooltip);
           hit.addEventListener("blur", hideChartTooltip);
           svg.append(hit);
+        }
+        if (planning) {
+          // Append above the sample hit area so it cannot intercept the
+          // reference line, including its future portion without samples.
+          const paceHit = svgPart("line", {
+            x1: left, x2: right, y1: y(100), y2: y(0),
+            class: "chart-pace-hit", tabindex: 0,
+            "aria-label": "平均消耗参考线",
+            stroke: "transparent", "stroke-width": 12,
+            "pointer-events": "stroke",
+          });
+          const showPace = (event) => {
+            const bounds = svg.getBoundingClientRect();
+            const ratio = event ? Math.max(0, Math.min(1,
+              ((event.clientX - bounds.left) / bounds.width * width - left) / plot)) : 0.5;
+            const at = start + ratio * duration;
+            const remaining = Number((100 * (1 - ratio)).toFixed(1));
+            const statistics = "平均消耗参考 · 剩余 " + remaining + "%";
+            paceHit.setAttribute("aria-label", time(at) + " " + statistics);
+            showChartTooltip(at, statistics,
+              event?.clientX ?? bounds.left + x(at) / width * bounds.width,
+              event?.clientY ?? bounds.top + y(remaining) / height * bounds.height);
+          };
+          paceHit.addEventListener("pointerenter", showPace);
+          paceHit.addEventListener("pointermove", showPace);
+          paceHit.addEventListener("pointerleave", hideChartTooltip);
+          paceHit.addEventListener("focus", () => showPace());
+          paceHit.addEventListener("blur", hideChartTooltip);
+          svg.append(paceHit);
+        }
+        if (planning && start <= now) {
+          svg.append(svgPart("circle", { cx: left, cy: y(100), r: 2, fill: "#315c43" }));
+          const startHit = svgPart("circle", {
+            cx: left, cy: y(100), r: 7, class: "chart-hit chart-start-hit", tabindex: 0,
+            "aria-label": time(start) + " 剩余 100%",
+          });
+          const showStart = () => {
+            const bounds = svg.getBoundingClientRect();
+            showChartTooltip(start, "剩余 100%",
+              bounds.left + left / width * bounds.width,
+              bounds.top + y(100) / height * bounds.height);
+          };
+          startHit.addEventListener("pointerenter", showStart);
+          startHit.addEventListener("pointerleave", hideChartTooltip);
+          startHit.addEventListener("focus", showStart);
+          startHit.addEventListener("blur", hideChartTooltip);
+          svg.append(startHit);
         }
         let consumed = 0,
           recovered = 0;
@@ -5309,7 +5317,16 @@
         );
       }
       $("chart-mode").addEventListener("change", changeChartPreferences);
-      $("chart-quota").addEventListener("change", changeChartPreferences);
+      $("chart-quota").addEventListener("change", () => {
+        if ($("chart-quota").value === "secondaryRemaining") {
+          if (weeklyAutoPlan.checked) $("chart-mode").value = "plan";
+        } else if (primaryAutoHistory.checked) {
+          $("chart-mode").value = "history";
+        }
+        changeChartPreferences();
+      });
+      weeklyAutoPlan.addEventListener("change", rememberChartPreferences);
+      primaryAutoHistory.addEventListener("change", rememberChartPreferences);
       if (typeof ResizeObserver !== "undefined")
         new ResizeObserver(renderChart).observe($("quota-chart"));
       if (typeof window !== "undefined")
@@ -5317,20 +5334,14 @@
       // Render synchronously: the browser paints only after the complete snapshot is applied.
       function renderStatus(s, announce = true) {
         connected = true;
-        if (announce) {
-          const pendingIds = s.scheduleQueue?.pendingIds || [];
-          const result = s.scheduleQueue?.last;
-          if (result?.status === "failed" && schedulePreviews.some(
-            (preview) => preview.operationId === result.id && !pendingIds.includes(result.id),
-          )) showFeedback("schedule-feedback", result.error);
-          schedulePreviews = schedulePreviews.filter(
-            (preview) => !preview.operationId || pendingIds.includes(preview.operationId),
-          );
-        }
         if (!s.current && snapshot?.current)
           s = { ...s, current: snapshot.current, timing: snapshot.timing };
         snapshot = s;
         paused = s.paused;
+        $("quota-chart-panel").setAttribute(
+          "data-paused",
+          String(paused && s.pollWhilePaused !== true),
+        );
         $("version").textContent = "v" + s.version;
         $("installation-path").textContent = s.installationPath || "—";
         $("badge").textContent = paused
@@ -5348,8 +5359,7 @@
         $("status").textContent = shortStatus(s);
         $("status-detail").textContent = s.status;
         $("status").title = s.status;
-        delayErrorBanner = s.delayErrorBanner === true;
-        if (announce) renderErrorBanner(s);
+        renderErrorBanner(s);
         const c = s.current;
         if (c) {
           renderQuota("remaining", c.primary);
@@ -5361,12 +5371,10 @@
         }
         timeBlock("next-check", "next-check-date", s.nextPoll);
         $("next-check").title = time(s.nextPoll);
-        renderTiming();
+        renderTiming(s.timing);
         renderAutostart(s.autostart);
         if (!pollSettingBusy)
           $("poll-while-paused").checked = s.pollWhilePaused === true;
-        if (!pendingActions.has("settings/delay-error-banner"))
-          $("delay-error-banner").checked = delayErrorBanner;
         renderChart();
         renderActivity(s);
         if (announce) showScheduleNotice(s.scheduleNotice);
@@ -5417,7 +5425,6 @@
           "autostart",
           "choose-time",
           "poll-while-paused",
-          "delay-error-banner",
         ])
           $(id).disabled = true;
       }
@@ -5447,7 +5454,6 @@
               "autostart",
               "choose-time",
               "poll-while-paused",
-              "delay-error-banner",
             ])
               $(id).disabled = true;
           }
@@ -5514,16 +5520,11 @@
           updateControls();
         }
       }
+      let scheduleSaveQueued = false;
       async function action(name, feedback = "toast", body) {
-        const scheduleEdit = name === "schedule" || name === "schedule/clear";
-        if (pendingActions.has(name) || (scheduleEdit && savingSchedule())) return false;
+        if (pendingActions.has(name)) return false;
         pendingActions.add(name);
-        const preview = scheduleEdit && (name === "schedule/clear" || Number.isFinite(body?.refreshAt))
-          ? { clear: name === "schedule/clear", refreshAt: body?.refreshAt } : null;
-        if (preview) {
-          schedulePreviews.push(preview);
-          renderTiming();
-        } else updateControls();
+        updateControls();
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 25000);
         try {
@@ -5557,14 +5558,10 @@
           operationError = r.ok
             ? ""
             : d.error || d.message || "操作失败，请检查日志";
-          if (preview && !r.ok) {
-            schedulePreviews = schedulePreviews.filter((item) => item !== preview);
-            renderTiming();
-          }
+          if (name === "schedule" && r.ok)
+            scheduleSaveQueued = d.queued === true;
           showFeedback(feedback, d.message || d.error, r.ok);
           if (refreshPromise) await refreshPromise;
-          // A poll already in flight may predate this edit's admission to the queue.
-          if (preview && r.ok) preview.operationId = d.operationId;
           await refresh();
           return r.ok;
         } catch (e) {
@@ -5574,10 +5571,8 @@
         } finally {
           clearTimeout(timer);
           pendingActions.delete(name);
-          if (preview && !preview.operationId)
-            schedulePreviews = schedulePreviews.filter((item) => item !== preview);
-          if (scheduleEdit) renderTiming();
-          else updateControls();
+          updateControls();
+          if (refreshDialog.open) renderWheels();
         }
       }
 
@@ -5589,9 +5584,17 @@
           renderWheels();
           return;
         }
-        if (savingSchedule()) return;
-        refreshDialog.close();
-        await action("schedule", "schedule-feedback", { refreshAt: draftRefresh });
+        $("save-time").disabled = true;
+        if (
+          await action("schedule", "refresh-error", { refreshAt: draftRefresh })
+        ) {
+          refreshDialog.close();
+          showFeedback(
+            "schedule-feedback",
+            scheduleSaveQueued ? "已排队，检测后保存" : "已保存刷新时间",
+            true,
+          );
+        } else renderWheels();
       }
       $("save-time").addEventListener("click", saveTime);
       function renderAutostart(a) {
@@ -5617,10 +5620,6 @@
           await refresh();
           updateControls();
         }
-      }
-      async function setDelayErrorBanner(enabled) {
-        await action("settings/delay-error-banner", "toast", { enabled });
-        $("delay-error-banner").checked = delayErrorBanner;
       }
       restoreStatus();
       setInterval(countdown, 1000);

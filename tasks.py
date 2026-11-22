@@ -419,9 +419,10 @@ class TaskScheduler:
         with self.db() as db:
             db.execute('CREATE TABLE IF NOT EXISTS scheduled_tasks '
                        '(id TEXT PRIMARY KEY, status TEXT NOT NULL, created REAL NOT NULL, data TEXT NOT NULL)')
+            db.execute('CREATE INDEX IF NOT EXISTS scheduled_tasks_status_created ON scheduled_tasks(status,created)')
             # Claim is durable before launch. A crash must never repeat a submitted job.
-            for row in db.execute("SELECT * FROM scheduled_tasks WHERE status='running'").fetchall():
-                data = json.loads(row['data'])
+            while row := db.execute("SELECT data FROM scheduled_tasks WHERE status='running' LIMIT 1").fetchone():
+                data = json.loads(row[0])
                 data.update(status='failed', finishedAt=self.clock(),
                             progress='后台已退出，结果未知，请检查工作目录；不会自动重试')
                 self.write(db, data)
@@ -502,12 +503,13 @@ class TaskScheduler:
                 if not row:
                     raise ValueError('任务不存在')
                 return json.loads(row[0])
-            rows = db.execute("SELECT data FROM scheduled_tasks WHERE status!='deleted' ORDER BY "
-                              "CASE WHEN status IN ('waiting','running') THEN 0 ELSE 1 END, created DESC LIMIT 200").fetchall()
+            # Remove document bodies inside SQLite, before rows enter Python;
+            # a list refresh must not load 200 complete prompts and results.
+            tasks = [json.loads(row[0]) for row in db.execute(
+                "SELECT json_remove(data,'$.content','$.result') FROM scheduled_tasks WHERE status!='deleted' ORDER BY "
+                "CASE WHEN status IN ('waiting','running') THEN 0 ELSE 1 END, created DESC LIMIT 200")]
             total = db.execute("SELECT COUNT(*) FROM scheduled_tasks WHERE status!='deleted'").fetchone()[0]
             counts = {r[0]: r[1] for r in db.execute("SELECT status,COUNT(*) FROM scheduled_tasks WHERE status!='deleted' GROUP BY status")}
-        tasks = [{k: v for k, v in json.loads(r[0]).items() if k not in ('content', 'result')}
-                 for r in rows]
         return {'tasks': tasks, 'total': total, 'counts': counts, 'settings': self.settings()}
 
     def create(self, body):
@@ -684,8 +686,16 @@ class TaskScheduler:
             now, current = self.clock(), self.store.get('current') or {}
             with self.db() as db:
                 db.execute('BEGIN IMMEDIATE')
-                rows = db.execute("SELECT data FROM scheduled_tasks WHERE status='waiting' ORDER BY created").fetchall()
-                task = next((json.loads(r[0]) for r in rows if self.due(json.loads(r[0]), current, now)), None)
+                task = None
+                rows = db.execute("SELECT json_remove(data,'$.content','$.result') FROM scheduled_tasks "
+                                  "WHERE status='waiting' ORDER BY created")
+                for row in rows:
+                    candidate = json.loads(row[0])
+                    if self.due(candidate, current, now):
+                        task = json.loads(db.execute('SELECT data FROM scheduled_tasks WHERE id=?',
+                                                     (candidate['id'],)).fetchone()[0])
+                        break
+                rows.close()
                 if not task:
                     return
                 task.update(status='running', startedAt=now, progress='正在校验账户、额度和模型')
