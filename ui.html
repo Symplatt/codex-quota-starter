@@ -3747,6 +3747,10 @@
             <input type="checkbox" id="primary-auto-history" checked />
             <span>切换到五小时额度时自动使用历程统计</span>
           </label>
+          <label>
+            <input type="checkbox" id="delay-error-banner" disabled onchange="setDelayErrorBanner(this.checked)" />
+            <span>出错后5分钟再提示</span>
+          </label>
         </div>
         <div class="small" id="startup-error" role="status"></div>
       </section>
@@ -4119,9 +4123,17 @@
         refreshPromise = null,
         recheckBusy = false,
         connected = false,
-        pollSettingBusy = false;
+        pollSettingBusy = false,
+        delayErrorBanner = false;
       const cacheKey = "quota-starter:last-status:v1";
+      const bannerDelay = 5 * 60 * 1000;
+      const bannerCacheKey = "quota-starter:active-banner-error";
+      let bannerError = null, bannerTimer;
+      try {
+        bannerError = JSON.parse(sessionStorage.getItem(bannerCacheKey));
+      } catch {}
       let operationError = "";
+      let schedulePreviews = [];
       const pendingActions = new Set();
       const $ = (id) => document.getElementById(id);
       const timeFormat = new Intl.DateTimeFormat("zh-CN", {
@@ -4183,17 +4195,30 @@
         $(id).textContent = clockTime(value);
         $(dateId).textContent = value ? time(value).split(" ")[0] : "—";
       }
-      function setErrorBanner(message) {
+      function paintErrorBanner() {
+        clearTimeout(bannerTimer);
+        const wait = bannerError && delayErrorBanner
+          ? bannerDelay - (Date.now() - bannerError.since) : 0;
         const banner = $("error-banner");
-        banner.textContent = message || "";
-        banner.hidden = !message;
+        banner.textContent = wait > 0 ? "" : bannerError?.message || "";
+        banner.hidden = !banner.textContent;
+        if (wait > 0) bannerTimer = setTimeout(paintErrorBanner, wait);
+      }
+      function setErrorBanner(message) {
+        if ((bannerError?.message || "") !== message) {
+          bannerError = message ? { message, since: Date.now() } : null;
+          try {
+            sessionStorage.setItem(bannerCacheKey, JSON.stringify(bannerError));
+          } catch {}
+        }
+        paintErrorBanner();
       }
       function renderErrorBanner(s) {
         setErrorBanner(
           s.connection?.error ||
             s.autostart?.error ||
             s.scheduleQueue?.last?.error ||
-            operationError,
+            operationError || "",
         );
       }
       function shortStatus(s) {
@@ -4223,13 +4248,21 @@
         if (v.includes("未确认")) return "待核实";
         return s.busy ? "处理中" : "等待检测";
       }
+      function displayedTiming() {
+        const t = snapshot?.timing, preview = schedulePreviews.at(-1);
+        if (!t || !preview) return t;
+        const sendAt = preview.clear ? t.automaticSendAt : preview.refreshAt - 18000;
+        return { ...t, sendAt, estimatedResetAt: sendAt ? sendAt + 18000 : null,
+          mode: preview.clear ? "auto" : "manual", schedule: null };
+      }
+      function savingSchedule() {
+        return pendingActions.has("schedule") || pendingActions.has("schedule/clear");
+      }
       function updateControls() {
         const busy = Boolean(snapshot?.busy),
           offline = !connected,
           stopped = Boolean(snapshot?.connection?.stopped);
-        const changing =
-          pendingActions.has("schedule") ||
-          pendingActions.has("schedule/clear");
+        const changing = savingSchedule(), timing = displayedTiming();
         $("reconnect").disabled =
           offline || busy || pendingActions.has("reconnect");
         $("recheck").disabled =
@@ -4243,8 +4276,7 @@
         $("schedule-timeline").setAttribute("data-paused", String(Boolean(paused)));
         if (paused && refreshDialog.open) refreshDialog.close();
         const manualPlan =
-          snapshot?.timing?.mode === "manual" ||
-          snapshot?.timing?.schedule?.status === "pending";
+          timing?.mode === "manual" || timing?.schedule?.status === "pending";
         $("auto-time").disabled = offline || paused || changing || !manualPlan;
         $("save-time").disabled =
           offline || paused || changing || manualDirty || !snapshot?.timing?.minRefreshAt;
@@ -4253,8 +4285,9 @@
           pendingActions.has("pause") ||
           pendingActions.has("resume");
         $("timeline-handle").disabled =
-          $("choose-time").disabled || !snapshot?.timing?.sendAt;
+          $("choose-time").disabled || !timing?.sendAt;
         $("poll-while-paused").disabled = offline || pollSettingBusy;
+        $("delay-error-banner").disabled = offline || pendingActions.has("settings/delay-error-banner");
       }
       let timelineGeometry = null,
         timelineDrag = null;
@@ -4370,16 +4403,7 @@
       }
       async function saveDraggedTime(sendAt) {
         if (!connected || !sendAt) return;
-        if (
-          await action("schedule", "schedule-feedback", {
-            refreshAt: sendAt + 18000,
-          })
-        )
-          showFeedback(
-            "schedule-feedback",
-            scheduleSaveQueued ? "已排队，检测后保存" : "已保存刷新时间",
-            true,
-          );
+        await action("schedule", "schedule-feedback", { refreshAt: sendAt + 18000 });
       }
       const timelineHandle = $("timeline-handle");
       timelineHandle.addEventListener("pointerdown", (e) => {
@@ -4388,7 +4412,7 @@
         timelineDrag = {
           pointer: e.pointerId,
           x: e.clientX,
-          initial: snapshot.timing.sendAt,
+          initial: displayedTiming().sendAt,
           target: null,
           ...timelineGeometry,
         };
@@ -4422,9 +4446,10 @@
         if (!d || e.pointerId !== d.pointer) return;
         timelineDrag = null;
         $("schedule-timeline").setAttribute("data-dragging", "false");
-        renderTiming(snapshot.timing);
-        if (save && d.target !== null && d.target !== d.initial)
+        if (save && connected && !paused && !savingSchedule() &&
+            d.target !== null && d.target !== d.initial)
           saveDraggedTime(d.target);
+        else renderTiming();
       }
       timelineHandle.addEventListener("pointerup", (e) =>
         endTimelineDrag(e, true),
@@ -4444,12 +4469,13 @@
         e.preventDefault();
         saveDraggedTime(
           dragSendTarget(
-            snapshot.timing.sendAt,
+            displayedTiming().sendAt,
             e.key === "ArrowLeft" ? -1 : 1,
           ),
         );
       });
-      function renderTiming(t) {
+      function renderTiming() {
+        const t = displayedTiming();
         if (!t) return;
         renderTimeline(t);
         updateControls();
@@ -4458,7 +4484,8 @@
       }
       if (typeof ResizeObserver !== "undefined")
         new ResizeObserver(() => {
-          if (snapshot?.timing) renderTimeline(snapshot.timing);
+          const t = displayedTiming();
+          if (t) renderTimeline(t);
         }).observe($("schedule-timeline"));
 
       const refreshDialog = $("refresh-dialog");
@@ -4621,7 +4648,7 @@
         if (!min || !max) return;
         $("save-time").disabled =
           !connected ||
-          pendingActions.has("schedule") ||
+          savingSchedule() ||
           manualDirty ||
           draftRefresh < min ||
           draftRefresh > max;
@@ -4716,7 +4743,7 @@
           min,
           Math.min(
             max,
-            Math.ceil((snapshot.timing.estimatedResetAt || min) / 60) * 60,
+            Math.ceil((displayedTiming().estimatedResetAt || min) / 60) * 60,
           ),
         );
         syncManualDate();
@@ -4744,7 +4771,7 @@
         refreshBackdrop = false;
       });
       function countdown() {
-        const t = snapshot?.timing;
+        const t = displayedTiming();
         if (!t) return;
         const left = t.sendAt - Date.now() / 1000;
         const pad = (n) => String(n).padStart(2, "0");
@@ -5278,22 +5305,28 @@
           svg.append(paceHit);
         }
         if (planning && start <= now) {
-          svg.append(svgPart("circle", { cx: left, cy: y(100), r: 2, fill: "#315c43" }));
-          const startHit = svgPart("circle", {
-            cx: left, cy: y(100), r: 7, class: "chart-hit chart-start-hit", tabindex: 0,
-            "aria-label": time(start) + " 剩余 100%",
-          });
-          const showStart = () => {
-            const bounds = svg.getBoundingClientRect();
-            showChartTooltip(start, "剩余 100%",
-              bounds.left + left / width * bounds.width,
-              bounds.top + y(100) / height * bounds.height);
+          const addMagnet = (at, value, sampleTime, kind) => {
+            const cx = x(at), cy = y(value);
+            const label = "剩余 " + value + "%";
+            const hit = svgPart("circle", {
+              cx, cy, r: 7, class: "chart-hit chart-" + kind + "-hit", tabindex: 0,
+              "aria-label": time(sampleTime) + " " + label,
+            });
+            const show = () => {
+              const bounds = svg.getBoundingClientRect();
+              showChartTooltip(sampleTime, label, bounds.left + cx / width * bounds.width,
+                bounds.top + cy / height * bounds.height);
+            };
+            hit.addEventListener("pointerenter", show);
+            hit.addEventListener("pointerleave", hideChartTooltip);
+            hit.addEventListener("focus", show);
+            hit.addEventListener("blur", hideChartTooltip);
+            svg.append(hit);
           };
-          startHit.addEventListener("pointerenter", showStart);
-          startHit.addEventListener("pointerleave", hideChartTooltip);
-          startHit.addEventListener("focus", showStart);
-          startHit.addEventListener("blur", hideChartTooltip);
-          svg.append(startHit);
+          addMagnet(start, 100, start, "start");
+          const last = points.at(-1);
+          if (last && (last.at !== start || last.value !== 100))
+            addMagnet(last.at, last.value, last.sampledAt, "end");
         }
         let consumed = 0,
           recovered = 0;
@@ -5334,6 +5367,16 @@
       // Render synchronously: the browser paints only after the complete snapshot is applied.
       function renderStatus(s, announce = true) {
         connected = true;
+        if (announce) {
+          const pendingIds = s.scheduleQueue?.pendingIds || [];
+          const result = s.scheduleQueue?.last;
+          if (result?.status === "failed" && schedulePreviews.some(
+            (preview) => preview.operationId === result.id && !pendingIds.includes(result.id),
+          )) showFeedback("schedule-feedback", result.error);
+          schedulePreviews = schedulePreviews.filter(
+            (preview) => !preview.operationId || pendingIds.includes(preview.operationId),
+          );
+        }
         if (!s.current && snapshot?.current)
           s = { ...s, current: snapshot.current, timing: snapshot.timing };
         snapshot = s;
@@ -5359,7 +5402,8 @@
         $("status").textContent = shortStatus(s);
         $("status-detail").textContent = s.status;
         $("status").title = s.status;
-        renderErrorBanner(s);
+        delayErrorBanner = s.delayErrorBanner === true;
+        if (announce) renderErrorBanner(s);
         const c = s.current;
         if (c) {
           renderQuota("remaining", c.primary);
@@ -5371,10 +5415,12 @@
         }
         timeBlock("next-check", "next-check-date", s.nextPoll);
         $("next-check").title = time(s.nextPoll);
-        renderTiming(s.timing);
+        renderTiming();
         renderAutostart(s.autostart);
         if (!pollSettingBusy)
           $("poll-while-paused").checked = s.pollWhilePaused === true;
+        if (!pendingActions.has("settings/delay-error-banner"))
+          $("delay-error-banner").checked = delayErrorBanner;
         renderChart();
         renderActivity(s);
         if (announce) showScheduleNotice(s.scheduleNotice);
@@ -5425,6 +5471,7 @@
           "autostart",
           "choose-time",
           "poll-while-paused",
+          "delay-error-banner",
         ])
           $(id).disabled = true;
       }
@@ -5454,6 +5501,7 @@
               "autostart",
               "choose-time",
               "poll-while-paused",
+              "delay-error-banner",
             ])
               $(id).disabled = true;
           }
@@ -5520,11 +5568,16 @@
           updateControls();
         }
       }
-      let scheduleSaveQueued = false;
       async function action(name, feedback = "toast", body) {
-        if (pendingActions.has(name)) return false;
+        const scheduleEdit = name === "schedule" || name === "schedule/clear";
+        if (pendingActions.has(name) || (scheduleEdit && savingSchedule())) return false;
         pendingActions.add(name);
-        updateControls();
+        const preview = scheduleEdit && (name === "schedule/clear" || Number.isFinite(body?.refreshAt))
+          ? { clear: name === "schedule/clear", refreshAt: body?.refreshAt } : null;
+        if (preview) {
+          schedulePreviews.push(preview);
+          renderTiming();
+        } else updateControls();
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 25000);
         try {
@@ -5558,10 +5611,14 @@
           operationError = r.ok
             ? ""
             : d.error || d.message || "操作失败，请检查日志";
-          if (name === "schedule" && r.ok)
-            scheduleSaveQueued = d.queued === true;
+          if (preview && !r.ok) {
+            schedulePreviews = schedulePreviews.filter((item) => item !== preview);
+            renderTiming();
+          }
           showFeedback(feedback, d.message || d.error, r.ok);
           if (refreshPromise) await refreshPromise;
+          // A poll already in flight may predate this edit's admission to the queue.
+          if (preview && r.ok) preview.operationId = d.operationId;
           await refresh();
           return r.ok;
         } catch (e) {
@@ -5571,8 +5628,10 @@
         } finally {
           clearTimeout(timer);
           pendingActions.delete(name);
-          updateControls();
-          if (refreshDialog.open) renderWheels();
+          if (preview && !preview.operationId)
+            schedulePreviews = schedulePreviews.filter((item) => item !== preview);
+          if (scheduleEdit) renderTiming();
+          else updateControls();
         }
       }
 
@@ -5584,17 +5643,9 @@
           renderWheels();
           return;
         }
-        $("save-time").disabled = true;
-        if (
-          await action("schedule", "refresh-error", { refreshAt: draftRefresh })
-        ) {
-          refreshDialog.close();
-          showFeedback(
-            "schedule-feedback",
-            scheduleSaveQueued ? "已排队，检测后保存" : "已保存刷新时间",
-            true,
-          );
-        } else renderWheels();
+        if (savingSchedule()) return;
+        refreshDialog.close();
+        await action("schedule", "schedule-feedback", { refreshAt: draftRefresh });
       }
       $("save-time").addEventListener("click", saveTime);
       function renderAutostart(a) {
@@ -5620,6 +5671,10 @@
           await refresh();
           updateControls();
         }
+      }
+      async function setDelayErrorBanner(enabled) {
+        await action("settings/delay-error-banner", "toast", { enabled });
+        $("delay-error-banner").checked = delayErrorBanner;
       }
       restoreStatus();
       setInterval(countdown, 1000);
